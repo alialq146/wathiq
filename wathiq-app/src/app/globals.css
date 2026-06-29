@@ -1,0 +1,23 @@
+/* ============================================================
+   WATHIQ WORKSPACE — global stylesheet entry point.
+   Ports the design-system token closure into the Next.js app.
+   Keep this to @import lines (+ a couple of app-level resets).
+   ============================================================ */
+
+@import "../styles/tokens/fonts.css";
+@import "../styles/tokens/colors.css";
+@import "../styles/tokens/typography.css";
+@import "../styles/tokens/spacing.css";
+@import "../styles/tokens/effects.css";
+@import "../styles/tokens/base.css";
+
+/* App frame */
+html,
+body {
+  height: 100%;
+  margin: 0;
+}
+
+#app-root {
+  height: 100vh;
+}

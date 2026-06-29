@@ -1,0 +1,63 @@
+/* ============================================================
+   WATHIQ — base resets & RTL defaults.
+   Arabic-first: dir=rtl is the default reading direction.
+   ============================================================ */
+
+*, *::before, *::after { box-sizing: border-box; }
+
+:root {
+  color-scheme: light;
+  --_dir: rtl; /* @kind other */
+}
+
+html { -webkit-text-size-adjust: 100%; }
+
+body {
+  margin: 0;
+  font: var(--font-body);
+  color: var(--text-body);
+  background: var(--bg-app);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* Default to RTL for the Arabic-first product. Add dir="ltr" on a wrapper for LTR contexts. */
+[dir="rtl"] { direction: rtl; }
+[dir="ltr"] { direction: ltr; }
+
+h1, h2, h3, h4, h5, h6, p, figure { margin: 0; }
+
+a { color: var(--text-link); text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+button { font-family: inherit; }
+
+/* Requirement IDs and technical metadata read LTR even inside RTL text */
+.wq-id, code, kbd, samp {
+  font-family: var(--font-mono);
+  direction: ltr;
+  unicode-bidi: isolate;
+}
+
+::selection { background: var(--blue-100); color: var(--navy-950); }
+
+@keyframes wq-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.4; transform: scale(0.85); }
+}
+@keyframes wq-shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+:focus-visible {
+  outline: none;
+  box-shadow: var(--ring);
+  border-radius: var(--radius-sm);
+}
+
+/* thin, calm scrollbars */
+* { scrollbar-width: thin; scrollbar-color: var(--slate-300) transparent; }
+*::-webkit-scrollbar { width: 10px; height: 10px; }
+*::-webkit-scrollbar-thumb { background: var(--slate-300); border-radius: 999px; border: 3px solid transparent; background-clip: content-box; }
+*::-webkit-scrollbar-thumb:hover { background: var(--slate-400); }

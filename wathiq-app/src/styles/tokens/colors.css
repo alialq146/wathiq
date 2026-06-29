@@ -1,0 +1,133 @@
+/* ============================================================
+   WATHIQ — COLOR TOKENS
+   Navy + teal brand, cool-slate neutrals, single trust-blue accent.
+   Base scales first, then semantic aliases. Consume the SEMANTIC
+   tokens in product code; reach for base scales only when truly needed.
+   ============================================================ */
+
+:root {
+  /* ---- Brand: Navy (ink, dark surfaces, brand mark) ---- */
+  --navy-950: #04142E;
+  --navy-900: #061A3A;
+  --navy-800: #001851;
+  --navy-700: #0C2566;
+  --navy-600: #16317A;
+  --navy-500: #234093;
+
+  /* ---- Primary: Trust Blue (interactive, links, focus) ---- */
+  --blue-50:  #EEF3FF;
+  --blue-100: #DCE6FF;
+  --blue-200: #BBCDFF;
+  --blue-300: #8FAAFA;
+  --blue-400: #5E81F0;
+  --blue-500: #3C63E6;
+  --blue-600: #2B57E0;
+  --blue-700: #1F45BE;
+  --blue-800: #1B3A9B;
+  --blue-900: #1A337E;
+
+  /* ---- Teal: Intelligence / AI accent (from logo) ---- */
+  --teal-50:  #EAF8F6;
+  --teal-100: #D0F1ED;
+  --teal-200: #A3E3DC;
+  --teal-300: #6BCFC5;
+  --teal-400: #36B3A8;
+  --teal-500: #159891;
+  --teal-600: #0E7B75;
+  --teal-700: #0C625E;
+
+  /* ---- Neutrals: cool slate ---- */
+  --slate-0:   #FFFFFF;
+  --slate-25:  #FBFCFD;
+  --slate-50:  #F7F8FA;
+  --slate-100: #EFF1F5;
+  --slate-150: #E7EAF0;
+  --slate-200: #DFE3EB;
+  --slate-300: #CBD2DE;
+  --slate-400: #9BA4B4;
+  --slate-500: #6B7585;
+  --slate-600: #4E5765;
+  --slate-700: #38404D;
+  --slate-800: #242A34;
+  --slate-900: #161B23;
+  --slate-950: #0D1117;
+
+  /* ---- Semantic status hues ---- */
+  --green-50:  #E9F7EF;
+  --green-100: #CDEedb;
+  --green-500: #16A35C;
+  --green-600: #128049;
+  --amber-50:  #FDF3E3;
+  --amber-100: #FAE6C2;
+  --amber-500: #D98A09;
+  --amber-600: #B36F05;
+  --red-50:    #FCEDED;
+  --red-100:   #F8D7DA;
+  --red-500:   #D92D45;
+  --red-600:   #B71F36;
+  --violet-50: #F1EEFC;
+  --violet-500:#6C4FE0;
+
+  /* ============================================================
+     SEMANTIC ALIASES
+     ============================================================ */
+
+  /* Surfaces & backgrounds */
+  --bg-app:        var(--slate-50);
+  --bg-canvas:     var(--slate-100);
+  --surface-card:  var(--slate-0);
+  --surface-sunken:var(--slate-50);
+  --surface-raised:var(--slate-0);
+  --surface-inverse: var(--navy-800);
+  --surface-overlay: rgba(6, 16, 38, 0.48);
+
+  /* Text */
+  --text-strong:   var(--navy-950);
+  --text-body:     var(--slate-700);
+  --text-muted:    var(--slate-500);
+  --text-subtle:   var(--slate-400);
+  --text-on-brand: #FFFFFF;
+  --text-link:     var(--blue-600);
+
+  /* Borders & dividers */
+  --border-subtle: var(--slate-150);
+  --border-default:var(--slate-200);
+  --border-strong: var(--slate-300);
+  --border-focus:  var(--blue-500);
+
+  /* Brand / interactive */
+  --brand:         var(--navy-800);
+  --brand-ink:     var(--navy-950);
+  --primary:       var(--blue-600);
+  --primary-hover: var(--blue-700);
+  --primary-active:var(--blue-800);
+  --primary-soft:  var(--blue-50);
+  --accent:        var(--teal-500);
+  --accent-soft:   var(--teal-50);
+  --focus-ring:    rgba(43, 87, 224, 0.35);
+
+  /* Status — text / bg / border triplets for badges */
+  --status-success-fg: var(--green-600);
+  --status-success-bg: var(--green-50);
+  --status-warning-fg: var(--amber-600);
+  --status-warning-bg: var(--amber-50);
+  --status-danger-fg:  var(--red-600);
+  --status-danger-bg:  var(--red-50);
+  --status-info-fg:    var(--blue-700);
+  --status-info-bg:    var(--blue-50);
+  --status-neutral-fg: var(--slate-600);
+  --status-neutral-bg: var(--slate-100);
+  --status-ai-fg:      var(--teal-700);
+  --status-ai-bg:      var(--teal-50);
+
+  /* AI confidence scale */
+  --confidence-high: var(--teal-500);
+  --confidence-med:  var(--amber-500);
+  --confidence-low:  var(--red-500);
+
+  /* Priority scale */
+  --priority-critical: var(--red-500);
+  --priority-high:     var(--amber-500);
+  --priority-medium:   var(--blue-500);
+  --priority-low:      var(--slate-400);
+}
