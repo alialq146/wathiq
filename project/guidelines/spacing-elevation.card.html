@@ -1,0 +1,20 @@
+<!-- @dsCard group="Spacing" viewport="700x180" name="Elevation" subtitle="Low, diffuse, cool-tinted shadows" -->
+<!doctype html>
+<html dir="rtl" lang="ar">
+<head><meta charset="utf-8"><link rel="stylesheet" href="../styles.css">
+<style>
+  body { margin:0; padding:26px; background:var(--bg-app); }
+  .row { display:flex; gap:22px; }
+  .item { display:flex; flex-direction:column; align-items:center; gap:12px; }
+  .box { width:96px; height:64px; background:var(--surface-card); border-radius:var(--radius-lg); }
+  .lab { font:var(--font-mono-id); color:var(--text-muted); font-size:11px; }
+</style></head>
+<body>
+  <div class="row">
+    <div class="item"><div class="box" style="box-shadow:var(--shadow-xs)"></div><span class="lab">xs</span></div>
+    <div class="item"><div class="box" style="box-shadow:var(--shadow-sm)"></div><span class="lab">sm</span></div>
+    <div class="item"><div class="box" style="box-shadow:var(--shadow-md)"></div><span class="lab">md</span></div>
+    <div class="item"><div class="box" style="box-shadow:var(--shadow-lg)"></div><span class="lab">lg</span></div>
+    <div class="item"><div class="box" style="box-shadow:var(--shadow-xl)"></div><span class="lab">xl</span></div>
+  </div>
+</body></html>

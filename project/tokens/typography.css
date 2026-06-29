@@ -1,0 +1,51 @@
+/* ============================================================
+   WATHIQ — TYPOGRAPHY TOKENS
+   Arabic-first. IBM Plex Sans Arabic for UI text (Arabic + Latin),
+   IBM Plex Mono for Requirement IDs and technical metadata.
+   ============================================================ */
+
+:root {
+  /* Families */
+  --font-sans: "IBM Plex Sans Arabic", -apple-system, "Segoe UI", system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+
+  /* Weights */
+  --weight-light: 300;
+  --weight-regular: 400;
+  --weight-medium: 500;
+  --weight-semibold: 600;
+  --weight-bold: 700;
+
+  /* Type scale (px) — strong hierarchy, modest steps for density */
+  --text-display: 40px;   /* hero / empty-state headline */
+  --text-h1: 30px;
+  --text-h2: 24px;
+  --text-h3: 20px;
+  --text-h4: 17px;
+  --text-lg: 16px;        /* large body / section lead */
+  --text-base: 14px;      /* default UI body */
+  --text-sm: 13px;        /* secondary / table cells */
+  --text-xs: 12px;        /* labels, meta */
+  --text-2xs: 11px;       /* badges, eyebrows */
+
+  /* Line heights */
+  --leading-tight: 1.2;
+  --leading-snug: 1.35;
+  --leading-normal: 1.5;
+  --leading-relaxed: 1.65;
+
+  /* Letter spacing */
+  --tracking-tight: -0.02em;
+  --tracking-snug: -0.01em;
+  --tracking-normal: 0;
+  --tracking-wide: 0.04em;   /* eyebrows / all-caps labels */
+
+  /* Reusable role tokens */
+  --font-display: var(--weight-bold) var(--text-display)/var(--leading-tight) var(--font-sans);
+  --font-h1: var(--weight-semibold) var(--text-h1)/var(--leading-tight) var(--font-sans);
+  --font-h2: var(--weight-semibold) var(--text-h2)/var(--leading-snug) var(--font-sans);
+  --font-h3: var(--weight-semibold) var(--text-h3)/var(--leading-snug) var(--font-sans);
+  --font-body: var(--weight-regular) var(--text-base)/var(--leading-normal) var(--font-sans);
+  --font-label: var(--weight-medium) var(--text-sm)/var(--leading-snug) var(--font-sans);
+  --font-mono-id: var(--weight-medium) var(--text-sm)/1.2 var(--font-mono);
+}

@@ -1,0 +1,33 @@
+<!-- @dsCard group="Colors" viewport="700x160" name="Priority & Confidence" subtitle="Priority labels and AI confidence scale" -->
+<!doctype html>
+<html dir="rtl" lang="ar">
+<head><meta charset="utf-8"><link rel="stylesheet" href="../styles.css">
+<style>
+  body { margin:0; padding:20px; background:var(--surface-card); font:var(--font-body); display:flex; gap:28px; }
+  .col { flex:1; }
+  .lbl { font:var(--weight-semibold) 11px/1 var(--font-sans); letter-spacing:.04em; text-transform:uppercase; color:var(--text-subtle); margin-bottom:12px; }
+  .row { display:flex; gap:8px; flex-wrap:wrap; }
+  .p { display:inline-flex; align-items:center; gap:6px; font:var(--weight-medium) 13px/1 var(--font-sans); color:var(--text-body); }
+  .bar { width:10px; height:10px; border-radius:3px; }
+  .conf { display:flex; align-items:center; gap:10px; margin-bottom:10px; }
+  .track { flex:1; height:6px; border-radius:99px; background:var(--slate-150); overflow:hidden; }
+  .fill { height:100%; border-radius:99px; }
+  .pct { font:var(--font-mono-id); width:38px; }
+</style></head>
+<body>
+  <div class="col">
+    <div class="lbl">Priority</div>
+    <div class="row">
+      <span class="p"><span class="bar" style="background:var(--priority-critical)"></span>حرجة · Critical</span>
+      <span class="p"><span class="bar" style="background:var(--priority-high)"></span>عالية · High</span>
+      <span class="p"><span class="bar" style="background:var(--priority-medium)"></span>متوسطة · Medium</span>
+      <span class="p"><span class="bar" style="background:var(--priority-low)"></span>منخفضة · Low</span>
+    </div>
+  </div>
+  <div class="col">
+    <div class="lbl">AI Confidence</div>
+    <div class="conf"><div class="track"><div class="fill" style="width:92%;background:var(--confidence-high)"></div></div><span class="pct" style="color:var(--teal-600)">92%</span></div>
+    <div class="conf"><div class="track"><div class="fill" style="width:64%;background:var(--confidence-med)"></div></div><span class="pct" style="color:var(--amber-600)">64%</span></div>
+    <div class="conf"><div class="track"><div class="fill" style="width:31%;background:var(--confidence-low)"></div></div><span class="pct" style="color:var(--red-600)">31%</span></div>
+  </div>
+</body></html>

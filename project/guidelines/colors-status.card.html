@@ -1,0 +1,20 @@
+<!-- @dsCard group="Colors" viewport="700x150" name="Status badges" subtitle="Requirement lifecycle states" -->
+<!doctype html>
+<html dir="rtl" lang="ar">
+<head><meta charset="utf-8"><link rel="stylesheet" href="../styles.css">
+<style>
+  body { margin:0; padding:20px; background:var(--surface-card); font:var(--font-body); }
+  .wrap { display:flex; flex-wrap:wrap; gap:10px; }
+  .b { display:inline-flex; align-items:center; gap:7px; padding:5px 11px; border-radius:var(--radius-pill); font:var(--weight-medium) 13px/1 var(--font-sans); }
+  .dot { width:7px; height:7px; border-radius:50%; }
+</style></head>
+<body>
+  <div class="wrap">
+    <span class="b" style="background:var(--status-neutral-bg);color:var(--status-neutral-fg)"><span class="dot" style="background:var(--slate-500)"></span>مسودة · Draft</span>
+    <span class="b" style="background:var(--status-info-bg);color:var(--status-info-fg)"><span class="dot" style="background:var(--blue-600)"></span>قيد التحليل · Analyzing</span>
+    <span class="b" style="background:var(--status-warning-bg);color:var(--status-warning-fg)"><span class="dot" style="background:var(--amber-500)"></span>قيد المراجعة · In Review</span>
+    <span class="b" style="background:var(--status-ai-bg);color:var(--status-ai-fg)"><span class="dot" style="background:var(--teal-500)"></span>بحاجة لمعلومات · Needs Info</span>
+    <span class="b" style="background:var(--status-success-bg);color:var(--status-success-fg)"><span class="dot" style="background:var(--green-500)"></span>معتمد · Approved</span>
+    <span class="b" style="background:var(--status-danger-bg);color:var(--status-danger-fg)"><span class="dot" style="background:var(--red-500)"></span>محظور · Blocked</span>
+  </div>
+</body></html>
