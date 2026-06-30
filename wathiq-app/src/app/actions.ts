@@ -69,6 +69,51 @@ export async function saveRequirement(
   }
 }
 
+export interface SaveManyResult {
+  ok: boolean;
+  error?: string;
+  saved?: number;
+  skipped?: number;
+}
+
+/** Bulk-insert AI-extracted requirements, skipping IDs that already exist. */
+export async function saveExtractedRequirements(
+  inputs: RequirementInput[]
+): Promise<SaveManyResult> {
+  if (!hasDatabase()) return { ok: false, error: "no-db" };
+  if (!inputs.length) return { ok: false, error: "empty" };
+
+  try {
+    const max = await prisma.requirement.aggregate({ _max: { order: true } });
+    let order = (max._max.order ?? -1) + 1;
+    let saved = 0;
+    let skipped = 0;
+
+    for (const input of inputs) {
+      const id = input.id.trim();
+      if (!id || !input.title.trim()) {
+        skipped++;
+        continue;
+      }
+      const exists = await prisma.requirement.findUnique({ where: { id } });
+      if (exists) {
+        skipped++;
+        continue;
+      }
+      await prisma.requirement.create({
+        data: { id, ...clean(input), order: order++ },
+      });
+      saved++;
+    }
+
+    revalidatePath("/");
+    return { ok: true, saved, skipped };
+  } catch (err) {
+    console.error("[saveExtractedRequirements]", err);
+    return { ok: false, error: "server" };
+  }
+}
+
 export async function deleteRequirement(id: string): Promise<ActionResult> {
   if (!hasDatabase()) return { ok: false, error: "no-db" };
   try {

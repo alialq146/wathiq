@@ -1,50 +1,130 @@
 "use client";
 
 import React from "react";
-import { AIInsightPanel, Button, Card, Icon } from "@/components/ds";
+import { useRouter } from "next/navigation";
+import { AIInsightPanel, Button, Card, Icon, PriorityLabel, StatusBadge } from "@/components/ds";
+import { saveExtractedRequirements, type RequirementInput } from "@/app/actions";
+import type { AnalysisResult } from "@/lib/analysis-types";
 
-type Phase = "idle" | "running" | "done";
+type Phase = "idle" | "running" | "done" | "error";
 
-/* AI Analysis screen — transparent pipeline: upload → analyzing → results.
-   Showcases progress, live reasoning, confidence, and recommendations. */
+const STEPS = [
+  { label: "قراءة المستند واستخراج النص", icon: "file-text" },
+  { label: "تحديد الجهات الفاعلة والنطاق", icon: "users" },
+  { label: "استخراج المتطلبات الوظيفية", icon: "clipboard-list" },
+  { label: "اشتقاق معايير القبول", icon: "check-circle" },
+  { label: "مطابقة قواعد العمل والسياسات", icon: "shield-check" },
+  { label: "رصد المعلومات الناقصة والأسئلة", icon: "message-circle-question" },
+];
+
+const SAMPLE = `نظام إدارة طلبات الإجازات للموظفين.
+يجب أن يتمكن الموظف من تقديم طلب إجازة يحدد فيه نوع الإجازة (سنوية، مرضية، اضطرارية) وتاريخ البداية والنهاية وسبب الإجازة.
+يجب أن يعتمد المدير المباشر الطلب أو يرفضه خلال ٤٨ ساعة، مع إشعار الموظف بالنتيجة عبر البريد والتطبيق.
+يجب أن يعرض النظام رصيد الإجازات المتبقي لكل موظف ويمنع تقديم طلب يتجاوز الرصيد.
+يجب ألا يتجاوز زمن تحميل صفحة الطلبات ثانيتين تحت ٢٠٠ مستخدم متزامن.
+يجب أن يحتفظ النظام بسجل تدقيق لكل عملية اعتماد أو رفض لمدة سنتين.`;
+
+/* AI Analysis screen — real, transparent extraction via Claude.
+   Paste a requirements document → Claude extracts structured requirements →
+   review the results and save them to the database. */
 export function AnalysisScreen() {
-  const STEPS = [
-    { label: "قراءة المستند واستخراج النص", icon: "file-text" },
-    { label: "تحديد الجهات الفاعلة والنطاق", icon: "users" },
-    { label: "استخراج المتطلبات الوظيفية", icon: "clipboard-list" },
-    { label: "اشتقاق معايير القبول", icon: "check-circle" },
-    { label: "مطابقة قواعد العمل والسياسات", icon: "shield-check" },
-    { label: "رصد المعلومات الناقصة والأسئلة", icon: "message-circle-question" },
-  ];
+  const router = useRouter();
   const [phase, setPhase] = React.useState<Phase>("idle");
+  const [text, setText] = React.useState("");
   const [active, setActive] = React.useState(0);
+  const [result, setResult] = React.useState<AnalysisResult | null>(null);
+  const [errorMsg, setErrorMsg] = React.useState<string | null>(null);
+  const [saving, setSaving] = React.useState(false);
+  const [saveMsg, setSaveMsg] = React.useState<string | null>(null);
   const timer = React.useRef<ReturnType<typeof setInterval> | null>(null);
 
-  React.useEffect(() => {
-    return () => {
-      if (timer.current) clearInterval(timer.current);
-    };
+  React.useEffect(() => () => {
+    if (timer.current) clearInterval(timer.current);
   }, []);
 
-  const run = () => {
+  const ERRORS: Record<string, string> = {
+    "no-key": "ميزة التحليل تتطلب ربط مفتاح Anthropic API في إعدادات الموقع (متغيّر ANTHROPIC_API_KEY).",
+    "too-short": "النص قصير جدًا — الصق وثيقة متطلبات أطول.",
+    failed: "تعذّر التحليل. حاول مرة أخرى.",
+    network: "تعذّر الاتصال بالخادم. تأكد من اتصالك وحاول مجددًا.",
+  };
+
+  const run = async () => {
+    if (text.trim().length < 20) return;
     setPhase("running");
     setActive(0);
+    setResult(null);
+    setErrorMsg(null);
+    setSaveMsg(null);
+
+    // Cosmetic progress while the model works — hold before the last step.
     let i = 0;
     timer.current = setInterval(() => {
-      i += 1;
-      if (i >= STEPS.length) {
-        if (timer.current) clearInterval(timer.current);
+      i = Math.min(i + 1, STEPS.length - 1);
+      setActive(i);
+    }, 700);
+
+    try {
+      const res = await fetch("/api/analyze", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text }),
+      });
+      const data = await res.json();
+      if (timer.current) clearInterval(timer.current);
+
+      if (data.ok) {
         setActive(STEPS.length);
-        setTimeout(() => setPhase("done"), 500);
+        setResult(data.result as AnalysisResult);
+        setPhase("done");
       } else {
-        setActive(i);
+        setErrorMsg(ERRORS[data.error] || ERRORS.failed);
+        setPhase("error");
       }
-    }, 750);
+    } catch {
+      if (timer.current) clearInterval(timer.current);
+      setErrorMsg(ERRORS.network);
+      setPhase("error");
+    }
   };
+
   const reset = () => {
     if (timer.current) clearInterval(timer.current);
     setPhase("idle");
     setActive(0);
+    setResult(null);
+    setErrorMsg(null);
+    setSaveMsg(null);
+  };
+
+  const save = async () => {
+    if (!result) return;
+    setSaving(true);
+    setSaveMsg(null);
+    const inputs: RequirementInput[] = result.requirements.map((r) => ({
+      id: r.id,
+      title: r.title,
+      description: r.description,
+      status: r.status,
+      priority: r.priority,
+      confidence: r.confidence,
+      criteria: r.criteria,
+      openQuestions: r.openQuestions,
+      module: r.module,
+      stakeholders: r.stakeholders,
+    }));
+    const res = await saveExtractedRequirements(inputs);
+    setSaving(false);
+    if (res.ok) {
+      setSaveMsg(`تم حفظ ${res.saved} متطلب${res.skipped ? ` (تخطّي ${res.skipped} موجود مسبقًا)` : ""}.`);
+      router.refresh();
+    } else {
+      setSaveMsg(
+        res.error === "no-db"
+          ? "الحفظ يتطلب قاعدة بيانات — يعمل على الموقع المنشور فقط."
+          : "تعذّر الحفظ. حاول مرة أخرى."
+      );
+    }
   };
 
   const pct = Math.round((Math.min(active, STEPS.length) / STEPS.length) * 100);
@@ -55,7 +135,7 @@ export function AnalysisScreen() {
         تحليل وثّق
       </h1>
       <p style={{ font: "14px/1.5 var(--font-sans)", color: "var(--text-muted)", margin: "0 0 24px" }}>
-        كل خطوة شفّافة — ترى ما يقرأه وثّق، وكيف يستنتج، وبأي درجة ثقة.
+        الصق وثيقة المتطلبات وسيستخرج وثّق المتطلبات بشكل شفّاف — ترى ما يقرأه، وكيف يستنتج، وبأي درجة ثقة.
       </p>
 
       {phase === "idle" && (
@@ -63,54 +143,92 @@ export function AnalysisScreen() {
           style={{
             border: "1.5px dashed var(--border-strong)",
             borderRadius: "var(--radius-xl)",
-            padding: "44px 24px",
-            textAlign: "center",
+            padding: "24px",
             background: "var(--surface-card)",
           }}
         >
-          <span
+          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14 }}>
+            <span
+              style={{
+                width: 40,
+                height: 40,
+                borderRadius: "var(--radius-lg)",
+                background: "var(--blue-50)",
+                display: "inline-flex",
+                alignItems: "center",
+                justifyContent: "center",
+                flex: "0 0 40px",
+              }}
+            >
+              <Icon name="file-up" size={20} color="var(--blue-600)" />
+            </span>
+            <div>
+              <div style={{ font: "var(--weight-semibold) 16px/1.3 var(--font-sans)", color: "var(--text-strong)" }}>
+                الصق وثيقة المتطلبات
+              </div>
+              <div style={{ font: "13px/1.5 var(--font-sans)", color: "var(--text-muted)" }}>
+                نص حر بالعربية — سيستخرج وثّق المتطلبات وأولوياتها ودرجة الثقة.
+              </div>
+            </div>
+          </div>
+
+          <textarea
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            placeholder="الصق هنا نص وثيقة المتطلبات…"
+            rows={8}
             style={{
-              width: 52,
-              height: 52,
-              borderRadius: "var(--radius-lg)",
-              background: "var(--blue-50)",
-              display: "inline-flex",
-              alignItems: "center",
-              justifyContent: "center",
-              marginBottom: 16,
+              width: "100%",
+              padding: "12px 14px",
+              borderRadius: "var(--radius-md)",
+              border: "1px solid var(--border-default)",
+              background: "var(--slate-50)",
+              font: "14px/1.7 var(--font-sans)",
+              color: "var(--text-strong)",
+              outline: "none",
+              resize: "vertical",
             }}
-          >
-            <Icon name="file-up" size={26} color="var(--blue-600)" />
-          </span>
-          <div style={{ font: "var(--weight-semibold) 17px/1.4 var(--font-sans)", color: "var(--text-strong)", marginBottom: 6 }}>
-            ارفع وثيقة المتطلبات
-          </div>
-          <div
-            style={{
-              font: "13px/1.6 var(--font-sans)",
-              color: "var(--text-muted)",
-              marginBottom: 18,
-              maxWidth: 380,
-              marginInline: "auto",
-            }}
-          >
-            PDF أو Word أو نص — سيستخرج وثّق المتطلبات ومعايير القبول وقواعد العمل تلقائيًا.
-          </div>
-          <div style={{ display: "flex", gap: 8, justifyContent: "center" }}>
-            <Button variant="primary" iconStart={<Icon name="sparkles" size={16} />} onClick={run}>
-              ابدأ التحليل التجريبي
+          />
+
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 14, flexWrap: "wrap" }}>
+            <Button
+              variant="primary"
+              iconStart={<Icon name="sparkles" size={16} />}
+              onClick={run}
+              disabled={text.trim().length < 20}
+            >
+              حلّل بوثّق
             </Button>
-            <Button variant="secondary" iconStart={<Icon name="upload" size={16} />}>
-              اختيار ملف
+            <Button variant="ghost" size="sm" onClick={() => setText(SAMPLE)}>
+              تجربة بنص نموذجي
             </Button>
-          </div>
-          <div style={{ marginTop: 16, font: "12px var(--font-mono)", color: "var(--text-subtle)", direction: "ltr" }}>
-            requirements-v2.3.docx · 14 pages
+            <span style={{ marginInlineStart: "auto", font: "12px var(--font-mono)", color: "var(--text-subtle)", direction: "ltr" }}>
+              {text.trim().length} chars
+            </span>
           </div>
         </div>
       )}
 
-      {phase !== "idle" && (
+      {phase === "error" && (
+        <Card padding="lg">
+          <div style={{ display: "flex", alignItems: "flex-start", gap: 12 }}>
+            <Icon name="alert-triangle" size={20} color="var(--red-500)" style={{ marginTop: 2 }} />
+            <div style={{ flex: 1 }}>
+              <div style={{ font: "var(--weight-semibold) 15px var(--font-sans)", color: "var(--text-strong)", marginBottom: 4 }}>
+                تعذّر التحليل
+              </div>
+              <div style={{ font: "13px/1.6 var(--font-sans)", color: "var(--text-body)" }}>{errorMsg}</div>
+              <div style={{ marginTop: 14 }}>
+                <Button variant="secondary" size="sm" iconStart={<Icon name="rotate-ccw" size={15} />} onClick={reset}>
+                  العودة
+                </Button>
+              </div>
+            </div>
+          </div>
+        </Card>
+      )}
+
+      {(phase === "running" || phase === "done") && (
         <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
           <Card padding="lg">
             <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 16 }}>
@@ -130,10 +248,10 @@ export function AnalysisScreen() {
               </span>
               <div style={{ flex: 1 }}>
                 <div style={{ font: "var(--weight-semibold) 15px/1.2 var(--font-sans)", color: "var(--text-strong)" }}>
-                  {phase === "done" ? "اكتمل التحليل" : "جارٍ التحليل…"}
+                  {phase === "done" ? "اكتمل التحليل" : "جارٍ التحليل بالذكاء الاصطناعي…"}
                 </div>
                 <div style={{ font: "12px var(--font-mono)", color: "var(--text-subtle)", direction: "ltr" }}>
-                  requirements-v2.3.docx
+                  claude-opus-4-8
                 </div>
               </div>
               <span style={{ font: "var(--weight-semibold) 14px/1 var(--font-mono)", color: "var(--teal-600)", direction: "ltr" }}>
@@ -219,14 +337,14 @@ export function AnalysisScreen() {
             </div>
           </Card>
 
-          {phase === "done" && (
+          {phase === "done" && result && (
             <>
               <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12 }}>
                 {[
-                  { n: 6, l: "متطلبات", c: "var(--blue-600)" },
-                  { n: 28, l: "معايير قبول", c: "var(--teal-600)" },
-                  { n: 9, l: "قواعد عمل", c: "var(--navy-700)" },
-                  { n: 5, l: "أسئلة مفتوحة", c: "var(--amber-600)" },
+                  { n: result.requirements.length, l: "متطلبات", c: "var(--blue-600)" },
+                  { n: result.acceptanceCriteriaCount, l: "معايير قبول", c: "var(--teal-600)" },
+                  { n: result.businessRulesCount, l: "قواعد عمل", c: "var(--navy-700)" },
+                  { n: result.openQuestionsCount, l: "أسئلة مفتوحة", c: "var(--amber-600)" },
                 ].map((m) => (
                   <Card key={m.l} padding="sm" style={{ textAlign: "center" }}>
                     <div style={{ font: "var(--weight-bold) 26px/1 var(--font-sans)", color: m.c }}>{m.n}</div>
@@ -234,22 +352,66 @@ export function AnalysisScreen() {
                   </Card>
                 ))}
               </div>
+
               <AIInsightPanel
-                confidence={84}
-                summary="استخرجت ٦ متطلبات و٢٨ معيار قبول من المستند. متطلبان بحاجة لمعلومات إضافية قبل الاعتماد."
-                reasoning={[
-                  "صُنّفت ٤ متطلبات وظيفية ومتطلبَا أداء غير وظيفيين.",
-                  "رُبطت ٩ قواعد عمل بمصادرها التنظيمية.",
-                  "رُصدت ٥ فجوات معلومات تتطلب توضيحًا من أصحاب المصلحة.",
-                ]}
-                recommendations={[
-                  "راجع المتطلب FR-033 — ثقة منخفضة (٥٢٪) بسبب غموض الصلاحيات.",
-                  "وجّه الأسئلة الخمسة المفتوحة لأصحاب المصلحة المعنيين.",
-                ]}
+                confidence={result.confidence}
+                summary={result.summary}
+                reasoning={result.reasoning}
+                recommendations={result.recommendations}
               />
-              <Button variant="ghost" iconStart={<Icon name="rotate-ccw" size={15} />} onClick={reset} style={{ alignSelf: "flex-start" }}>
-                إعادة التحليل
-              </Button>
+
+              {/* Extracted requirements preview */}
+              {result.requirements.length > 0 && (
+                <Card padding="none">
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "14px 18px", borderBottom: "1px solid var(--border-subtle)" }}>
+                    <Icon name="clipboard-list" size={17} color="var(--blue-600)" />
+                    <span style={{ font: "var(--weight-semibold) 14px var(--font-sans)", color: "var(--text-strong)" }}>
+                      المتطلبات المستخرجة
+                    </span>
+                  </div>
+                  <div style={{ display: "flex", flexDirection: "column" }}>
+                    {result.requirements.map((r, i) => (
+                      <div
+                        key={r.id}
+                        style={{
+                          display: "flex",
+                          gap: 11,
+                          alignItems: "flex-start",
+                          padding: "13px 18px",
+                          borderTop: i ? "1px solid var(--border-subtle)" : "none",
+                        }}
+                      >
+                        <PriorityLabel level={r.priority} showLabel={false} />
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 3 }}>
+                            <span style={{ font: "var(--font-mono-id)", color: "var(--blue-700)", direction: "ltr" }}>{r.id}</span>
+                            <StatusBadge status={r.status} />
+                          </div>
+                          <div style={{ font: "var(--weight-medium) 14px/1.5 var(--font-sans)", color: "var(--text-strong)" }}>{r.title}</div>
+                          <div style={{ font: "13px/1.6 var(--font-sans)", color: "var(--text-muted)", marginTop: 2 }}>{r.description}</div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </Card>
+              )}
+
+              <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                <Button
+                  variant="brand"
+                  iconStart={<Icon name={saving ? "loader" : "database"} size={16} />}
+                  onClick={save}
+                  disabled={saving || result.requirements.length === 0}
+                >
+                  {saving ? "جارٍ الحفظ…" : "حفظ المتطلبات في القاعدة"}
+                </Button>
+                <Button variant="ghost" iconStart={<Icon name="rotate-ccw" size={15} />} onClick={reset}>
+                  تحليل جديد
+                </Button>
+                {saveMsg && (
+                  <span style={{ font: "13px var(--font-sans)", color: "var(--teal-700)" }}>{saveMsg}</span>
+                )}
+              </div>
             </>
           )}
         </div>
