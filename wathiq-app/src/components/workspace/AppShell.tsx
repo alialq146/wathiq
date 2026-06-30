@@ -3,7 +3,8 @@
 import React from "react";
 import Image from "next/image";
 import { Avatar, Button, Icon } from "@/components/ds";
-import { PROJECT, REQUIREMENTS } from "@/lib/data";
+import { PROJECT } from "@/lib/data";
+import { useWorkspaceData } from "./WorkspaceDataContext";
 
 export type ScreenId =
   | "overview"
@@ -29,9 +30,10 @@ export interface AppShellProps {
 
 /** App frame: right-anchored sidebar (RTL) + topbar. */
 export function AppShell({ current, onNavigate, children, rightRail }: AppShellProps) {
+  const { requirements } = useWorkspaceData();
   const nav: NavEntry[] = [
     { id: "overview", label: "نظرة عامة", icon: "layout-dashboard" },
-    { id: "requirements", label: "المتطلبات", icon: "clipboard-list", count: REQUIREMENTS.length },
+    { id: "requirements", label: "المتطلبات", icon: "clipboard-list", count: requirements.length },
     { id: "analysis", label: "تحليل وثّق", icon: "sparkles" },
   ];
   const meta: NavEntry[] = [

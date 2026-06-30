@@ -13,12 +13,8 @@ import {
   Tabs,
   Tag,
 } from "@/components/ds";
-import {
-  ACCEPTANCE_CRITERIA,
-  BUSINESS_RULES,
-  OPEN_QUESTIONS,
-  type Requirement,
-} from "@/lib/data";
+import { type Requirement } from "@/lib/data";
+import { useWorkspaceData } from "./WorkspaceDataContext";
 
 export interface RequirementDetailProps {
   req: Requirement;
@@ -27,6 +23,11 @@ export interface RequirementDetailProps {
 
 /* Requirement detail — header, tabs (criteria / rules / questions), meta. */
 export function RequirementDetail({ req, onBack }: RequirementDetailProps) {
+  const {
+    acceptanceCriteria: ACCEPTANCE_CRITERIA,
+    businessRules: BUSINESS_RULES,
+    openQuestions: OPEN_QUESTIONS,
+  } = useWorkspaceData();
   const [tab, setTab] = React.useState("criteria");
   const tabs = [
     { id: "criteria", label: "معايير القبول", count: ACCEPTANCE_CRITERIA.length },
@@ -257,6 +258,10 @@ export interface DetailRailProps {
 
 /* Right rail for the detail view — AI insight panel + actions. */
 export function DetailRail({ req }: DetailRailProps) {
+  const {
+    acceptanceCriteria: ACCEPTANCE_CRITERIA,
+    businessRules: BUSINESS_RULES,
+  } = useWorkspaceData();
   return (
     <div style={{ padding: "20px 16px", display: "flex", flexDirection: "column", gap: 16 }}>
       <AIInsightPanel

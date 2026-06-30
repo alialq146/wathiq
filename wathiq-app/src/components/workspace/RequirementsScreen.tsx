@@ -2,7 +2,8 @@
 
 import React from "react";
 import { Button, Icon, RequirementCard } from "@/components/ds";
-import { REQUIREMENTS, type Requirement } from "@/lib/data";
+import { type Requirement } from "@/lib/data";
+import { useWorkspaceData } from "./WorkspaceDataContext";
 
 export interface RequirementsScreenProps {
   onOpen?: (req: Requirement | null) => void;
@@ -10,6 +11,7 @@ export interface RequirementsScreenProps {
 
 /* Requirements list screen — AI summary banner, filter row, requirement grid. */
 export function RequirementsScreen({ onOpen }: RequirementsScreenProps) {
+  const { requirements: REQUIREMENTS } = useWorkspaceData();
   const [filter, setFilter] = React.useState<string>("all");
   const filters = [
     { id: "all", label: "الكل", n: REQUIREMENTS.length },

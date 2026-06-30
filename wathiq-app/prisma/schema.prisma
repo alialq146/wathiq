@@ -1,0 +1,50 @@
+// Wathiq workspace — data model.
+// Mirrors the shapes in src/lib/data.ts so the UI is unchanged whether data
+// comes from this database or the in-code fallback.
+
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "rhel-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Requirement {
+  id            String  @id
+  title         String
+  description   String
+  status        String
+  priority      String
+  confidence    Int?
+  criteria      Int
+  openQuestions Int
+  module        String
+  stakeholders  String[]
+  order         Int     @default(0)
+}
+
+model AcceptanceCriterion {
+  id    String  @id
+  text  String
+  done  Boolean
+  ai    Boolean
+  order Int     @default(0)
+}
+
+model BusinessRule {
+  id     String @id
+  text   String
+  source String
+  order  Int    @default(0)
+}
+
+model OpenQuestion {
+  id    String  @id
+  text  String
+  to    String
+  ai    Boolean
+  order Int     @default(0)
+}

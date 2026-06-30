@@ -4,21 +4,30 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "node scripts/db-setup.mjs && next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "postinstall": "prisma generate",
+    "db:push": "prisma db push",
+    "db:seed": "prisma db seed"
+  },
+  "prisma": {
+    "seed": "tsx prisma/seed.ts"
   },
   "dependencies": {
     "next": "15.5.19",
     "react": "19.0.0",
     "react-dom": "19.0.0",
-    "lucide-react": "0.468.0"
+    "lucide-react": "0.468.0",
+    "@prisma/client": "6.2.1"
   },
   "devDependencies": {
     "typescript": "5.7.3",
     "@types/node": "22.10.5",
     "@types/react": "19.0.7",
-    "@types/react-dom": "19.0.3"
+    "@types/react-dom": "19.0.3",
+    "prisma": "6.2.1",
+    "tsx": "4.22.4"
   },
   "overrides": {
     "postcss": "^8.5.16"

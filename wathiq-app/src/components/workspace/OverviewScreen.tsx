@@ -2,7 +2,8 @@
 
 import React from "react";
 import { Badge, Button, Card, ConfidenceMeter, Icon, PriorityLabel, StatusBadge } from "@/components/ds";
-import { PROJECT, REQUIREMENTS, type Requirement } from "@/lib/data";
+import { PROJECT, type Requirement } from "@/lib/data";
+import { useWorkspaceData } from "./WorkspaceDataContext";
 
 export interface OverviewScreenProps {
   onOpen?: (req: Requirement | null) => void;
@@ -11,6 +12,7 @@ export interface OverviewScreenProps {
 /* Project overview — BA-specific: readiness, status distribution,
    acceptance-criteria coverage, missing information. Not a generic dashboard. */
 export function OverviewScreen({ onOpen }: OverviewScreenProps) {
+  const { requirements: REQUIREMENTS } = useWorkspaceData();
   const statusCounts: Record<string, number> = {
     approved: 1,
     review: 1,
