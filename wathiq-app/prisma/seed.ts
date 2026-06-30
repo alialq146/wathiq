@@ -11,6 +11,14 @@ import {
 } from "../src/lib/data";
 
 async function main() {
+  // Seed-once: if the workspace already has requirements (e.g. the user has
+  // edited data through the app), don't overwrite it on subsequent deploys.
+  const existing = await prisma.requirement.count();
+  if (existing > 0) {
+    console.log(`Seed skipped — ${existing} requirements already present.`);
+    return;
+  }
+
   for (const [i, r] of REQUIREMENTS.entries()) {
     const data = {
       title: r.title,

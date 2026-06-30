@@ -1,18 +1,28 @@
 "use client";
 
 import React from "react";
+import { useRouter } from "next/navigation";
 import { Button, Icon, RequirementCard } from "@/components/ds";
 import { type Requirement } from "@/lib/data";
 import { useWorkspaceData } from "./WorkspaceDataContext";
+import { RequirementFormDialog } from "./RequirementFormDialog";
+import { deleteRequirement } from "@/app/actions";
 
 export interface RequirementsScreenProps {
   onOpen?: (req: Requirement | null) => void;
 }
 
-/* Requirements list screen — AI summary banner, filter row, requirement grid. */
+/* Requirements list screen — AI summary banner, filter row, requirement grid,
+   plus add / edit / delete backed by the database. */
 export function RequirementsScreen({ onOpen }: RequirementsScreenProps) {
+  const router = useRouter();
   const { requirements: REQUIREMENTS } = useWorkspaceData();
   const [filter, setFilter] = React.useState<string>("all");
+  const [dialogOpen, setDialogOpen] = React.useState(false);
+  const [dialogMode, setDialogMode] = React.useState<"create" | "edit">("create");
+  const [editing, setEditing] = React.useState<Requirement | null>(null);
+  const [busyId, setBusyId] = React.useState<string | null>(null);
+
   const filters = [
     { id: "all", label: "الكل", n: REQUIREMENTS.length },
     { id: "needs_info", label: "بحاجة لمعلومات", n: REQUIREMENTS.filter((r) => r.status === "needs_info").length },
@@ -22,15 +32,48 @@ export function RequirementsScreen({ onOpen }: RequirementsScreenProps) {
   ];
   const list = filter === "all" ? REQUIREMENTS : REQUIREMENTS.filter((r) => r.status === filter);
 
+  const openCreate = () => {
+    setEditing(null);
+    setDialogMode("create");
+    setDialogOpen(true);
+  };
+  const openEdit = (r: Requirement) => {
+    setEditing(r);
+    setDialogMode("edit");
+    setDialogOpen(true);
+  };
+  const onSaved = () => {
+    setDialogOpen(false);
+    router.refresh();
+  };
+  const onDelete = async (r: Requirement) => {
+    if (!window.confirm(`حذف المتطلب ${r.id}؟ لا يمكن التراجع.`)) return;
+    setBusyId(r.id);
+    const res = await deleteRequirement(r.id);
+    setBusyId(null);
+    if (res.ok) router.refresh();
+    else
+      window.alert(
+        res.error === "no-db"
+          ? "الحذف يتطلب قاعدة بيانات — يعمل على الموقع المنشور فقط."
+          : "تعذّر الحذف. حاول مرة أخرى."
+      );
+  };
+
   return (
     <div style={{ padding: "24px 28px", maxWidth: 1180, margin: "0 auto" }}>
+      <style>{`
+        .wq-req-cell .wq-req-actions { opacity: 0; transition: opacity var(--dur-fast) var(--ease-out); }
+        .wq-req-cell:hover .wq-req-actions { opacity: 1; }
+      `}</style>
+
       <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: 16, marginBottom: 18 }}>
         <div>
           <h1 style={{ font: "var(--weight-semibold) var(--text-h1)/1.2 var(--font-sans)", color: "var(--text-strong)", margin: 0 }}>
             المتطلبات
           </h1>
           <p style={{ font: "14px/1.5 var(--font-sans)", color: "var(--text-muted)", margin: "6px 0 0" }}>
-            ٦ متطلبات مستخرجة من ٣ وثائق · آخر تحليل قبل ٣ ساعات
+            {REQUIREMENTS.length} متطلبات مستخرجة من ٣ وثائق · آخر تحليل قبل ٣ ساعات
           </p>
         </div>
         <div style={{ display: "flex", gap: 8 }}>
@@ -39,6 +82,9 @@ export function RequirementsScreen({ onOpen }: RequirementsScreenProps) {
           </Button>
           <Button variant="secondary" size="sm" iconStart={<Icon name="arrow-up-down" size={15} />}>
             ترتيب
+          </Button>
+          <Button variant="primary" size="sm" iconStart={<Icon name="plus" size={15} />} onClick={openCreate}>
+            متطلب جديد
           </Button>
         </div>
       </div>
@@ -111,9 +157,88 @@ export function RequirementsScreen({ onOpen }: RequirementsScreenProps) {
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(340px, 1fr))", gap: 16 }}>
         {list.map((r) => (
-          <RequirementCard key={r.id} {...r} onClick={() => onOpen && onOpen(r)} />
+          <div key={r.id} className="wq-req-cell" style={{ position: "relative" }}>
+            <RequirementCard {...r} onClick={() => onOpen && onOpen(r)} />
+            <div
+              className="wq-req-actions"
+              style={{
+                position: "absolute",
+                bottom: 14,
+                insetInlineEnd: 14,
+                display: "flex",
+                gap: 6,
+              }}
+            >
+              <ActionIcon
+                icon="pencil"
+                label="تعديل"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  openEdit(r);
+                }}
+              />
+              <ActionIcon
+                icon={busyId === r.id ? "loader" : "trash-2"}
+                label="حذف"
+                danger
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onDelete(r);
+                }}
+              />
+            </div>
+          </div>
         ))}
       </div>
+
+      <RequirementFormDialog
+        open={dialogOpen}
+        mode={dialogMode}
+        initial={editing}
+        onClose={() => setDialogOpen(false)}
+        onSaved={onSaved}
+      />
     </div>
+  );
+}
+
+function ActionIcon({
+  icon,
+  label,
+  danger = false,
+  onClick,
+}: {
+  icon: string;
+  label: string;
+  danger?: boolean;
+  onClick: (e: React.MouseEvent) => void;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      aria-label={label}
+      title={label}
+      style={{
+        width: 30,
+        height: 30,
+        display: "inline-flex",
+        alignItems: "center",
+        justifyContent: "center",
+        borderRadius: "var(--radius-md)",
+        border: "1px solid var(--border-default)",
+        background: "var(--surface-card)",
+        boxShadow: "var(--shadow-sm)",
+        cursor: "pointer",
+        color: danger ? "var(--red-500)" : "var(--text-muted)",
+      }}
+      onMouseEnter={(e) => {
+        e.currentTarget.style.background = danger ? "var(--red-50)" : "var(--slate-100)";
+      }}
+      onMouseLeave={(e) => {
+        e.currentTarget.style.background = "var(--surface-card)";
+      }}
+    >
+      <Icon name={icon} size={15} />
+    </button>
   );
 }
