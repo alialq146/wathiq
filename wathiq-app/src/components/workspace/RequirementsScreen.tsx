@@ -12,6 +12,7 @@ export interface RequirementsScreenProps {
   onOpen?: (req: Requirement | null) => void;
   onViewAnalysis?: () => void;
   search?: string;
+  onClearSearch?: () => void;
 }
 
 const PRIORITIES = [
@@ -33,7 +34,7 @@ const SORTS: { v: SortBy; l: string }[] = [
 
 /* Requirements list screen — search, filter, sort, AI banner, requirement grid,
    plus add / edit / delete backed by the database. */
-export function RequirementsScreen({ onOpen, onViewAnalysis, search = "" }: RequirementsScreenProps) {
+export function RequirementsScreen({ onOpen, onViewAnalysis, search = "", onClearSearch }: RequirementsScreenProps) {
   const router = useRouter();
   const { requirements: REQUIREMENTS } = useWorkspaceData();
   const [filter, setFilter] = React.useState<string>("all");
@@ -84,6 +85,13 @@ export function RequirementsScreen({ onOpen, onViewAnalysis, search = "" }: Requ
       else next.add(p);
       return next;
     });
+
+  const clearAll = () => {
+    setFilter("all");
+    setPriorities(new Set());
+    setSortBy("default");
+    onClearSearch && onClearSearch();
+  };
 
   const openCreate = () => {
     setEditing(null);
@@ -368,6 +376,13 @@ export function RequirementsScreen({ onOpen, onViewAnalysis, search = "" }: Requ
           </span>
           <div style={{ font: "var(--weight-semibold) 15px var(--font-sans)", color: "var(--text-strong)" }}>لا توجد متطلبات مطابقة</div>
           <div style={{ font: "13px/1.6 var(--font-sans)", maxWidth: 320 }}>جرّب تعديل البحث أو التصفية.</div>
+          {anyRefinement && (
+            <div style={{ marginTop: 6 }}>
+              <Button variant="secondary" size="sm" iconStart={<Icon name="x" size={15} />} onClick={clearAll}>
+                مسح كل الفلاتر
+              </Button>
+            </div>
+          )}
         </div>
       ) : (
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(340px, 1fr))", gap: 16 }}>

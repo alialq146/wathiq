@@ -100,7 +100,14 @@ export function WorkspaceClient({ data }: { data: WorkspaceDataValue }) {
   if (screen === "overview") {
     main = <OverviewScreen onOpen={openReq} />;
   } else if (screen === "requirements") {
-    main = <RequirementsScreen onOpen={openReq} onViewAnalysis={() => openAnalysis("text")} search={search} />;
+    main = (
+      <RequirementsScreen
+        onOpen={openReq}
+        onViewAnalysis={() => openAnalysis("text")}
+        search={search}
+        onClearSearch={() => setSearch("")}
+      />
+    );
   } else if (screen === "analysis") {
     main = <AnalysisScreen key={`analysis-${analysisNonce}`} initialMode={analysisMode} />;
   } else if (screen === "detail" && req) {
