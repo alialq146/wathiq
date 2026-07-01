@@ -112,7 +112,6 @@ export function WorkspaceClient({ data }: { data: WorkspaceDataValue }) {
           current={current}
           onNavigate={nav}
           onNewAnalysis={() => openAnalysis("text")}
-          onUploadDoc={() => openAnalysis("pdf")}
           rightRail={rail}
         >
           {main}
