@@ -1,8 +1,38 @@
 "use server";
 
+import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { prisma, hasDatabase } from "@/lib/db";
 import type { RequirementStatus, PriorityLevel } from "@/components/ds";
+
+/** Human-facing status labels, for audit-log messages. */
+const STATUS_AR: Record<string, string> = {
+  draft: "مسودة",
+  analyzing: "قيد التحليل",
+  review: "قيد المراجعة",
+  needs_info: "بحاجة لمعلومات",
+  approved: "معتمد",
+  blocked: "محظور",
+};
+
+/**
+ * Append an audit-trail entry. Best-effort: a logging failure must never
+ * fail the surrounding action, so everything is wrapped and swallowed.
+ */
+async function logAudit(
+  requirementId: string | null,
+  action: string,
+  detail: string,
+  actor = "سارة العتيبي"
+): Promise<void> {
+  try {
+    await prisma.auditEvent.create({
+      data: { requirementId, action, detail, actor },
+    });
+  } catch (err) {
+    console.warn("[logAudit] skipped:", err);
+  }
+}
 
 export interface RequirementInput {
   id: string;
@@ -52,6 +82,7 @@ export async function saveRequirement(
 
     if (originalId) {
       await prisma.requirement.update({ where: { id: originalId }, data });
+      await logAudit(originalId, "requirement_updated", `تعديل المتطلب «${data.title}».`);
     } else {
       const exists = await prisma.requirement.findUnique({ where: { id } });
       if (exists) return { ok: false, error: "duplicate-id" };
@@ -59,6 +90,7 @@ export async function saveRequirement(
       await prisma.requirement.create({
         data: { id, ...data, order: (max._max.order ?? -1) + 1 },
       });
+      await logAudit(id, "requirement_created", `إنشاء المتطلب «${data.title}».`);
     }
 
     revalidatePath("/");
@@ -106,6 +138,9 @@ export async function saveExtractedRequirements(
       saved++;
     }
 
+    if (saved > 0) {
+      await logAudit(null, "requirements_imported", `استيراد ${saved} متطلبًا من تحليل وثّق.`, "وثّق");
+    }
     revalidatePath("/");
     return { ok: true, saved, skipped };
   } catch (err) {
@@ -125,7 +160,15 @@ export async function updateRequirementStatus(
   if (!rid) return { ok: false, error: "missing-id" };
 
   try {
-    await prisma.requirement.update({ where: { id: rid }, data: { status } });
+    const req = await prisma.requirement.update({
+      where: { id: rid },
+      data: { status },
+    });
+    await logAudit(
+      rid,
+      "status_changed",
+      `تغيير حالة «${req.title}» إلى «${STATUS_AR[status] ?? status}».`
+    );
     revalidatePath("/");
     return { ok: true };
   } catch (err) {
@@ -134,10 +177,107 @@ export async function updateRequirementStatus(
   }
 }
 
+export type AddResult = { ok: true; id: string } | { ok: false; error: string };
+
+/** Add a manually-authored acceptance criterion to a requirement. */
+export async function addAcceptanceCriterion(
+  requirementId: string,
+  text: string
+): Promise<AddResult> {
+  if (!hasDatabase()) return { ok: false, error: "no-db" };
+
+  const rid = requirementId.trim();
+  const body = text.trim();
+  if (!rid) return { ok: false, error: "missing-id" };
+  if (body.length < 3) return { ok: false, error: "too-short" };
+
+  try {
+    const id = `AC-${randomUUID().slice(0, 8)}`;
+    const max = await prisma.acceptanceCriterion.aggregate({
+      where: { requirementId: rid },
+      _max: { order: true },
+    });
+    await prisma.acceptanceCriterion.create({
+      data: {
+        id,
+        requirementId: rid,
+        text: body,
+        done: false,
+        ai: false,
+        order: (max._max.order ?? -1) + 1,
+      },
+    });
+    // Keep the requirement's summary count in sync.
+    await prisma.requirement.update({
+      where: { id: rid },
+      data: { criteria: { increment: 1 } },
+    });
+    await logAudit(rid, "criterion_added", `إضافة معيار قبول: «${body}».`);
+    revalidatePath("/");
+    return { ok: true, id };
+  } catch (err) {
+    console.error("[addAcceptanceCriterion]", err);
+    return { ok: false, error: "server" };
+  }
+}
+
+/** Toggle an acceptance criterion's done state. */
+export async function toggleAcceptanceCriterion(
+  id: string,
+  done: boolean
+): Promise<ActionResult> {
+  if (!hasDatabase()) return { ok: false, error: "no-db" };
+  try {
+    const c = await prisma.acceptanceCriterion.update({
+      where: { id },
+      data: { done },
+    });
+    await logAudit(
+      c.requirementId,
+      "criterion_toggled",
+      `${done ? "إنجاز" : "إعادة فتح"} معيار القبول: «${c.text}».`
+    );
+    revalidatePath("/");
+    return { ok: true };
+  } catch (err) {
+    console.error("[toggleAcceptanceCriterion]", err);
+    return { ok: false, error: "server" };
+  }
+}
+
+/** Record the answer to an open question. */
+export async function answerOpenQuestion(
+  id: string,
+  answer: string
+): Promise<ActionResult> {
+  if (!hasDatabase()) return { ok: false, error: "no-db" };
+
+  const body = answer.trim();
+  if (body.length < 2) return { ok: false, error: "too-short" };
+
+  try {
+    const q = await prisma.openQuestion.update({
+      where: { id },
+      data: { answer: body },
+    });
+    await logAudit(
+      q.requirementId,
+      "question_answered",
+      `الإجابة عن سؤال مفتوح: «${q.text}».`
+    );
+    revalidatePath("/");
+    return { ok: true };
+  } catch (err) {
+    console.error("[answerOpenQuestion]", err);
+    return { ok: false, error: "server" };
+  }
+}
+
 export async function deleteRequirement(id: string): Promise<ActionResult> {
   if (!hasDatabase()) return { ok: false, error: "no-db" };
   try {
-    await prisma.requirement.delete({ where: { id } });
+    const req = await prisma.requirement.delete({ where: { id } });
+    await logAudit(null, "requirement_deleted", `حذف المتطلب «${req.title}» (${id}).`);
     revalidatePath("/");
     return { ok: true };
   } catch (err) {
