@@ -6,12 +6,25 @@ import { getWorkspaceData } from "@/lib/workspace-data";
 export const dynamic = "force-dynamic";
 
 export default async function Page() {
-  const { requirements, acceptanceCriteria, businessRules, openQuestions, source } =
-    await getWorkspaceData();
+  const {
+    requirements,
+    acceptanceCriteria,
+    businessRules,
+    openQuestions,
+    auditEvents,
+    source,
+  } = await getWorkspaceData();
 
   return (
     <WorkspaceClient
-      data={{ requirements, acceptanceCriteria, businessRules, openQuestions, source }}
+      data={{
+        requirements,
+        acceptanceCriteria,
+        businessRules,
+        openQuestions,
+        auditEvents,
+        source,
+      }}
     />
   );
 }

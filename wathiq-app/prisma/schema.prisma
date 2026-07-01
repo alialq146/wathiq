@@ -27,24 +27,47 @@ model Requirement {
 }
 
 model AcceptanceCriterion {
-  id    String  @id
-  text  String
-  done  Boolean
-  ai    Boolean
-  order Int     @default(0)
+  id            String  @id
+  requirementId String?
+  text          String
+  done          Boolean
+  ai            Boolean
+  order         Int     @default(0)
+
+  @@index([requirementId])
 }
 
 model BusinessRule {
-  id     String @id
-  text   String
-  source String
-  order  Int    @default(0)
+  id            String  @id
+  requirementId String?
+  text          String
+  source        String
+  order         Int     @default(0)
+
+  @@index([requirementId])
 }
 
 model OpenQuestion {
-  id    String  @id
-  text  String
-  to    String
-  ai    Boolean
-  order Int     @default(0)
+  id            String  @id
+  requirementId String?
+  text          String
+  to            String
+  ai            Boolean
+  answer        String?
+  order         Int     @default(0)
+
+  @@index([requirementId])
+}
+
+/// Append-only activity log for the audit trail screen.
+model AuditEvent {
+  id            String   @id @default(cuid())
+  requirementId String?
+  action        String
+  detail        String
+  actor         String   @default("سارة العتيبي")
+  createdAt     DateTime @default(now())
+
+  @@index([requirementId])
+  @@index([createdAt])
 }

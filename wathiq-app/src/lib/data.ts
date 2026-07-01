@@ -105,40 +105,61 @@ export const REQUIREMENTS: Requirement[] = [
 
 export interface AcceptanceCriterion {
   id: string;
+  requirementId: string | null;
   text: string;
   done: boolean;
   ai: boolean;
 }
 
 export const ACCEPTANCE_CRITERIA: AcceptanceCriterion[] = [
-  { id: "AC-1.1", text: "عند إدخال هوية صحيحة وكلمة مرور صحيحة، يُعاد توجيه المستخدم إلى لوحة التحكم.", done: true, ai: true },
-  { id: "AC-1.2", text: "عند فشل التحقق، تظهر رسالة خطأ واضحة دون كشف سبب الفشل لأسباب أمنية.", done: true, ai: true },
-  { id: "AC-1.3", text: "يُطلب رمز التحقق الثنائي بعد التحقق الأول من بيانات الدخول.", done: true, ai: true },
-  { id: "AC-1.4", text: "بعد ثلاث محاولات فاشلة، يُقفل الحساب مؤقتًا لمدة ١٥ دقيقة.", done: false, ai: true },
-  { id: "AC-1.5", text: "تنتهي صلاحية الجلسة تلقائيًا بعد ٣٠ دقيقة من الخمول.", done: false, ai: false },
-  { id: "AC-1.6", text: "يُسجَّل كل دخول ناجح أو فاشل في سجل التدقيق مع الطابع الزمني.", done: true, ai: true },
+  { id: "AC-1.1", requirementId: "FR-014", text: "عند إدخال هوية صحيحة وكلمة مرور صحيحة، يُعاد توجيه المستخدم إلى لوحة التحكم.", done: true, ai: true },
+  { id: "AC-1.2", requirementId: "FR-014", text: "عند فشل التحقق، تظهر رسالة خطأ واضحة دون كشف سبب الفشل لأسباب أمنية.", done: true, ai: true },
+  { id: "AC-1.3", requirementId: "FR-014", text: "يُطلب رمز التحقق الثنائي بعد التحقق الأول من بيانات الدخول.", done: true, ai: true },
+  { id: "AC-1.4", requirementId: "FR-014", text: "بعد ثلاث محاولات فاشلة، يُقفل الحساب مؤقتًا لمدة ١٥ دقيقة.", done: false, ai: true },
+  { id: "AC-1.5", requirementId: "FR-014", text: "تنتهي صلاحية الجلسة تلقائيًا بعد ٣٠ دقيقة من الخمول.", done: false, ai: false },
+  { id: "AC-1.6", requirementId: "FR-014", text: "يُسجَّل كل دخول ناجح أو فاشل في سجل التدقيق مع الطابع الزمني.", done: true, ai: true },
 ];
 
 export interface BusinessRule {
   id: string;
+  requirementId: string | null;
   text: string;
   source: string;
 }
 
 export const BUSINESS_RULES: BusinessRule[] = [
-  { id: "BR-22", text: "لا يُسمح بتسجيل الدخول إلا للحسابات الموثّقة عبر النفاذ الوطني فقط.", source: "سياسة الأمان ٢٫٣" },
-  { id: "BR-23", text: "يجب أن يكون المستخدم مرتبطًا بمنشأة واحدة فعّالة على الأقل.", source: "قواعد العمل" },
-  { id: "BR-24", text: "تُحفظ سجلات الدخول لمدة لا تقل عن ١٨ شهرًا.", source: "متطلب تنظيمي" },
+  { id: "BR-22", requirementId: "FR-014", text: "لا يُسمح بتسجيل الدخول إلا للحسابات الموثّقة عبر النفاذ الوطني فقط.", source: "سياسة الأمان ٢٫٣" },
+  { id: "BR-23", requirementId: "FR-014", text: "يجب أن يكون المستخدم مرتبطًا بمنشأة واحدة فعّالة على الأقل.", source: "قواعد العمل" },
+  { id: "BR-24", requirementId: "FR-014", text: "تُحفظ سجلات الدخول لمدة لا تقل عن ١٨ شهرًا.", source: "متطلب تنظيمي" },
 ];
 
 export interface OpenQuestion {
   id: string;
+  requirementId: string | null;
   text: string;
   to: string;
   ai: boolean;
+  answer: string | null;
 }
 
 export const OPEN_QUESTIONS: OpenQuestion[] = [
-  { id: "Q-1", text: "ما السلوك المتوقع عند تعطّل منصة النفاذ الوطني؟ هل يُسمح بمسار دخول بديل؟", to: "خالد النمر", ai: true },
-  { id: "Q-2", text: "هل تختلف مدة قفل الحساب حسب نوع المستخدم (فرد / منشأة)؟", to: "سارة العتيبي", ai: true },
+  { id: "Q-1", requirementId: "FR-014", text: "ما السلوك المتوقع عند تعطّل منصة النفاذ الوطني؟ هل يُسمح بمسار دخول بديل؟", to: "خالد النمر", ai: true, answer: null },
+  { id: "Q-2", requirementId: "FR-014", text: "هل تختلف مدة قفل الحساب حسب نوع المستخدم (فرد / منشأة)؟", to: "سارة العتيبي", ai: true, answer: null },
+];
+
+export interface AuditEvent {
+  id: string;
+  requirementId: string | null;
+  action: string;
+  detail: string;
+  actor: string;
+  /** ISO timestamp string (kept as string so it crosses the server→client boundary cleanly). */
+  createdAt: string;
+}
+
+/** A few illustrative events for the fallback (no-database) experience. */
+export const AUDIT_EVENTS: AuditEvent[] = [
+  { id: "EV-3", requirementId: "FR-021", action: "status_changed", detail: "اعتماد المتطلب «إنشاء أمر دفع متعدد المستفيدين».", actor: "خالد النمر", createdAt: "2026-06-29T09:12:00.000Z" },
+  { id: "EV-2", requirementId: "FR-014", action: "question_added", detail: "أضاف وثّق سؤالًا مفتوحًا حول تعطّل منصة النفاذ الوطني.", actor: "وثّق", createdAt: "2026-06-28T14:03:00.000Z" },
+  { id: "EV-1", requirementId: "FR-014", action: "requirement_created", detail: "استُخرج المتطلب «تسجيل الدخول عبر الهوية الوطنية» من المستند المرفوع.", actor: "وثّق", createdAt: "2026-06-28T13:58:00.000Z" },
 ];

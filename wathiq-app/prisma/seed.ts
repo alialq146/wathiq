@@ -8,6 +8,7 @@ import {
   ACCEPTANCE_CRITERIA,
   BUSINESS_RULES,
   OPEN_QUESTIONS,
+  AUDIT_EVENTS,
 } from "../src/lib/data";
 
 async function main() {
@@ -40,7 +41,7 @@ async function main() {
   }
 
   for (const [i, c] of ACCEPTANCE_CRITERIA.entries()) {
-    const data = { text: c.text, done: c.done, ai: c.ai, order: i };
+    const data = { requirementId: c.requirementId, text: c.text, done: c.done, ai: c.ai, order: i };
     await prisma.acceptanceCriterion.upsert({
       where: { id: c.id },
       create: { id: c.id, ...data },
@@ -49,7 +50,7 @@ async function main() {
   }
 
   for (const [i, b] of BUSINESS_RULES.entries()) {
-    const data = { text: b.text, source: b.source, order: i };
+    const data = { requirementId: b.requirementId, text: b.text, source: b.source, order: i };
     await prisma.businessRule.upsert({
       where: { id: b.id },
       create: { id: b.id, ...data },
@@ -58,7 +59,7 @@ async function main() {
   }
 
   for (const [i, q] of OPEN_QUESTIONS.entries()) {
-    const data = { text: q.text, to: q.to, ai: q.ai, order: i };
+    const data = { requirementId: q.requirementId, text: q.text, to: q.to, ai: q.ai, answer: q.answer, order: i };
     await prisma.openQuestion.upsert({
       where: { id: q.id },
       create: { id: q.id, ...data },
@@ -66,8 +67,23 @@ async function main() {
     });
   }
 
+  for (const e of AUDIT_EVENTS) {
+    const data = {
+      requirementId: e.requirementId,
+      action: e.action,
+      detail: e.detail,
+      actor: e.actor,
+      createdAt: new Date(e.createdAt),
+    };
+    await prisma.auditEvent.upsert({
+      where: { id: e.id },
+      create: { id: e.id, ...data },
+      update: data,
+    });
+  }
+
   console.log(
-    `Seeded: ${REQUIREMENTS.length} requirements, ${ACCEPTANCE_CRITERIA.length} criteria, ${BUSINESS_RULES.length} rules, ${OPEN_QUESTIONS.length} questions.`
+    `Seeded: ${REQUIREMENTS.length} requirements, ${ACCEPTANCE_CRITERIA.length} criteria, ${BUSINESS_RULES.length} rules, ${OPEN_QUESTIONS.length} questions, ${AUDIT_EVENTS.length} audit events.`
   );
 }
 
