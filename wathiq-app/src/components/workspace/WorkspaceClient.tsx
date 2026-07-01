@@ -62,6 +62,15 @@ export function WorkspaceClient({ data }: { data: WorkspaceDataValue }) {
   const [analysisMode, setAnalysisMode] = React.useState<"text" | "pdf">("text");
   // Bumped on every navigation to Analysis so the screen remounts fresh in the chosen mode.
   const [analysisNonce, setAnalysisNonce] = React.useState(0);
+  const [search, setSearch] = React.useState("");
+
+  // Typing in the global search jumps to the requirements list (where results show).
+  const onSearchChange = (value: string) => {
+    setSearch(value);
+    if (value.trim() && screen !== "requirements" && screen !== "detail") {
+      setScreen("requirements");
+    }
+  };
 
   const openReq = (r: Requirement | null) => {
     if (r) {
@@ -91,7 +100,7 @@ export function WorkspaceClient({ data }: { data: WorkspaceDataValue }) {
   if (screen === "overview") {
     main = <OverviewScreen onOpen={openReq} />;
   } else if (screen === "requirements") {
-    main = <RequirementsScreen onOpen={openReq} onViewAnalysis={() => openAnalysis("text")} />;
+    main = <RequirementsScreen onOpen={openReq} onViewAnalysis={() => openAnalysis("text")} search={search} />;
   } else if (screen === "analysis") {
     main = <AnalysisScreen key={`analysis-${analysisNonce}`} initialMode={analysisMode} />;
   } else if (screen === "detail" && req) {
@@ -112,6 +121,8 @@ export function WorkspaceClient({ data }: { data: WorkspaceDataValue }) {
           current={current}
           onNavigate={nav}
           onNewAnalysis={() => openAnalysis("text")}
+          search={search}
+          onSearchChange={onSearchChange}
           rightRail={rail}
         >
           {main}

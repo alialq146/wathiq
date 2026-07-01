@@ -11,14 +11,36 @@ import { deleteRequirement } from "@/app/actions";
 export interface RequirementsScreenProps {
   onOpen?: (req: Requirement | null) => void;
   onViewAnalysis?: () => void;
+  search?: string;
 }
 
-/* Requirements list screen — AI summary banner, filter row, requirement grid,
+const PRIORITIES = [
+  { v: "critical", l: "حرجة" },
+  { v: "high", l: "عالية" },
+  { v: "medium", l: "متوسطة" },
+  { v: "low", l: "منخفضة" },
+] as const;
+
+const P_ORDER: Record<string, number> = { critical: 0, high: 1, medium: 2, low: 3 };
+
+type SortBy = "default" | "priority" | "confidence" | "id";
+const SORTS: { v: SortBy; l: string }[] = [
+  { v: "default", l: "الافتراضي" },
+  { v: "priority", l: "الأولوية (الأعلى أولاً)" },
+  { v: "confidence", l: "الثقة (الأعلى أولاً)" },
+  { v: "id", l: "المعرّف (أبجدي)" },
+];
+
+/* Requirements list screen — search, filter, sort, AI banner, requirement grid,
    plus add / edit / delete backed by the database. */
-export function RequirementsScreen({ onOpen, onViewAnalysis }: RequirementsScreenProps) {
+export function RequirementsScreen({ onOpen, onViewAnalysis, search = "" }: RequirementsScreenProps) {
   const router = useRouter();
   const { requirements: REQUIREMENTS } = useWorkspaceData();
   const [filter, setFilter] = React.useState<string>("all");
+  const [priorities, setPriorities] = React.useState<Set<string>>(new Set());
+  const [sortBy, setSortBy] = React.useState<SortBy>("default");
+  const [showFilter, setShowFilter] = React.useState(false);
+  const [showSort, setShowSort] = React.useState(false);
   const [dialogOpen, setDialogOpen] = React.useState(false);
   const [dialogMode, setDialogMode] = React.useState<"create" | "edit">("create");
   const [editing, setEditing] = React.useState<Requirement | null>(null);
@@ -31,7 +53,37 @@ export function RequirementsScreen({ onOpen, onViewAnalysis }: RequirementsScree
     { id: "approved", label: "معتمد", n: REQUIREMENTS.filter((r) => r.status === "approved").length },
     { id: "blocked", label: "محظور", n: REQUIREMENTS.filter((r) => r.status === "blocked").length },
   ];
-  const list = filter === "all" ? REQUIREMENTS : REQUIREMENTS.filter((r) => r.status === filter);
+
+  // ---- combined pipeline: status → search → priority → sort ----
+  const q = search.trim().toLowerCase();
+  let list = filter === "all" ? REQUIREMENTS : REQUIREMENTS.filter((r) => r.status === filter);
+  if (q) {
+    list = list.filter((r) =>
+      [r.id, r.title, r.description, r.module].some((f) => f.toLowerCase().includes(q))
+    );
+  }
+  if (priorities.size > 0) {
+    list = list.filter((r) => priorities.has(r.priority));
+  }
+  if (sortBy !== "default") {
+    list = [...list].sort((a, b) => {
+      if (sortBy === "priority") return P_ORDER[a.priority] - P_ORDER[b.priority];
+      if (sortBy === "confidence") return (b.confidence ?? -1) - (a.confidence ?? -1);
+      return a.id.localeCompare(b.id);
+    });
+  }
+
+  const filterActive = priorities.size > 0;
+  const sortActive = sortBy !== "default";
+  const anyRefinement = filterActive || sortActive || q.length > 0;
+
+  const togglePriority = (p: string) =>
+    setPriorities((prev) => {
+      const next = new Set(prev);
+      if (next.has(p)) next.delete(p);
+      else next.add(p);
+      return next;
+    });
 
   const openCreate = () => {
     setEditing(null);
@@ -61,6 +113,11 @@ export function RequirementsScreen({ onOpen, onViewAnalysis }: RequirementsScree
       );
   };
 
+  const toolbarBtn = (active: boolean): React.CSSProperties =>
+    active
+      ? { borderColor: "var(--navy-800)", color: "var(--navy-800)", background: "var(--slate-50)" }
+      : {};
+
   return (
     <div style={{ padding: "24px 28px", maxWidth: 1180, margin: "0 auto" }}>
       <style>{`
@@ -78,10 +135,28 @@ export function RequirementsScreen({ onOpen, onViewAnalysis }: RequirementsScree
           </p>
         </div>
         <div style={{ display: "flex", gap: 8 }}>
-          <Button variant="secondary" size="sm" iconStart={<Icon name="filter" size={15} />}>
-            تصفية
+          <Button
+            variant="secondary"
+            size="sm"
+            iconStart={<Icon name="filter" size={15} />}
+            style={toolbarBtn(filterActive || showFilter)}
+            onClick={() => {
+              setShowFilter((v) => !v);
+              setShowSort(false);
+            }}
+          >
+            تصفية{filterActive ? ` (${priorities.size})` : ""}
           </Button>
-          <Button variant="secondary" size="sm" iconStart={<Icon name="arrow-up-down" size={15} />}>
+          <Button
+            variant="secondary"
+            size="sm"
+            iconStart={<Icon name="arrow-up-down" size={15} />}
+            style={toolbarBtn(sortActive || showSort)}
+            onClick={() => {
+              setShowSort((v) => !v);
+              setShowFilter(false);
+            }}
+          >
             ترتيب
           </Button>
           <Button variant="primary" size="sm" iconStart={<Icon name="plus" size={15} />} onClick={openCreate}>
@@ -89,6 +164,111 @@ export function RequirementsScreen({ onOpen, onViewAnalysis }: RequirementsScree
           </Button>
         </div>
       </div>
+
+      {/* Filter panel */}
+      {showFilter && (
+        <div
+          style={{
+            border: "1px solid var(--border-default)",
+            borderRadius: "var(--radius-lg)",
+            background: "var(--surface-card)",
+            padding: "14px 16px",
+            marginBottom: 16,
+            boxShadow: "var(--shadow-sm)",
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+            <span style={{ font: "var(--weight-semibold) 13px var(--font-sans)", color: "var(--text-strong)" }}>الأولوية</span>
+            {filterActive && (
+              <button
+                onClick={() => setPriorities(new Set())}
+                style={{ marginInlineStart: "auto", border: "none", background: "transparent", cursor: "pointer", color: "var(--text-link)", font: "12px var(--font-sans)" }}
+              >
+                مسح
+              </button>
+            )}
+          </div>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            {PRIORITIES.map((p) => {
+              const on = priorities.has(p.v);
+              return (
+                <button
+                  key={p.v}
+                  onClick={() => togglePriority(p.v)}
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 6,
+                    padding: "6px 12px",
+                    borderRadius: "var(--radius-pill)",
+                    border: `1px solid ${on ? "var(--blue-600)" : "var(--border-default)"}`,
+                    background: on ? "var(--blue-50)" : "var(--surface-card)",
+                    color: on ? "var(--blue-700)" : "var(--text-body)",
+                    font: "var(--weight-medium) 13px/1 var(--font-sans)",
+                    cursor: "pointer",
+                  }}
+                >
+                  {on && <Icon name="check" size={13} color="var(--blue-600)" strokeWidth={3} />}
+                  {p.l}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Sort panel */}
+      {showSort && (
+        <div
+          style={{
+            border: "1px solid var(--border-default)",
+            borderRadius: "var(--radius-lg)",
+            background: "var(--surface-card)",
+            padding: "8px",
+            marginBottom: 16,
+            boxShadow: "var(--shadow-sm)",
+            maxWidth: 320,
+          }}
+        >
+          {SORTS.map((s) => {
+            const on = sortBy === s.v;
+            return (
+              <button
+                key={s.v}
+                onClick={() => {
+                  setSortBy(s.v);
+                  setShowSort(false);
+                }}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 8,
+                  width: "100%",
+                  padding: "9px 10px",
+                  borderRadius: "var(--radius-md)",
+                  border: "none",
+                  background: on ? "var(--blue-50)" : "transparent",
+                  color: on ? "var(--blue-700)" : "var(--text-body)",
+                  font: `var(--weight-${on ? "semibold" : "regular"}) 13px/1 var(--font-sans)`,
+                  cursor: "pointer",
+                  textAlign: "start",
+                }}
+                onMouseEnter={(e) => {
+                  if (!on) e.currentTarget.style.background = "var(--slate-100)";
+                }}
+                onMouseLeave={(e) => {
+                  if (!on) e.currentTarget.style.background = "transparent";
+                }}
+              >
+                <span style={{ width: 16, display: "inline-flex" }}>
+                  {on && <Icon name="check" size={14} color="var(--blue-600)" strokeWidth={3} />}
+                </span>
+                {s.l}
+              </button>
+            );
+          })}
+        </div>
+      )}
 
       {/* AI summary banner */}
       <div
@@ -128,8 +308,8 @@ export function RequirementsScreen({ onOpen, onViewAnalysis }: RequirementsScree
         </Button>
       </div>
 
-      {/* Filter chips */}
-      <div style={{ display: "flex", gap: 8, marginBottom: 18, flexWrap: "wrap" }}>
+      {/* Status filter chips */}
+      <div style={{ display: "flex", gap: 8, marginBottom: 14, flexWrap: "wrap" }}>
         {filters.map((f) => {
           const on = filter === f.id;
           return (
@@ -156,41 +336,70 @@ export function RequirementsScreen({ onOpen, onViewAnalysis }: RequirementsScree
         })}
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(340px, 1fr))", gap: 16 }}>
-        {list.map((r) => (
-          <div key={r.id} className="wq-req-cell" style={{ position: "relative" }}>
-            <RequirementCard {...r} onClick={() => onOpen && onOpen(r)} />
-            <div
-              className="wq-req-actions"
-              style={{
-                position: "absolute",
-                bottom: 14,
-                insetInlineEnd: 14,
-                display: "flex",
-                gap: 6,
-              }}
-            >
-              <ActionIcon
-                icon="pencil"
-                label="تعديل"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  openEdit(r);
-                }}
-              />
-              <ActionIcon
-                icon={busyId === r.id ? "loader" : "trash-2"}
-                label="حذف"
-                danger
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onDelete(r);
-                }}
-              />
+      {/* Results summary */}
+      {anyRefinement && (
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14, font: "13px var(--font-sans)", color: "var(--text-muted)", flexWrap: "wrap" }}>
+          <span>
+            عرض <strong style={{ color: "var(--text-strong)" }}>{list.length}</strong> من {REQUIREMENTS.length}
+          </span>
+          {q && (
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "3px 9px", borderRadius: "var(--radius-pill)", background: "var(--blue-50)", color: "var(--blue-700)", font: "12px var(--font-sans)" }}>
+              <Icon name="search" size={12} /> «{search.trim()}»
+            </span>
+          )}
+        </div>
+      )}
+
+      {list.length === 0 ? (
+        <div
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            justifyContent: "center",
+            gap: 10,
+            padding: "56px 20px",
+            textAlign: "center",
+            color: "var(--text-muted)",
+          }}
+        >
+          <span style={{ width: 48, height: 48, borderRadius: "var(--radius-lg)", background: "var(--slate-100)", display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
+            <Icon name="search-x" size={22} color="var(--text-subtle)" />
+          </span>
+          <div style={{ font: "var(--weight-semibold) 15px var(--font-sans)", color: "var(--text-strong)" }}>لا توجد متطلبات مطابقة</div>
+          <div style={{ font: "13px/1.6 var(--font-sans)", maxWidth: 320 }}>جرّب تعديل البحث أو التصفية.</div>
+        </div>
+      ) : (
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(340px, 1fr))", gap: 16 }}>
+          {list.map((r) => (
+            <div key={r.id} className="wq-req-cell" style={{ position: "relative" }}>
+              <RequirementCard {...r} onClick={() => onOpen && onOpen(r)} />
+              <div
+                className="wq-req-actions"
+                style={{ position: "absolute", bottom: 14, insetInlineEnd: 14, display: "flex", gap: 6 }}
+              >
+                <ActionIcon
+                  icon="pencil"
+                  label="تعديل"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    openEdit(r);
+                  }}
+                />
+                <ActionIcon
+                  icon={busyId === r.id ? "loader" : "trash-2"}
+                  label="حذف"
+                  danger
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onDelete(r);
+                  }}
+                />
+              </div>
             </div>
-          </div>
-        ))}
-      </div>
+          ))}
+        </div>
+      )}
 
       <RequirementFormDialog
         open={dialogOpen}

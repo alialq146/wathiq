@@ -25,12 +25,14 @@ export interface AppShellProps {
   current: ScreenId;
   onNavigate?: (id: ScreenId) => void;
   onNewAnalysis?: () => void;
+  search?: string;
+  onSearchChange?: (value: string) => void;
   children: React.ReactNode;
   rightRail?: React.ReactNode;
 }
 
 /** App frame: right-anchored sidebar (RTL) + topbar. */
-export function AppShell({ current, onNavigate, onNewAnalysis, children, rightRail }: AppShellProps) {
+export function AppShell({ current, onNavigate, onNewAnalysis, search = "", onSearchChange, children, rightRail }: AppShellProps) {
   const { requirements } = useWorkspaceData();
   const nav: NavEntry[] = [
     { id: "overview", label: "نظرة عامة", icon: "layout-dashboard" },
@@ -263,12 +265,14 @@ export function AppShell({ current, onNavigate, onNewAnalysis, children, rightRa
                 <Icon name="search" size={15} color="var(--text-subtle)" />
               </span>
               <input
+                value={search}
+                onChange={(e) => onSearchChange && onSearchChange(e.target.value)}
                 placeholder="ابحث برقم متطلب أو نص…"
                 style={{
                   width: 240,
                   height: 34,
                   paddingInlineStart: 32,
-                  paddingInlineEnd: 12,
+                  paddingInlineEnd: search ? 30 : 12,
                   borderRadius: "var(--radius-md)",
                   border: "1px solid var(--border-default)",
                   background: "var(--slate-50)",
@@ -277,6 +281,23 @@ export function AppShell({ current, onNavigate, onNewAnalysis, children, rightRa
                   outline: "none",
                 }}
               />
+              {search && (
+                <button
+                  onClick={() => onSearchChange && onSearchChange("")}
+                  aria-label="مسح البحث"
+                  style={{
+                    position: "absolute",
+                    insetInlineEnd: 8,
+                    display: "inline-flex",
+                    border: "none",
+                    background: "transparent",
+                    cursor: "pointer",
+                    color: "var(--text-subtle)",
+                  }}
+                >
+                  <Icon name="x" size={14} />
+                </button>
+              )}
             </div>
             <Button variant="primary" size="sm" iconStart={<Icon name="sparkles" size={15} />} onClick={onNewAnalysis}>
               تحليل جديد
