@@ -59,6 +59,9 @@ function PlaceholderScreen({ label }: { label: string }) {
 export function WorkspaceClient({ data }: { data: WorkspaceDataValue }) {
   const [screen, setScreen] = React.useState<ScreenId | "detail">("overview");
   const [req, setReq] = React.useState<Requirement | null>(null);
+  const [analysisMode, setAnalysisMode] = React.useState<"text" | "pdf">("text");
+  // Bumped on every navigation to Analysis so the screen remounts fresh in the chosen mode.
+  const [analysisNonce, setAnalysisNonce] = React.useState(0);
 
   const openReq = (r: Requirement | null) => {
     if (r) {
@@ -68,7 +71,18 @@ export function WorkspaceClient({ data }: { data: WorkspaceDataValue }) {
       setScreen("requirements");
     }
   };
-  const nav = (id: ScreenId) => setScreen(id);
+
+  const openAnalysis = (mode: "text" | "pdf" = "text") => {
+    setAnalysisMode(mode);
+    setAnalysisNonce((n) => n + 1);
+    setScreen("analysis");
+  };
+
+  // Sidebar "تحليل وثّق" and any other analysis navigation route through openAnalysis.
+  const nav = (id: ScreenId) => {
+    if (id === "analysis") openAnalysis("text");
+    else setScreen(id);
+  };
 
   let main: React.ReactNode;
   let rail: React.ReactNode = null;
@@ -77,9 +91,9 @@ export function WorkspaceClient({ data }: { data: WorkspaceDataValue }) {
   if (screen === "overview") {
     main = <OverviewScreen onOpen={openReq} />;
   } else if (screen === "requirements") {
-    main = <RequirementsScreen onOpen={openReq} />;
+    main = <RequirementsScreen onOpen={openReq} onViewAnalysis={() => openAnalysis("text")} />;
   } else if (screen === "analysis") {
-    main = <AnalysisScreen />;
+    main = <AnalysisScreen key={`analysis-${analysisNonce}`} initialMode={analysisMode} />;
   } else if (screen === "detail" && req) {
     main = <RequirementDetail req={req} onBack={() => setScreen("requirements")} />;
     rail = <DetailRail req={req} />;
@@ -94,7 +108,13 @@ export function WorkspaceClient({ data }: { data: WorkspaceDataValue }) {
   return (
     <WorkspaceDataProvider value={data}>
       <div id="app-root">
-        <AppShell current={current} onNavigate={nav} rightRail={rail}>
+        <AppShell
+          current={current}
+          onNavigate={nav}
+          onNewAnalysis={() => openAnalysis("text")}
+          onUploadDoc={() => openAnalysis("pdf")}
+          rightRail={rail}
+        >
           {main}
         </AppShell>
       </div>

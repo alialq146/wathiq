@@ -27,10 +27,10 @@ const SAMPLE = `نظام إدارة طلبات الإجازات للموظفين
 /* AI Analysis screen — real, transparent extraction via Claude.
    Paste a requirements document → Claude extracts structured requirements →
    review the results and save them to the database. */
-export function AnalysisScreen() {
+export function AnalysisScreen({ initialMode = "text" }: { initialMode?: "text" | "pdf" }) {
   const router = useRouter();
   const [phase, setPhase] = React.useState<Phase>("idle");
-  const [mode, setMode] = React.useState<"text" | "pdf">("text");
+  const [mode, setMode] = React.useState<"text" | "pdf">(initialMode);
   const [text, setText] = React.useState("");
   const [pdf, setPdf] = React.useState<{ name: string; size: number; data: string } | null>(null);
   const [fileError, setFileError] = React.useState<string | null>(null);

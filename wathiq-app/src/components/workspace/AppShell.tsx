@@ -24,12 +24,14 @@ interface NavEntry {
 export interface AppShellProps {
   current: ScreenId;
   onNavigate?: (id: ScreenId) => void;
+  onNewAnalysis?: () => void;
+  onUploadDoc?: () => void;
   children: React.ReactNode;
   rightRail?: React.ReactNode;
 }
 
 /** App frame: right-anchored sidebar (RTL) + topbar. */
-export function AppShell({ current, onNavigate, children, rightRail }: AppShellProps) {
+export function AppShell({ current, onNavigate, onNewAnalysis, onUploadDoc, children, rightRail }: AppShellProps) {
   const { requirements } = useWorkspaceData();
   const nav: NavEntry[] = [
     { id: "overview", label: "نظرة عامة", icon: "layout-dashboard" },
@@ -277,10 +279,10 @@ export function AppShell({ current, onNavigate, children, rightRail }: AppShellP
                 }}
               />
             </div>
-            <Button variant="secondary" size="sm" iconStart={<Icon name="upload" size={15} />}>
+            <Button variant="secondary" size="sm" iconStart={<Icon name="upload" size={15} />} onClick={onUploadDoc}>
               رفع وثيقة
             </Button>
-            <Button variant="primary" size="sm" iconStart={<Icon name="sparkles" size={15} />}>
+            <Button variant="primary" size="sm" iconStart={<Icon name="sparkles" size={15} />} onClick={onNewAnalysis}>
               تحليل جديد
             </Button>
           </div>

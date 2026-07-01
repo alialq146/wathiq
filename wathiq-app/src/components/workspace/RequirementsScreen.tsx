@@ -10,11 +10,12 @@ import { deleteRequirement } from "@/app/actions";
 
 export interface RequirementsScreenProps {
   onOpen?: (req: Requirement | null) => void;
+  onViewAnalysis?: () => void;
 }
 
 /* Requirements list screen — AI summary banner, filter row, requirement grid,
    plus add / edit / delete backed by the database. */
-export function RequirementsScreen({ onOpen }: RequirementsScreenProps) {
+export function RequirementsScreen({ onOpen, onViewAnalysis }: RequirementsScreenProps) {
   const router = useRouter();
   const { requirements: REQUIREMENTS } = useWorkspaceData();
   const [filter, setFilter] = React.useState<string>("all");
@@ -122,7 +123,7 @@ export function RequirementsScreen({ onOpen }: RequirementsScreenProps) {
             اكتمل تحليل ٦ متطلبات بمتوسط ثقة ٧٤٪. متطلبان بحاجة لمعلومات إضافية و٤ معايير قبول غير مكتملة قبل الاعتماد.
           </div>
         </div>
-        <Button variant="ghost" size="sm" iconEnd={<Icon name="chevron-left" size={15} />} style={{ color: "var(--teal-700)" }}>
+        <Button variant="ghost" size="sm" iconEnd={<Icon name="chevron-left" size={15} />} style={{ color: "var(--teal-700)" }} onClick={onViewAnalysis}>
           عرض التحليل
         </Button>
       </div>
