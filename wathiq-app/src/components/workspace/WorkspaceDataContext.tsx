@@ -13,6 +13,8 @@ export interface WorkspaceDataValue {
   acceptanceCriteria: AcceptanceCriterion[];
   businessRules: BusinessRule[];
   openQuestions: OpenQuestion[];
+  /** Whether the data is backed by the live database (writes will persist). */
+  source: "database" | "fallback";
 }
 
 const WorkspaceDataContext = React.createContext<WorkspaceDataValue | null>(null);

@@ -114,6 +114,26 @@ export async function saveExtractedRequirements(
   }
 }
 
+/** Move a requirement to a new lifecycle status (approval workflow, etc.). */
+export async function updateRequirementStatus(
+  id: string,
+  status: RequirementStatus
+): Promise<ActionResult> {
+  if (!hasDatabase()) return { ok: false, error: "no-db" };
+
+  const rid = id.trim();
+  if (!rid) return { ok: false, error: "missing-id" };
+
+  try {
+    await prisma.requirement.update({ where: { id: rid }, data: { status } });
+    revalidatePath("/");
+    return { ok: true };
+  } catch (err) {
+    console.error("[updateRequirementStatus]", err);
+    return { ok: false, error: "server" };
+  }
+}
+
 export async function deleteRequirement(id: string): Promise<ActionResult> {
   if (!hasDatabase()) return { ok: false, error: "no-db" };
   try {

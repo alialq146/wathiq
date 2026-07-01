@@ -1,6 +1,7 @@
 "use client";
 
 import React from "react";
+import { useRouter } from "next/navigation";
 import {
   AIInsightPanel,
   Badge,
@@ -12,8 +13,10 @@ import {
   StatusBadge,
   Tabs,
   Tag,
+  type RequirementStatus,
 } from "@/components/ds";
 import { type Requirement } from "@/lib/data";
+import { updateRequirementStatus } from "@/app/actions";
 import { useWorkspaceData } from "./WorkspaceDataContext";
 
 export interface RequirementDetailProps {
@@ -254,14 +257,84 @@ export function RequirementDetail({ req, onBack }: RequirementDetailProps) {
 
 export interface DetailRailProps {
   req: Requirement;
+  /** Notifies the parent so it can update its snapshot of the requirement. */
+  onStatusChange?: (status: RequirementStatus) => void;
 }
 
-/* Right rail for the detail view — AI insight panel + actions. */
-export function DetailRail({ req }: DetailRailProps) {
+interface StatusAction {
+  target: RequirementStatus;
+  variant: "brand" | "secondary";
+  icon: string;
+  label: string;
+  pendingLabel: string;
+  successMsg: string;
+  /** Statuses for which the action is redundant, so we disable it. */
+  doneStates: RequirementStatus[];
+  doneHint: string;
+}
+
+const STATUS_ACTIONS: StatusAction[] = [
+  {
+    target: "review",
+    variant: "brand",
+    icon: "check-circle",
+    label: "طلب الاعتماد",
+    pendingLabel: "جارٍ الإرسال…",
+    successMsg: "تم إرسال المتطلب للاعتماد، وحالته الآن «قيد المراجعة».",
+    doneStates: ["review", "approved"],
+    doneHint: "المتطلب في مسار الاعتماد بالفعل.",
+  },
+  {
+    target: "needs_info",
+    variant: "secondary",
+    icon: "message-circle",
+    label: "طلب معلومات إضافية",
+    pendingLabel: "جارٍ الإرسال…",
+    successMsg: "تم وسم المتطلب بـ «بحاجة لمعلومات» لاستكمال النواقص.",
+    doneStates: ["needs_info"],
+    doneHint: "المتطلب موسوم بالفعل كبحاجة لمعلومات.",
+  },
+];
+
+/* Right rail for the detail view — AI insight panel + status actions. */
+export function DetailRail({ req, onStatusChange }: DetailRailProps) {
   const {
     acceptanceCriteria: ACCEPTANCE_CRITERIA,
     businessRules: BUSINESS_RULES,
+    source,
   } = useWorkspaceData();
+  const router = useRouter();
+  const [pending, startTransition] = React.useTransition();
+  const [runningTarget, setRunningTarget] = React.useState<RequirementStatus | null>(null);
+  const [feedback, setFeedback] = React.useState<{ tone: "success" | "error"; msg: string } | null>(
+    null
+  );
+
+  const connected = source === "database";
+
+  const apply = (action: StatusAction) => {
+    setFeedback(null);
+    setRunningTarget(action.target);
+    startTransition(async () => {
+      const res = await updateRequirementStatus(req.id, action.target);
+      if (res.ok) {
+        onStatusChange?.(action.target);
+        setFeedback({ tone: "success", msg: action.successMsg });
+        // Refresh server data so the requirements list reflects the new status too.
+        router.refresh();
+      } else {
+        setFeedback({
+          tone: "error",
+          msg:
+            res.error === "no-db"
+              ? "قاعدة البيانات غير متصلة، لذا تعذّر حفظ التغيير."
+              : "تعذّر تحديث الحالة. يرجى المحاولة مرة أخرى.",
+        });
+      }
+      setRunningTarget(null);
+    });
+  };
+
   return (
     <div style={{ padding: "20px 16px", display: "flex", flexDirection: "column", gap: 16 }}>
       <AIInsightPanel
@@ -277,13 +350,87 @@ export function DetailRail({ req }: DetailRailProps) {
           "أجب عن السؤالين المفتوحين قبل طلب الاعتماد.",
         ]}
       />
-      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-        <Button variant="brand" fullWidth iconStart={<Icon name="check-circle" size={16} />}>
-          طلب الاعتماد
-        </Button>
-        <Button variant="secondary" fullWidth iconStart={<Icon name="message-circle" size={16} />}>
-          طلب معلومات إضافية
-        </Button>
+
+      {/* Status actions */}
+      <div
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          gap: 12,
+          padding: 14,
+          background: "var(--surface-card)",
+          border: "1px solid var(--border-default)",
+          borderRadius: "var(--radius-lg)",
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+          <span style={{ font: "var(--weight-semibold) 12px/1 var(--font-sans)", color: "var(--text-strong)" }}>
+            حالة المتطلب
+          </span>
+          <StatusBadge status={req.status} />
+        </div>
+
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          {STATUS_ACTIONS.map((a) => {
+            const isDone = a.doneStates.includes(req.status);
+            const isRunning = pending && runningTarget === a.target;
+            const disabled = !connected || isDone || pending;
+            return (
+              <Button
+                key={a.target}
+                variant={a.variant}
+                fullWidth
+                disabled={disabled}
+                title={
+                  !connected
+                    ? "غير متصل بقاعدة البيانات — لا يمكن حفظ التغيير."
+                    : isDone
+                    ? a.doneHint
+                    : undefined
+                }
+                iconStart={
+                  <Icon
+                    name={isRunning ? "loader-circle" : a.icon}
+                    size={16}
+                    style={isRunning ? { animation: "wq-spin 0.7s linear infinite" } : undefined}
+                  />
+                }
+                onClick={() => apply(a)}
+              >
+                {isRunning ? a.pendingLabel : a.label}
+              </Button>
+            );
+          })}
+        </div>
+
+        {feedback && (
+          <div
+            role="status"
+            style={{
+              display: "flex",
+              alignItems: "flex-start",
+              gap: 8,
+              padding: "9px 11px",
+              borderRadius: "var(--radius-md)",
+              font: "12px/1.5 var(--font-sans)",
+              color: feedback.tone === "success" ? "var(--status-success-fg)" : "var(--status-danger-fg)",
+              background: feedback.tone === "success" ? "var(--status-success-bg)" : "var(--status-danger-bg)",
+            }}
+          >
+            <Icon
+              name={feedback.tone === "success" ? "check-circle" : "alert-circle"}
+              size={15}
+              style={{ marginTop: 1 }}
+            />
+            <span>{feedback.msg}</span>
+          </div>
+        )}
+
+        {!connected && (
+          <span style={{ font: "11px/1.5 var(--font-sans)", color: "var(--text-subtle)" }}>
+            الإجراءات معطّلة لأن العرض يستخدم بيانات تجريبية غير متصلة بقاعدة البيانات.
+          </span>
+        )}
       </div>
     </div>
   );

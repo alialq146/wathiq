@@ -112,7 +112,14 @@ export function WorkspaceClient({ data }: { data: WorkspaceDataValue }) {
     main = <AnalysisScreen key={`analysis-${analysisNonce}`} initialMode={analysisMode} />;
   } else if (screen === "detail" && req) {
     main = <RequirementDetail req={req} onBack={() => setScreen("requirements")} />;
-    rail = <DetailRail req={req} />;
+    rail = (
+      <DetailRail
+        req={req}
+        onStatusChange={(status) =>
+          setReq((prev) => (prev ? { ...prev, status } : prev))
+        }
+      />
+    );
     current = "requirements";
   } else if (CONTEXT_LABELS[screen as ScreenId]) {
     current = screen as ScreenId;
