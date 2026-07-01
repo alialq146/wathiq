@@ -7,6 +7,7 @@ import { OverviewScreen } from "./OverviewScreen";
 import { RequirementsScreen } from "./RequirementsScreen";
 import { RequirementDetail, DetailRail } from "./RequirementDetailScreen";
 import { AnalysisScreen } from "./AnalysisScreen";
+import { StakeholdersScreen, RulesScreen, AuditScreen } from "./ContextScreens";
 import {
   WorkspaceDataProvider,
   type WorkspaceDataValue,
@@ -121,6 +122,15 @@ export function WorkspaceClient({ data }: { data: WorkspaceDataValue }) {
       />
     );
     current = "requirements";
+  } else if (screen === "stakeholders") {
+    current = "stakeholders";
+    main = <StakeholdersScreen onOpen={openReq} />;
+  } else if (screen === "rules") {
+    current = "rules";
+    main = <RulesScreen onOpen={openReq} />;
+  } else if (screen === "audit") {
+    current = "audit";
+    main = <AuditScreen />;
   } else if (CONTEXT_LABELS[screen as ScreenId]) {
     current = screen as ScreenId;
     main = <PlaceholderScreen label={CONTEXT_LABELS[screen as ScreenId] as string} />;
