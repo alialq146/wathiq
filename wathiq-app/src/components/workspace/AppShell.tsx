@@ -31,9 +31,53 @@ export interface AppShellProps {
   rightRail?: React.ReactNode;
 }
 
+const APP_VERSION = "0.7.0";
+
+/** Lightweight anchored popover with a click-catching backdrop. */
+function Dropdown({
+  open,
+  onClose,
+  children,
+  align = "start",
+  placement = "down",
+}: {
+  open: boolean;
+  onClose: () => void;
+  children: React.ReactNode;
+  align?: "start" | "end";
+  placement?: "down" | "up";
+}) {
+  if (!open) return null;
+  return (
+    <>
+      <div onClick={onClose} style={{ position: "fixed", inset: 0, zIndex: 40 }} />
+      <div
+        style={{
+          position: "absolute",
+          top: placement === "down" ? "calc(100% + 6px)" : "auto",
+          bottom: placement === "up" ? "calc(100% + 6px)" : "auto",
+          insetInlineStart: align === "start" ? 0 : "auto",
+          insetInlineEnd: align === "end" ? 0 : "auto",
+          zIndex: 41,
+          minWidth: 240,
+          background: "var(--surface-card)",
+          border: "1px solid var(--border-default)",
+          borderRadius: "var(--radius-lg)",
+          boxShadow: "var(--shadow-lg)",
+          padding: 6,
+        }}
+      >
+        {children}
+      </div>
+    </>
+  );
+}
+
 /** App frame: right-anchored sidebar (RTL) + topbar. */
 export function AppShell({ current, onNavigate, onNewAnalysis, search = "", onSearchChange, children, rightRail }: AppShellProps) {
-  const { requirements } = useWorkspaceData();
+  const { requirements, source } = useWorkspaceData();
+  const [menu, setMenu] = React.useState<null | "project" | "settings">(null);
+  const toggleMenu = (m: "project" | "settings") => setMenu((cur) => (cur === m ? null : m));
   const nav: NavEntry[] = [
     { id: "overview", label: "نظرة عامة", icon: "layout-dashboard" },
     { id: "requirements", label: "المتطلبات", icon: "clipboard-list", count: requirements.length },
@@ -139,52 +183,115 @@ export function AppShell({ current, onNavigate, onNewAnalysis, search = "", onSe
         </div>
 
         {/* Project switcher */}
-        <button
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 9,
-            padding: "9px 10px",
-            borderRadius: "var(--radius-md)",
-            border: "1px solid var(--border-default)",
-            background: "var(--surface-card)",
-            cursor: "pointer",
-            marginBottom: 14,
-            boxShadow: "var(--shadow-xs)",
-          }}
-        >
-          <span
+        <div style={{ position: "relative", marginBottom: 14 }}>
+          <button
+            onClick={() => toggleMenu("project")}
             style={{
-              width: 24,
-              height: 24,
-              borderRadius: 6,
-              background: "var(--navy-800)",
-              color: "#fff",
-              font: "var(--weight-bold) 11px/1 var(--font-mono)",
-              display: "inline-flex",
+              display: "flex",
               alignItems: "center",
-              justifyContent: "center",
-              flex: "0 0 24px",
+              gap: 9,
+              width: "100%",
+              padding: "9px 10px",
+              borderRadius: "var(--radius-md)",
+              border: `1px solid ${menu === "project" ? "var(--border-strong)" : "var(--border-default)"}`,
+              background: "var(--surface-card)",
+              cursor: "pointer",
+              boxShadow: "var(--shadow-xs)",
             }}
           >
-            {PROJECT.code}
-          </span>
-          <div style={{ flex: 1, minWidth: 0, textAlign: "start" }}>
-            <div
+            <span
               style={{
-                font: "var(--weight-semibold) 13px/1.2 var(--font-sans)",
-                color: "var(--text-strong)",
-                whiteSpace: "nowrap",
-                overflow: "hidden",
-                textOverflow: "ellipsis",
+                width: 24,
+                height: 24,
+                borderRadius: 6,
+                background: "var(--navy-800)",
+                color: "#fff",
+                font: "var(--weight-bold) 11px/1 var(--font-mono)",
+                display: "inline-flex",
+                alignItems: "center",
+                justifyContent: "center",
+                flex: "0 0 24px",
               }}
             >
-              {PROJECT.name}
+              {PROJECT.code}
+            </span>
+            <div style={{ flex: 1, minWidth: 0, textAlign: "start" }}>
+              <div
+                style={{
+                  font: "var(--weight-semibold) 13px/1.2 var(--font-sans)",
+                  color: "var(--text-strong)",
+                  whiteSpace: "nowrap",
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                }}
+              >
+                {PROJECT.name}
+              </div>
+              <div style={{ font: "10px/1.2 var(--font-mono)", color: "var(--text-subtle)" }}>#{PROJECT.id}</div>
             </div>
-            <div style={{ font: "10px/1.2 var(--font-mono)", color: "var(--text-subtle)" }}>#{PROJECT.id}</div>
-          </div>
-          <Icon name="chevrons-up-down" size={15} color="var(--text-subtle)" />
-        </button>
+            <Icon name="chevrons-up-down" size={15} color="var(--text-subtle)" />
+          </button>
+
+          <Dropdown open={menu === "project"} onClose={() => setMenu(null)}>
+            <div style={{ font: "var(--weight-semibold) 10px/1 var(--font-sans)", letterSpacing: ".06em", textTransform: "uppercase", color: "var(--text-subtle)", padding: "6px 8px 8px" }}>
+              المشاريع
+            </div>
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 9,
+                padding: "8px 8px",
+                borderRadius: "var(--radius-md)",
+                background: "var(--blue-50)",
+              }}
+            >
+              <span
+                style={{
+                  width: 24,
+                  height: 24,
+                  borderRadius: 6,
+                  background: "var(--navy-800)",
+                  color: "#fff",
+                  font: "var(--weight-bold) 11px/1 var(--font-mono)",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  flex: "0 0 24px",
+                }}
+              >
+                {PROJECT.code}
+              </span>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ font: "var(--weight-semibold) 13px/1.2 var(--font-sans)", color: "var(--text-strong)" }}>{PROJECT.name}</div>
+                <div style={{ font: "10px/1.2 var(--font-mono)", color: "var(--text-subtle)" }}>#{PROJECT.id} · {requirements.length} متطلب</div>
+              </div>
+              <Icon name="check" size={15} color="var(--blue-600)" />
+            </div>
+            <button
+              disabled
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 8,
+                width: "100%",
+                marginTop: 4,
+                padding: "8px 8px",
+                borderRadius: "var(--radius-md)",
+                border: "none",
+                background: "transparent",
+                color: "var(--text-subtle)",
+                font: "13px var(--font-sans)",
+                cursor: "not-allowed",
+                textAlign: "start",
+              }}
+            >
+              <Icon name="plus" size={15} color="var(--text-subtle)" />
+              <span style={{ flex: 1 }}>إضافة مشروع</span>
+              <span style={{ font: "10px var(--font-sans)", color: "var(--text-subtle)" }}>قريبًا</span>
+            </button>
+          </Dropdown>
+        </div>
 
         <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
           {nav.map((i) => (
@@ -210,6 +317,7 @@ export function AppShell({ current, onNavigate, onNewAnalysis, search = "", onSe
 
         <div
           style={{
+            position: "relative",
             marginTop: "auto",
             borderTop: "1px solid var(--border-subtle)",
             paddingTop: 12,
@@ -225,7 +333,82 @@ export function AppShell({ current, onNavigate, onNewAnalysis, search = "", onSe
             </div>
             <div style={{ font: "10px/1.3 var(--font-sans)", color: "var(--text-subtle)" }}>محللة أعمال أولى</div>
           </div>
-          <Icon name="settings" size={16} color="var(--text-subtle)" />
+          <button
+            onClick={() => toggleMenu("settings")}
+            aria-label="الإعدادات"
+            style={{
+              display: "inline-flex",
+              padding: 4,
+              border: "none",
+              borderRadius: "var(--radius-sm)",
+              background: menu === "settings" ? "var(--slate-100)" : "transparent",
+              cursor: "pointer",
+            }}
+          >
+            <Icon name="settings" size={16} color="var(--text-subtle)" />
+          </button>
+
+          <Dropdown open={menu === "settings"} onClose={() => setMenu(null)} align="end" placement="up">
+              <div style={{ padding: "8px 8px 10px", borderBottom: "1px solid var(--border-subtle)", marginBottom: 6 }}>
+                <div style={{ font: "var(--weight-bold) 13px/1 var(--font-sans)", color: "var(--navy-900)" }}>وثّق · WATHIQ</div>
+                <div style={{ font: "11px/1.5 var(--font-sans)", color: "var(--text-subtle)", marginTop: 3 }}>
+                  منصّة تحليل الأعمال · الإصدار {APP_VERSION}
+                </div>
+              </div>
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 8,
+                  padding: "8px 8px",
+                  font: "12px/1 var(--font-sans)",
+                  color: "var(--text-body)",
+                }}
+              >
+                <Icon name="database" size={14} color={source === "database" ? "var(--green-500)" : "var(--amber-600)"} />
+                <span style={{ flex: 1 }}>مصدر البيانات</span>
+                <span style={{ font: "var(--weight-semibold) 12px var(--font-sans)", color: source === "database" ? "var(--green-600)" : "var(--amber-600)" }}>
+                  {source === "database" ? "قاعدة البيانات" : "بيانات تجريبية"}
+                </span>
+              </div>
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 8,
+                  padding: "8px 8px",
+                  font: "12px/1 var(--font-sans)",
+                  color: "var(--text-body)",
+                }}
+              >
+                <Icon name="clipboard-list" size={14} color="var(--text-subtle)" />
+                <span style={{ flex: 1 }}>عدد المتطلبات</span>
+                <span style={{ font: "var(--weight-semibold) 12px var(--font-mono)", color: "var(--text-strong)" }}>{requirements.length}</span>
+              </div>
+              <button
+                onClick={() => { setMenu(null); onNavigate?.("audit"); }}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 8,
+                  width: "100%",
+                  marginTop: 4,
+                  padding: "8px 8px",
+                  borderRadius: "var(--radius-md)",
+                  border: "none",
+                  background: "transparent",
+                  color: "var(--text-body)",
+                  font: "13px var(--font-sans)",
+                  cursor: "pointer",
+                  textAlign: "start",
+                }}
+                onMouseEnter={(e) => (e.currentTarget.style.background = "var(--slate-100)")}
+                onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
+              >
+                <Icon name="history" size={15} color="var(--text-muted)" />
+                <span style={{ flex: 1 }}>فتح سجل التدقيق</span>
+              </button>
+            </Dropdown>
         </div>
       </aside>
 
