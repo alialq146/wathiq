@@ -85,8 +85,10 @@ const SYSTEM_PROMPT = `أنت "وثّق"، محلّل أعمال خبير ومس
 
 const MODEL = "claude-opus-4-8";
 
-/** Analyze a requirements document with Claude and return structured results. */
-export async function analyzeDocument(text: string): Promise<AnalysisResult> {
+type UserContent = Anthropic.MessageParam["content"];
+
+/** Shared analysis runner — sends the user content and parses the structured result. */
+async function runAnalysis(content: UserContent): Promise<AnalysisResult> {
   const client = new Anthropic();
 
   const response = await client.messages.create({
@@ -96,12 +98,7 @@ export async function analyzeDocument(text: string): Promise<AnalysisResult> {
     output_config: {
       format: { type: "json_schema", schema: ANALYSIS_SCHEMA },
     },
-    messages: [
-      {
-        role: "user",
-        content: `حلّل وثيقة المتطلبات التالية واستخرج منها المتطلبات بشكل منظّم:\n\n---\n${text}\n---`,
-      },
-    ],
+    messages: [{ role: "user", content }],
   } as Anthropic.MessageCreateParamsNonStreaming);
 
   const textBlock = response.content.find((b) => b.type === "text");
@@ -109,6 +106,26 @@ export async function analyzeDocument(text: string): Promise<AnalysisResult> {
     throw new Error("No text content returned from model");
   }
 
-  const parsed = JSON.parse(textBlock.text) as AnalysisResult;
-  return parsed;
+  return JSON.parse(textBlock.text) as AnalysisResult;
+}
+
+/** Analyze a pasted requirements document (plain text). */
+export async function analyzeDocument(text: string): Promise<AnalysisResult> {
+  return runAnalysis(
+    `حلّل وثيقة المتطلبات التالية واستخرج منها المتطلبات بشكل منظّم:\n\n---\n${text}\n---`
+  );
+}
+
+/** Analyze an uploaded requirements PDF (base64, no data-URL prefix). */
+export async function analyzePdf(base64: string): Promise<AnalysisResult> {
+  return runAnalysis([
+    {
+      type: "document",
+      source: { type: "base64", media_type: "application/pdf", data: base64 },
+    },
+    {
+      type: "text",
+      text: "حلّل وثيقة المتطلبات المرفقة (ملف PDF) واستخرج منها المتطلبات بشكل منظّم.",
+    },
+  ] as UserContent);
 }

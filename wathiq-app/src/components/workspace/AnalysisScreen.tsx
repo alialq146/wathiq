@@ -30,13 +30,40 @@ const SAMPLE = `نظام إدارة طلبات الإجازات للموظفين
 export function AnalysisScreen() {
   const router = useRouter();
   const [phase, setPhase] = React.useState<Phase>("idle");
+  const [mode, setMode] = React.useState<"text" | "pdf">("text");
   const [text, setText] = React.useState("");
+  const [pdf, setPdf] = React.useState<{ name: string; size: number; data: string } | null>(null);
+  const [fileError, setFileError] = React.useState<string | null>(null);
   const [active, setActive] = React.useState(0);
   const [result, setResult] = React.useState<AnalysisResult | null>(null);
   const [errorMsg, setErrorMsg] = React.useState<string | null>(null);
   const [saving, setSaving] = React.useState(false);
   const [saveMsg, setSaveMsg] = React.useState<string | null>(null);
   const timer = React.useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // ~3.3MB raw PDF keeps the base64 body under Vercel's request limit.
+  const MAX_PDF_BYTES = 3_300_000;
+
+  const onFile = (file: File | null | undefined) => {
+    setFileError(null);
+    if (!file) return;
+    if (file.type !== "application/pdf" && !file.name.toLowerCase().endsWith(".pdf")) {
+      setFileError("الملف يجب أن يكون PDF.");
+      return;
+    }
+    if (file.size > MAX_PDF_BYTES) {
+      setFileError("حجم الملف كبير — الحد الأقصى ٣ ميغابايت تقريبًا.");
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      const res = String(reader.result || "");
+      const base64 = res.includes(",") ? res.slice(res.indexOf(",") + 1) : res;
+      setPdf({ name: file.name, size: file.size, data: base64 });
+    };
+    reader.onerror = () => setFileError("تعذّر قراءة الملف.");
+    reader.readAsDataURL(file);
+  };
 
   React.useEffect(() => () => {
     if (timer.current) clearInterval(timer.current);
@@ -45,12 +72,15 @@ export function AnalysisScreen() {
   const ERRORS: Record<string, string> = {
     "no-key": "ميزة التحليل تتطلب ربط مفتاح Anthropic API في إعدادات الموقع (متغيّر ANTHROPIC_API_KEY).",
     "too-short": "النص قصير جدًا — الصق وثيقة متطلبات أطول.",
+    "too-large": "حجم الملف كبير جدًا — استخدم ملفًا أصغر من ٣ ميغابايت.",
     failed: "تعذّر التحليل. حاول مرة أخرى.",
     network: "تعذّر الاتصال بالخادم. تأكد من اتصالك وحاول مجددًا.",
   };
 
+  const canRun = mode === "text" ? text.trim().length >= 20 : Boolean(pdf);
+
   const run = async () => {
-    if (text.trim().length < 20) return;
+    if (!canRun) return;
     setPhase("running");
     setActive(0);
     setResult(null);
@@ -65,10 +95,12 @@ export function AnalysisScreen() {
     }, 700);
 
     try {
+      const payload =
+        mode === "pdf" && pdf ? { pdf: pdf.data, filename: pdf.name } : { text };
       const res = await fetch("/api/analyze", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text }),
+        body: JSON.stringify(payload),
       });
       const data = await res.json();
       if (timer.current) clearInterval(timer.current);
@@ -95,6 +127,7 @@ export function AnalysisScreen() {
     setResult(null);
     setErrorMsg(null);
     setSaveMsg(null);
+    setFileError(null);
   };
 
   const save = async () => {
@@ -135,7 +168,7 @@ export function AnalysisScreen() {
         تحليل وثّق
       </h1>
       <p style={{ font: "14px/1.5 var(--font-sans)", color: "var(--text-muted)", margin: "0 0 24px" }}>
-        الصق وثيقة المتطلبات وسيستخرج وثّق المتطلبات بشكل شفّاف — ترى ما يقرأه، وكيف يستنتج، وبأي درجة ثقة.
+        الصق نصًّا أو ارفع ملف PDF، وسيستخرج وثّق المتطلبات بشكل شفّاف — ترى ما يقرأه، وكيف يستنتج، وبأي درجة ثقة.
       </p>
 
       {phase === "idle" && (
@@ -147,65 +180,185 @@ export function AnalysisScreen() {
             background: "var(--surface-card)",
           }}
         >
-          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14 }}>
-            <span
-              style={{
-                width: 40,
-                height: 40,
-                borderRadius: "var(--radius-lg)",
-                background: "var(--blue-50)",
-                display: "inline-flex",
-                alignItems: "center",
-                justifyContent: "center",
-                flex: "0 0 40px",
-              }}
-            >
-              <Icon name="file-up" size={20} color="var(--blue-600)" />
-            </span>
-            <div>
-              <div style={{ font: "var(--weight-semibold) 16px/1.3 var(--font-sans)", color: "var(--text-strong)" }}>
-                الصق وثيقة المتطلبات
-              </div>
-              <div style={{ font: "13px/1.5 var(--font-sans)", color: "var(--text-muted)" }}>
-                نص حر بالعربية — سيستخرج وثّق المتطلبات وأولوياتها ودرجة الثقة.
-              </div>
-            </div>
-          </div>
-
-          <textarea
-            value={text}
-            onChange={(e) => setText(e.target.value)}
-            placeholder="الصق هنا نص وثيقة المتطلبات…"
-            rows={8}
+          {/* Mode toggle */}
+          <div
             style={{
-              width: "100%",
-              padding: "12px 14px",
+              display: "inline-flex",
+              gap: 4,
+              padding: 3,
+              background: "var(--slate-100)",
               borderRadius: "var(--radius-md)",
-              border: "1px solid var(--border-default)",
-              background: "var(--slate-50)",
-              font: "14px/1.7 var(--font-sans)",
-              color: "var(--text-strong)",
-              outline: "none",
-              resize: "vertical",
+              marginBottom: 16,
             }}
-          />
-
-          <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 14, flexWrap: "wrap" }}>
-            <Button
-              variant="primary"
-              iconStart={<Icon name="sparkles" size={16} />}
-              onClick={run}
-              disabled={text.trim().length < 20}
-            >
-              حلّل بوثّق
-            </Button>
-            <Button variant="ghost" size="sm" onClick={() => setText(SAMPLE)}>
-              تجربة بنص نموذجي
-            </Button>
-            <span style={{ marginInlineStart: "auto", font: "12px var(--font-mono)", color: "var(--text-subtle)", direction: "ltr" }}>
-              {text.trim().length} chars
-            </span>
+          >
+            {([
+              ["text", "لصق نص", "clipboard"],
+              ["pdf", "رفع PDF", "file-up"],
+            ] as const).map(([m, l, ic]) => {
+              const on = mode === m;
+              return (
+                <button
+                  key={m}
+                  onClick={() => {
+                    setMode(m);
+                    setFileError(null);
+                  }}
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 6,
+                    padding: "6px 12px",
+                    borderRadius: "var(--radius-sm)",
+                    border: "none",
+                    cursor: "pointer",
+                    background: on ? "var(--surface-card)" : "transparent",
+                    color: on ? "var(--text-strong)" : "var(--text-muted)",
+                    font: `var(--weight-${on ? "semibold" : "medium"}) 13px/1 var(--font-sans)`,
+                    boxShadow: on ? "var(--shadow-xs)" : "none",
+                  }}
+                >
+                  <Icon name={ic} size={15} color={on ? "var(--blue-600)" : "var(--text-subtle)"} /> {l}
+                </button>
+              );
+            })}
           </div>
+
+          {mode === "text" ? (
+            <>
+              <textarea
+                value={text}
+                onChange={(e) => setText(e.target.value)}
+                placeholder="الصق هنا نص وثيقة المتطلبات…"
+                rows={8}
+                style={{
+                  width: "100%",
+                  padding: "12px 14px",
+                  borderRadius: "var(--radius-md)",
+                  border: "1px solid var(--border-default)",
+                  background: "var(--slate-50)",
+                  font: "14px/1.7 var(--font-sans)",
+                  color: "var(--text-strong)",
+                  outline: "none",
+                  resize: "vertical",
+                }}
+              />
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 14, flexWrap: "wrap" }}>
+                <Button variant="primary" iconStart={<Icon name="sparkles" size={16} />} onClick={run} disabled={!canRun}>
+                  حلّل بوثّق
+                </Button>
+                <Button variant="ghost" size="sm" onClick={() => setText(SAMPLE)}>
+                  تجربة بنص نموذجي
+                </Button>
+                <span style={{ marginInlineStart: "auto", font: "12px var(--font-mono)", color: "var(--text-subtle)", direction: "ltr" }}>
+                  {text.trim().length} chars
+                </span>
+              </div>
+            </>
+          ) : (
+            <>
+              {!pdf ? (
+                <label
+                  onDragOver={(e) => e.preventDefault()}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    onFile(e.dataTransfer.files?.[0]);
+                  }}
+                  style={{
+                    display: "flex",
+                    flexDirection: "column",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    gap: 8,
+                    padding: "36px 20px",
+                    borderRadius: "var(--radius-lg)",
+                    border: "1.5px dashed var(--border-strong)",
+                    background: "var(--slate-50)",
+                    cursor: "pointer",
+                    textAlign: "center",
+                  }}
+                >
+                  <Icon name="file-up" size={28} color="var(--blue-600)" />
+                  <div style={{ font: "var(--weight-semibold) 14px var(--font-sans)", color: "var(--text-strong)" }}>
+                    اسحب ملف PDF هنا أو اضغط للاختيار
+                  </div>
+                  <div style={{ font: "12px var(--font-sans)", color: "var(--text-subtle)" }}>
+                    ملف PDF فقط · حتى ٣ ميغابايت
+                  </div>
+                  <input
+                    type="file"
+                    accept="application/pdf,.pdf"
+                    onChange={(e) => onFile(e.target.files?.[0])}
+                    style={{ display: "none" }}
+                  />
+                </label>
+              ) : (
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 12,
+                    padding: "14px 16px",
+                    borderRadius: "var(--radius-md)",
+                    border: "1px solid var(--border-default)",
+                    background: "var(--surface-card)",
+                  }}
+                >
+                  <span
+                    style={{
+                      width: 36,
+                      height: 36,
+                      borderRadius: "var(--radius-sm)",
+                      background: "var(--red-50)",
+                      display: "inline-flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      flex: "0 0 36px",
+                    }}
+                  >
+                    <Icon name="file-text" size={18} color="var(--red-500)" />
+                  </span>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div
+                      style={{
+                        font: "var(--weight-medium) 14px var(--font-sans)",
+                        color: "var(--text-strong)",
+                        whiteSpace: "nowrap",
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                      }}
+                    >
+                      {pdf.name}
+                    </div>
+                    <div style={{ font: "12px var(--font-mono)", color: "var(--text-subtle)", direction: "ltr" }}>
+                      {(pdf.size / 1024).toFixed(0)} KB
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => setPdf(null)}
+                    aria-label="إزالة"
+                    style={{ border: "none", background: "transparent", cursor: "pointer", color: "var(--text-subtle)", display: "inline-flex" }}
+                  >
+                    <Icon name="x" size={18} />
+                  </button>
+                </div>
+              )}
+
+              {fileError && (
+                <div style={{ display: "flex", alignItems: "center", gap: 7, marginTop: 10, font: "13px var(--font-sans)", color: "var(--red-600)" }}>
+                  <Icon name="alert-triangle" size={15} color="var(--red-500)" /> {fileError}
+                </div>
+              )}
+
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 14, flexWrap: "wrap" }}>
+                <Button variant="primary" iconStart={<Icon name="sparkles" size={16} />} onClick={run} disabled={!canRun}>
+                  حلّل الملف
+                </Button>
+                <span style={{ marginInlineStart: "auto", font: "12px/1.5 var(--font-sans)", color: "var(--text-subtle)" }}>
+                  يقرأ وثّق ملف الـ PDF مباشرة
+                </span>
+              </div>
+            </>
+          )}
         </div>
       )}
 
