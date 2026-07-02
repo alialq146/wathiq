@@ -75,9 +75,21 @@ function Dropdown({
 
 /** App frame: right-anchored sidebar (RTL) + topbar. */
 export function AppShell({ current, onNavigate, onNewAnalysis, search = "", onSearchChange, children, rightRail }: AppShellProps) {
-  const { requirements, source } = useWorkspaceData();
+  const { requirements, source, authEnabled } = useWorkspaceData();
   const [menu, setMenu] = React.useState<null | "project" | "settings">(null);
+  const [loggingOut, setLoggingOut] = React.useState(false);
   const toggleMenu = (m: "project" | "settings") => setMenu((cur) => (cur === m ? null : m));
+
+  const logout = async () => {
+    if (loggingOut) return;
+    setLoggingOut(true);
+    try {
+      await fetch("/api/auth/logout", { method: "POST" });
+    } catch {
+      // ignore — navigate anyway
+    }
+    window.location.assign("/login");
+  };
   const nav: NavEntry[] = [
     { id: "overview", label: "نظرة عامة", icon: "layout-dashboard" },
     { id: "requirements", label: "المتطلبات", icon: "clipboard-list", count: requirements.length },
@@ -408,6 +420,37 @@ export function AppShell({ current, onNavigate, onNewAnalysis, search = "", onSe
                 <Icon name="history" size={15} color="var(--text-muted)" />
                 <span style={{ flex: 1 }}>فتح سجل التدقيق</span>
               </button>
+              {authEnabled && (
+                <button
+                  onClick={logout}
+                  disabled={loggingOut}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 8,
+                    width: "100%",
+                    marginTop: 2,
+                    padding: "8px 8px",
+                    borderRadius: "var(--radius-md)",
+                    border: "none",
+                    background: "transparent",
+                    color: "var(--status-danger-fg)",
+                    font: "13px var(--font-sans)",
+                    cursor: loggingOut ? "default" : "pointer",
+                    textAlign: "start",
+                  }}
+                  onMouseEnter={(e) => (e.currentTarget.style.background = "var(--status-danger-bg)")}
+                  onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
+                >
+                  <Icon
+                    name={loggingOut ? "loader-circle" : "log-out"}
+                    size={15}
+                    color="var(--status-danger-fg)"
+                    style={loggingOut ? { animation: "wq-spin 0.7s linear infinite" } : undefined}
+                  />
+                  <span style={{ flex: 1 }}>{loggingOut ? "جارٍ الخروج…" : "تسجيل الخروج"}</span>
+                </button>
+              )}
             </Dropdown>
         </div>
       </aside>

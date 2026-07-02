@@ -17,6 +17,8 @@ export interface WorkspaceDataValue {
   auditEvents: AuditEvent[];
   /** Whether the data is backed by the live database (writes will persist). */
   source: "database" | "fallback";
+  /** Whether sign-in is configured (controls showing the logout action). */
+  authEnabled: boolean;
 }
 
 const WorkspaceDataContext = React.createContext<WorkspaceDataValue | null>(null);

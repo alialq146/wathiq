@@ -1,5 +1,6 @@
 import { WorkspaceClient } from "@/components/workspace/WorkspaceClient";
 import { getWorkspaceData } from "@/lib/workspace-data";
+import { authConfigured } from "@/lib/auth";
 
 // Read fresh from the database on each request (falls back to mock data when
 // no database is configured), so seeded changes show up without a rebuild.
@@ -24,6 +25,7 @@ export default async function Page() {
         openQuestions,
         auditEvents,
         source,
+        authEnabled: authConfigured(),
       }}
     />
   );
