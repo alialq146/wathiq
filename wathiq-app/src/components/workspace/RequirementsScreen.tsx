@@ -6,6 +6,7 @@ import { Button, Icon, RequirementCard } from "@/components/ds";
 import { type Requirement } from "@/lib/data";
 import { useWorkspaceData } from "./WorkspaceDataContext";
 import { RequirementFormDialog } from "./RequirementFormDialog";
+import { ExportDialog } from "./ExportDialog";
 import { deleteRequirement } from "@/app/actions";
 
 export interface RequirementsScreenProps {
@@ -43,6 +44,7 @@ export function RequirementsScreen({ onOpen, onViewAnalysis, search = "", onClea
   const [showFilter, setShowFilter] = React.useState(false);
   const [showSort, setShowSort] = React.useState(false);
   const [dialogOpen, setDialogOpen] = React.useState(false);
+  const [exportOpen, setExportOpen] = React.useState(false);
   const [dialogMode, setDialogMode] = React.useState<"create" | "edit">("create");
   const [editing, setEditing] = React.useState<Requirement | null>(null);
   const [busyId, setBusyId] = React.useState<string | null>(null);
@@ -167,11 +169,23 @@ export function RequirementsScreen({ onOpen, onViewAnalysis, search = "", onClea
           >
             ترتيب
           </Button>
+          <Button
+            variant="secondary"
+            size="sm"
+            iconStart={<Icon name="download" size={15} />}
+            disabled={REQUIREMENTS.length === 0}
+            title={REQUIREMENTS.length === 0 ? "لا توجد متطلبات للتصدير" : "تصدير المتطلبات"}
+            onClick={() => setExportOpen(true)}
+          >
+            تصدير
+          </Button>
           <Button variant="primary" size="sm" iconStart={<Icon name="plus" size={15} />} onClick={openCreate}>
             متطلب جديد
           </Button>
         </div>
       </div>
+
+      <ExportDialog open={exportOpen} onClose={() => setExportOpen(false)} />
 
       {/* Filter panel */}
       {showFilter && (
