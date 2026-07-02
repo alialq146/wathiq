@@ -1,19 +1,21 @@
 import { NextRequest, NextResponse } from "next/server";
-import { authConfigured, verifySessionToken, SESSION_COOKIE } from "@/lib/auth";
+import { authEnabled, verifySessionToken, SESSION_COOKIE } from "@/lib/auth";
 
 /**
- * Gate the app behind a session cookie — but only when auth is configured.
- * When no credentials are set in the environment, every request passes
- * through untouched, so the deployed site keeps working out of the box.
+ * Gate the app behind a session cookie — but only when auth is enabled
+ * (a database is configured for accounts, or legacy owner credentials are
+ * set). Otherwise every request passes through untouched, so the app keeps
+ * working out of the box.
  */
 export async function middleware(req: NextRequest) {
-  if (!authConfigured()) return NextResponse.next();
+  if (!authEnabled()) return NextResponse.next();
 
   const { pathname } = req.nextUrl;
 
-  // Always-allow: the login page, auth endpoints, and the health check.
+  // Always-allow: auth pages, auth endpoints, and the health check.
   if (
     pathname.startsWith("/login") ||
+    pathname.startsWith("/signup") ||
     pathname.startsWith("/api/auth") ||
     pathname === "/api/health"
   ) {

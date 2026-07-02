@@ -19,6 +19,8 @@ export interface WorkspaceDataValue {
   source: "database" | "fallback";
   /** Whether sign-in is configured (controls showing the logout action). */
   authEnabled: boolean;
+  /** The signed-in account, or null when auth is disabled. */
+  user: { name: string; email: string } | null;
 }
 
 const WorkspaceDataContext = React.createContext<WorkspaceDataValue | null>(null);

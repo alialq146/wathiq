@@ -3,36 +3,8 @@
 import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { prisma, hasDatabase } from "@/lib/db";
+import { getSessionUser } from "@/lib/session";
 import type { RequirementStatus, PriorityLevel } from "@/components/ds";
-
-/** Human-facing status labels, for audit-log messages. */
-const STATUS_AR: Record<string, string> = {
-  draft: "مسودة",
-  analyzing: "قيد التحليل",
-  review: "قيد المراجعة",
-  needs_info: "بحاجة لمعلومات",
-  approved: "معتمد",
-  blocked: "محظور",
-};
-
-/**
- * Append an audit-trail entry. Best-effort: a logging failure must never
- * fail the surrounding action, so everything is wrapped and swallowed.
- */
-async function logAudit(
-  requirementId: string | null,
-  action: string,
-  detail: string,
-  actor = "سارة العتيبي"
-): Promise<void> {
-  try {
-    await prisma.auditEvent.create({
-      data: { requirementId, action, detail, actor },
-    });
-  } catch (err) {
-    console.warn("[logAudit] skipped:", err);
-  }
-}
 
 export interface RequirementInput {
   id: string;
@@ -48,6 +20,67 @@ export interface RequirementInput {
 }
 
 export type ActionResult = { ok: true } | { ok: false; error: string };
+
+/** Human-facing status labels, for audit-log messages. */
+const STATUS_AR: Record<string, string> = {
+  draft: "مسودة",
+  analyzing: "قيد التحليل",
+  review: "قيد المراجعة",
+  needs_info: "بحاجة لمعلومات",
+  approved: "معتمد",
+  blocked: "محظور",
+};
+
+/* ---------------- session helpers ---------------- */
+
+interface Actor {
+  /** null when auth is disabled (open mode) — rows stay shared. */
+  uid: string | null;
+  name: string;
+}
+
+async function currentActor(): Promise<Actor> {
+  const user = await getSessionUser();
+  if (user && user.uid !== "owner") return { uid: user.uid, name: user.name };
+  if (user) return { uid: null, name: user.name || "المالك" }; // legacy owner mode
+  return { uid: null, name: "سارة العتيبي" }; // open mode (demo persona)
+}
+
+/**
+ * Ownership filter for mutations: a user may touch their own rows and the
+ * shared demo rows; in open mode everything is reachable (single-tenant).
+ */
+function ownedBy(uid: string | null) {
+  return uid ? { OR: [{ ownerId: null }, { ownerId: uid }] } : {};
+}
+
+/**
+ * Append an audit-trail entry. Best-effort: a logging failure must never
+ * fail the surrounding action, so everything is wrapped and swallowed.
+ */
+async function logAudit(
+  actor: Actor,
+  requirementId: string | null,
+  action: string,
+  detail: string,
+  actorNameOverride?: string
+): Promise<void> {
+  try {
+    await prisma.auditEvent.create({
+      data: {
+        ownerId: actor.uid,
+        requirementId,
+        action,
+        detail,
+        actor: actorNameOverride ?? actor.name,
+      },
+    });
+  } catch (err) {
+    console.warn("[logAudit] skipped:", err);
+  }
+}
+
+/* ---------------- requirements ---------------- */
 
 function clean(input: RequirementInput) {
   return {
@@ -78,19 +111,25 @@ export async function saveRequirement(
   if (!input.title.trim()) return { ok: false, error: "missing-title" };
 
   try {
+    const actor = await currentActor();
     const data = clean(input);
 
     if (originalId) {
+      // Ownership-checked update.
+      const target = await prisma.requirement.findFirst({
+        where: { id: originalId, ...ownedBy(actor.uid) },
+      });
+      if (!target) return { ok: false, error: "not-found" };
       await prisma.requirement.update({ where: { id: originalId }, data });
-      await logAudit(originalId, "requirement_updated", `تعديل المتطلب «${data.title}».`);
+      await logAudit(actor, originalId, "requirement_updated", `تعديل المتطلب «${data.title}».`);
     } else {
       const exists = await prisma.requirement.findUnique({ where: { id } });
       if (exists) return { ok: false, error: "duplicate-id" };
       const max = await prisma.requirement.aggregate({ _max: { order: true } });
       await prisma.requirement.create({
-        data: { id, ...data, order: (max._max.order ?? -1) + 1 },
+        data: { id, ownerId: actor.uid, ...data, order: (max._max.order ?? -1) + 1 },
       });
-      await logAudit(id, "requirement_created", `إنشاء المتطلب «${data.title}».`);
+      await logAudit(actor, id, "requirement_created", `إنشاء المتطلب «${data.title}».`);
     }
 
     revalidatePath("/");
@@ -116,6 +155,7 @@ export async function saveExtractedRequirements(
   if (!inputs.length) return { ok: false, error: "empty" };
 
   try {
+    const actor = await currentActor();
     const max = await prisma.requirement.aggregate({ _max: { order: true } });
     let order = (max._max.order ?? -1) + 1;
     let saved = 0;
@@ -133,13 +173,19 @@ export async function saveExtractedRequirements(
         continue;
       }
       await prisma.requirement.create({
-        data: { id, ...clean(input), order: order++ },
+        data: { id, ownerId: actor.uid, ...clean(input), order: order++ },
       });
       saved++;
     }
 
     if (saved > 0) {
-      await logAudit(null, "requirements_imported", `استيراد ${saved} متطلبًا من تحليل وثّق.`, "وثّق");
+      await logAudit(
+        actor,
+        null,
+        "requirements_imported",
+        `استيراد ${saved} متطلبًا من تحليل وثّق.`,
+        "وثّق"
+      );
     }
     revalidatePath("/");
     return { ok: true, saved, skipped };
@@ -160,14 +206,18 @@ export async function updateRequirementStatus(
   if (!rid) return { ok: false, error: "missing-id" };
 
   try {
-    const req = await prisma.requirement.update({
-      where: { id: rid },
-      data: { status },
+    const actor = await currentActor();
+    const target = await prisma.requirement.findFirst({
+      where: { id: rid, ...ownedBy(actor.uid) },
     });
+    if (!target) return { ok: false, error: "not-found" };
+
+    await prisma.requirement.update({ where: { id: rid }, data: { status } });
     await logAudit(
+      actor,
       rid,
       "status_changed",
-      `تغيير حالة «${req.title}» إلى «${STATUS_AR[status] ?? status}».`
+      `تغيير حالة «${target.title}» إلى «${STATUS_AR[status] ?? status}».`
     );
     revalidatePath("/");
     return { ok: true };
@@ -176,6 +226,27 @@ export async function updateRequirementStatus(
     return { ok: false, error: "server" };
   }
 }
+
+export async function deleteRequirement(id: string): Promise<ActionResult> {
+  if (!hasDatabase()) return { ok: false, error: "no-db" };
+  try {
+    const actor = await currentActor();
+    const target = await prisma.requirement.findFirst({
+      where: { id, ...ownedBy(actor.uid) },
+    });
+    if (!target) return { ok: false, error: "not-found" };
+
+    await prisma.requirement.delete({ where: { id } });
+    await logAudit(actor, null, "requirement_deleted", `حذف المتطلب «${target.title}» (${id}).`);
+    revalidatePath("/");
+    return { ok: true };
+  } catch (err) {
+    console.error("[deleteRequirement]", err);
+    return { ok: false, error: "server" };
+  }
+}
+
+/* ---------------- criteria & questions ---------------- */
 
 export type AddResult = { ok: true; id: string } | { ok: false; error: string };
 
@@ -192,6 +263,13 @@ export async function addAcceptanceCriterion(
   if (body.length < 3) return { ok: false, error: "too-short" };
 
   try {
+    const actor = await currentActor();
+    // The parent requirement must be visible to this user.
+    const parent = await prisma.requirement.findFirst({
+      where: { id: rid, ...ownedBy(actor.uid) },
+    });
+    if (!parent) return { ok: false, error: "not-found" };
+
     const id = `AC-${randomUUID().slice(0, 8)}`;
     const max = await prisma.acceptanceCriterion.aggregate({
       where: { requirementId: rid },
@@ -200,6 +278,7 @@ export async function addAcceptanceCriterion(
     await prisma.acceptanceCriterion.create({
       data: {
         id,
+        ownerId: actor.uid,
         requirementId: rid,
         text: body,
         done: false,
@@ -212,7 +291,7 @@ export async function addAcceptanceCriterion(
       where: { id: rid },
       data: { criteria: { increment: 1 } },
     });
-    await logAudit(rid, "criterion_added", `إضافة معيار قبول: «${body}».`);
+    await logAudit(actor, rid, "criterion_added", `إضافة معيار قبول: «${body}».`);
     revalidatePath("/");
     return { ok: true, id };
   } catch (err) {
@@ -228,14 +307,18 @@ export async function toggleAcceptanceCriterion(
 ): Promise<ActionResult> {
   if (!hasDatabase()) return { ok: false, error: "no-db" };
   try {
-    const c = await prisma.acceptanceCriterion.update({
-      where: { id },
-      data: { done },
+    const actor = await currentActor();
+    const target = await prisma.acceptanceCriterion.findFirst({
+      where: { id, ...ownedBy(actor.uid) },
     });
+    if (!target) return { ok: false, error: "not-found" };
+
+    await prisma.acceptanceCriterion.update({ where: { id }, data: { done } });
     await logAudit(
-      c.requirementId,
+      actor,
+      target.requirementId,
       "criterion_toggled",
-      `${done ? "إنجاز" : "إعادة فتح"} معيار القبول: «${c.text}».`
+      `${done ? "إنجاز" : "إعادة فتح"} معيار القبول: «${target.text}».`
     );
     revalidatePath("/");
     return { ok: true };
@@ -256,32 +339,23 @@ export async function answerOpenQuestion(
   if (body.length < 2) return { ok: false, error: "too-short" };
 
   try {
-    const q = await prisma.openQuestion.update({
-      where: { id },
-      data: { answer: body },
+    const actor = await currentActor();
+    const target = await prisma.openQuestion.findFirst({
+      where: { id, ...ownedBy(actor.uid) },
     });
+    if (!target) return { ok: false, error: "not-found" };
+
+    await prisma.openQuestion.update({ where: { id }, data: { answer: body } });
     await logAudit(
-      q.requirementId,
+      actor,
+      target.requirementId,
       "question_answered",
-      `الإجابة عن سؤال مفتوح: «${q.text}».`
+      `الإجابة عن سؤال مفتوح: «${target.text}».`
     );
     revalidatePath("/");
     return { ok: true };
   } catch (err) {
     console.error("[answerOpenQuestion]", err);
-    return { ok: false, error: "server" };
-  }
-}
-
-export async function deleteRequirement(id: string): Promise<ActionResult> {
-  if (!hasDatabase()) return { ok: false, error: "no-db" };
-  try {
-    const req = await prisma.requirement.delete({ where: { id } });
-    await logAudit(null, "requirement_deleted", `حذف المتطلب «${req.title}» (${id}).`);
-    revalidatePath("/");
-    return { ok: true };
-  } catch (err) {
-    console.error("[deleteRequirement]", err);
     return { ok: false, error: "server" };
   }
 }

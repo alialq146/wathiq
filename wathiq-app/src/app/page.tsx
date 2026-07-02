@@ -1,12 +1,14 @@
 import { WorkspaceClient } from "@/components/workspace/WorkspaceClient";
 import { getWorkspaceData } from "@/lib/workspace-data";
-import { authConfigured } from "@/lib/auth";
+import { getSessionUser } from "@/lib/session";
+import { authEnabled } from "@/lib/auth";
 
 // Read fresh from the database on each request (falls back to mock data when
 // no database is configured), so seeded changes show up without a rebuild.
 export const dynamic = "force-dynamic";
 
 export default async function Page() {
+  const user = await getSessionUser();
   const {
     requirements,
     acceptanceCriteria,
@@ -14,7 +16,7 @@ export default async function Page() {
     openQuestions,
     auditEvents,
     source,
-  } = await getWorkspaceData();
+  } = await getWorkspaceData(user?.uid);
 
   return (
     <WorkspaceClient
@@ -25,7 +27,8 @@ export default async function Page() {
         openQuestions,
         auditEvents,
         source,
-        authEnabled: authConfigured(),
+        authEnabled: authEnabled(),
+        user: user ? { name: user.name, email: user.email } : null,
       }}
     />
   );

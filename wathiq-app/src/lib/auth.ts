@@ -1,35 +1,64 @@
 /**
- * Minimal, self-contained authentication for Wathiq.
+ * Session-token layer for Wathiq's account system.
  *
- * Design goals:
- * - **Safe by default:** if no credentials are configured via environment
- *   variables, auth is DISABLED and the app stays fully open (current
- *   behaviour). It can never lock out the deployed site by accident.
- * - **Edge-compatible:** uses only Web Crypto / TextEncoder / base64, so the
- *   exact same code runs in `middleware.ts` (Edge runtime) and in Node route
- *   handlers.
- * - **Stateless sessions:** an HMAC-signed cookie token, no session store.
+ * IMPORTANT: this module is imported by `middleware.ts`, so it must stay
+ * **Edge-compatible** — Web Crypto / TextEncoder / base64 only. Anything that
+ * needs Node (scrypt password hashing, Prisma) lives in `password.ts` and
+ * `session.ts` instead.
  *
- * Configure by setting these environment variables (e.g. in Vercel):
- *   WATHIQ_AUTH_EMAIL     — the sign-in email
- *   WATHIQ_AUTH_PASSWORD  — the sign-in password
- *   WATHIQ_SESSION_SECRET — (optional) signing secret; falls back to the password
+ * Enable modes (checked in this order):
+ * 1. **Accounts mode** — a database URL is configured → users sign up and
+ *    sign in against the `User` table.
+ * 2. **Owner mode (legacy)** — no database, but `WATHIQ_AUTH_EMAIL` +
+ *    `WATHIQ_AUTH_PASSWORD` are set → single fixed credential.
+ * 3. **Open mode** — neither configured → no auth at all; the app stays
+ *    public exactly as before. Safe by default.
  */
 
 export const SESSION_COOKIE = "wathiq_session";
 const SESSION_TTL_SECONDS = 60 * 60 * 24 * 7; // 7 days
+export const SESSION_MAX_AGE = SESSION_TTL_SECONDS;
 
 function env(name: string): string {
   return (process.env[name] ?? "").trim();
 }
 
-/** Auth is only active when both an email and a password are configured. */
-export function authConfigured(): boolean {
+/** Mirrors resolveDatabaseUrl() in db.ts without importing Prisma (Edge-safe). */
+export function hasDatabaseEnv(): boolean {
+  return Boolean(
+    env("DATABASE_URL") ||
+      env("POSTGRES_PRISMA_URL") ||
+      env("POSTGRES_URL") ||
+      env("DATABASE_URL_UNPOOLED") ||
+      env("POSTGRES_URL_NON_POOLING")
+  );
+}
+
+/** Legacy single-credential mode (kept for DB-less deployments). */
+export function ownerModeConfigured(): boolean {
   return Boolean(env("WATHIQ_AUTH_EMAIL") && env("WATHIQ_AUTH_PASSWORD"));
 }
 
+/** Whether the app should require sign-in at all. */
+export function authEnabled(): boolean {
+  return hasDatabaseEnv() || ownerModeConfigured();
+}
+
+/**
+ * Secret used to sign session cookies. Priority:
+ * explicit secret → legacy password → the database URL (always present in
+ * accounts mode, unique per deployment, and never sent to clients).
+ */
 function sessionSecret(): string {
-  return env("WATHIQ_SESSION_SECRET") || env("WATHIQ_AUTH_PASSWORD");
+  return (
+    env("WATHIQ_SESSION_SECRET") ||
+    env("WATHIQ_AUTH_PASSWORD") ||
+    env("DATABASE_URL") ||
+    env("POSTGRES_PRISMA_URL") ||
+    env("POSTGRES_URL") ||
+    env("DATABASE_URL_UNPOOLED") ||
+    env("POSTGRES_URL_NON_POOLING")
+  );
 }
 
 /* ---------------- encoding helpers ---------------- */
@@ -56,7 +85,7 @@ function b64urlDecodeStr(s: string): string {
 }
 
 /** Constant-time string comparison. */
-function safeEqual(a: string, b: string): boolean {
+export function safeEqual(a: string, b: string): boolean {
   if (a.length !== b.length) return false;
   let diff = 0;
   for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
@@ -75,11 +104,11 @@ async function hmac(data: string): Promise<string> {
   return b64urlEncode(sig);
 }
 
-/* ---------------- credentials ---------------- */
+/* ---------------- owner-mode credentials ---------------- */
 
-/** Verify a submitted email + password against the configured values. */
-export function verifyCredentials(email: string, password: string): boolean {
-  if (!authConfigured()) return false;
+/** Verify a submitted email + password against the legacy env credentials. */
+export function verifyOwnerCredentials(email: string, password: string): boolean {
+  if (!ownerModeConfigured()) return false;
   const okEmail = safeEqual(email.trim().toLowerCase(), env("WATHIQ_AUTH_EMAIL").toLowerCase());
   const okPass = safeEqual(password, env("WATHIQ_AUTH_PASSWORD"));
   return okEmail && okPass;
@@ -87,16 +116,22 @@ export function verifyCredentials(email: string, password: string): boolean {
 
 /* ---------------- session tokens ---------------- */
 
-interface SessionPayload {
-  sub: string; // email
-  iat: number; // issued-at (epoch seconds)
-  exp: number; // expiry (epoch seconds)
+export interface SessionUser {
+  /** User id from the database, or "owner" in legacy env-credential mode. */
+  uid: string;
+  name: string;
+  email: string;
 }
 
-/** Create a signed session token for the given subject. */
-export async function createSessionToken(sub: string, nowSeconds: number): Promise<string> {
+interface SessionPayload extends SessionUser {
+  iat: number;
+  exp: number;
+}
+
+/** Create a signed session token for the given user. */
+export async function createSessionToken(user: SessionUser, nowSeconds: number): Promise<string> {
   const payload: SessionPayload = {
-    sub,
+    ...user,
     iat: nowSeconds,
     exp: nowSeconds + SESSION_TTL_SECONDS,
   };
@@ -106,26 +141,34 @@ export async function createSessionToken(sub: string, nowSeconds: number): Promi
 }
 
 /**
- * Verify a session token's signature and expiry.
+ * Verify a token's signature + expiry and return its user, or null.
  * `nowSeconds` is passed in so the caller controls the clock (Edge-safe).
  */
+export async function readSessionToken(
+  token: string | undefined,
+  nowSeconds: number
+): Promise<SessionUser | null> {
+  if (!token) return null;
+  const dot = token.lastIndexOf(".");
+  if (dot <= 0) return null;
+  const body = token.slice(0, dot);
+  const sig = token.slice(dot + 1);
+  const expected = await hmac(body);
+  if (!safeEqual(sig, expected)) return null;
+  try {
+    const p = JSON.parse(b64urlDecodeStr(body)) as SessionPayload;
+    if (typeof p.exp !== "number" || p.exp <= nowSeconds) return null;
+    if (typeof p.uid !== "string" || !p.uid) return null;
+    return { uid: p.uid, name: String(p.name ?? ""), email: String(p.email ?? "") };
+  } catch {
+    return null;
+  }
+}
+
+/** Boolean convenience used by the middleware. */
 export async function verifySessionToken(
   token: string | undefined,
   nowSeconds: number
 ): Promise<boolean> {
-  if (!token) return false;
-  const dot = token.lastIndexOf(".");
-  if (dot <= 0) return false;
-  const body = token.slice(0, dot);
-  const sig = token.slice(dot + 1);
-  const expected = await hmac(body);
-  if (!safeEqual(sig, expected)) return false;
-  try {
-    const payload = JSON.parse(b64urlDecodeStr(body)) as SessionPayload;
-    return typeof payload.exp === "number" && payload.exp > nowSeconds;
-  } catch {
-    return false;
-  }
+  return (await readSessionToken(token, nowSeconds)) !== null;
 }
-
-export const SESSION_MAX_AGE = SESSION_TTL_SECONDS;

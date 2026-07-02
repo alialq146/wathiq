@@ -36,18 +36,26 @@ const FALLBACK: WorkspaceData = {
  * Load the workspace data from Postgres when a database is configured and
  * seeded; otherwise fall back to the in-code mock data. This guarantees the
  * app renders whether or not the database exists, so deploys never break.
+ *
+ * When `userId` is given, results are scoped to that user's rows plus the
+ * shared demo rows (ownerId = null), so every account gets its own workspace.
  */
-export async function getWorkspaceData(): Promise<WorkspaceData> {
+export async function getWorkspaceData(userId?: string | null): Promise<WorkspaceData> {
   if (!hasDatabase()) return FALLBACK;
+
+  // Visible rows: shared/demo (no owner) + the current user's own.
+  const owned = userId
+    ? { OR: [{ ownerId: null }, { ownerId: userId }] }
+    : {};
 
   try {
     const [requirements, acceptanceCriteria, businessRules, openQuestions, auditEvents] =
       await Promise.all([
-        prisma.requirement.findMany({ orderBy: { order: "asc" } }),
-        prisma.acceptanceCriterion.findMany({ orderBy: { order: "asc" } }),
-        prisma.businessRule.findMany({ orderBy: { order: "asc" } }),
-        prisma.openQuestion.findMany({ orderBy: { order: "asc" } }),
-        prisma.auditEvent.findMany({ orderBy: { createdAt: "desc" }, take: 200 }),
+        prisma.requirement.findMany({ where: owned, orderBy: { order: "asc" } }),
+        prisma.acceptanceCriterion.findMany({ where: owned, orderBy: { order: "asc" } }),
+        prisma.businessRule.findMany({ where: owned, orderBy: { order: "asc" } }),
+        prisma.openQuestion.findMany({ where: owned, orderBy: { order: "asc" } }),
+        prisma.auditEvent.findMany({ where: owned, orderBy: { createdAt: "desc" }, take: 200 }),
       ]);
 
     // Not seeded yet → keep the app populated with the fallback content.

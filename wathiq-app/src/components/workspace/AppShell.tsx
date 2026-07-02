@@ -31,7 +31,7 @@ export interface AppShellProps {
   rightRail?: React.ReactNode;
 }
 
-const APP_VERSION = "0.7.0";
+const APP_VERSION = "1.0.0";
 
 /** Lightweight anchored popover with a click-catching backdrop. */
 function Dropdown({
@@ -75,7 +75,10 @@ function Dropdown({
 
 /** App frame: right-anchored sidebar (RTL) + topbar. */
 export function AppShell({ current, onNavigate, onNewAnalysis, search = "", onSearchChange, children, rightRail }: AppShellProps) {
-  const { requirements, source, authEnabled } = useWorkspaceData();
+  const { requirements, source, authEnabled, user } = useWorkspaceData();
+  // Demo persona when auth is off; the real account when signed in.
+  const displayName = user?.name || "سارة العتيبي";
+  const displayRole = user?.email || "محللة أعمال أولى";
   const [menu, setMenu] = React.useState<null | "project" | "settings">(null);
   const [loggingOut, setLoggingOut] = React.useState(false);
   const toggleMenu = (m: "project" | "settings") => setMenu((cur) => (cur === m ? null : m));
@@ -338,12 +341,32 @@ export function AppShell({ current, onNavigate, onNewAnalysis, search = "", onSe
             gap: 9,
           }}
         >
-          <Avatar name="سارة العتيبي" size={30} />
+          <Avatar name={displayName} size={30} />
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ font: "var(--weight-semibold) 12px/1.3 var(--font-sans)", color: "var(--text-strong)" }}>
-              سارة العتيبي
+            <div
+              style={{
+                font: "var(--weight-semibold) 12px/1.3 var(--font-sans)",
+                color: "var(--text-strong)",
+                whiteSpace: "nowrap",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+              }}
+            >
+              {displayName}
             </div>
-            <div style={{ font: "10px/1.3 var(--font-sans)", color: "var(--text-subtle)" }}>محللة أعمال أولى</div>
+            <div
+              style={{
+                font: "10px/1.3 var(--font-sans)",
+                color: "var(--text-subtle)",
+                whiteSpace: "nowrap",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                direction: user?.email ? "ltr" : undefined,
+                textAlign: "start",
+              }}
+            >
+              {displayRole}
+            </div>
           </div>
           <button
             onClick={() => toggleMenu("settings")}
@@ -420,7 +443,7 @@ export function AppShell({ current, onNavigate, onNewAnalysis, search = "", onSe
                 <Icon name="history" size={15} color="var(--text-muted)" />
                 <span style={{ flex: 1 }}>فتح سجل التدقيق</span>
               </button>
-              {authEnabled && (
+              {authEnabled && user && (
                 <button
                   onClick={logout}
                   disabled={loggingOut}

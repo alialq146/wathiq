@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { authConfigured } from "@/lib/auth";
+import { authEnabled, hasDatabaseEnv } from "@/lib/auth";
 import { LoginForm } from "./LoginForm";
 
 export const dynamic = "force-dynamic";
@@ -9,8 +9,8 @@ export default async function LoginPage({
 }: {
   searchParams: Promise<{ next?: string }>;
 }) {
-  // If auth isn't configured, there's nothing to sign in to — go home.
-  if (!authConfigured()) redirect("/");
+  // If auth isn't enabled, there's nothing to sign in to — go home.
+  if (!authEnabled()) redirect("/");
 
   const { next } = await searchParams;
   const target = next && next.startsWith("/") ? next : "/";
@@ -26,7 +26,8 @@ export default async function LoginPage({
         padding: 20,
       }}
     >
-      <LoginForm next={target} />
+      {/* Signup is only possible in accounts (database) mode. */}
+      <LoginForm next={target} showSignup={hasDatabaseEnv()} />
     </div>
   );
 }

@@ -12,8 +12,18 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+/// A registered account. Passwords are stored as scrypt hashes, never plain.
+model User {
+  id           String   @id @default(cuid())
+  name         String
+  email        String   @unique
+  passwordHash String
+  createdAt    DateTime @default(now())
+}
+
 model Requirement {
   id            String  @id
+  ownerId       String?
   title         String
   description   String
   status        String
@@ -24,10 +34,13 @@ model Requirement {
   module        String
   stakeholders  String[]
   order         Int     @default(0)
+
+  @@index([ownerId])
 }
 
 model AcceptanceCriterion {
   id            String  @id
+  ownerId       String?
   requirementId String?
   text          String
   done          Boolean
@@ -35,20 +48,24 @@ model AcceptanceCriterion {
   order         Int     @default(0)
 
   @@index([requirementId])
+  @@index([ownerId])
 }
 
 model BusinessRule {
   id            String  @id
+  ownerId       String?
   requirementId String?
   text          String
   source        String
   order         Int     @default(0)
 
   @@index([requirementId])
+  @@index([ownerId])
 }
 
 model OpenQuestion {
   id            String  @id
+  ownerId       String?
   requirementId String?
   text          String
   to            String
@@ -57,11 +74,13 @@ model OpenQuestion {
   order         Int     @default(0)
 
   @@index([requirementId])
+  @@index([ownerId])
 }
 
 /// Append-only activity log for the audit trail screen.
 model AuditEvent {
   id            String   @id @default(cuid())
+  ownerId       String?
   requirementId String?
   action        String
   detail        String
@@ -70,4 +89,5 @@ model AuditEvent {
 
   @@index([requirementId])
   @@index([createdAt])
+  @@index([ownerId])
 }
