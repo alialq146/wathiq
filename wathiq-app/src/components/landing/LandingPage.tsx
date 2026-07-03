@@ -17,6 +17,7 @@ const NAV = [
   { href: "#features", label: "المميزات" },
   { href: "#how", label: "كيف يعمل" },
   { href: "#screens", label: "لقطات من النظام" },
+  { href: "/pricing", label: "الأسعار" },
   { href: "#faq", label: "الأسئلة الشائعة" },
   { href: "#contact", label: "تواصل معنا" },
 ];
@@ -384,8 +385,8 @@ export function LandingPage() {
             <h4>الدعم</h4>
             <a href="#faq">مركز المساعدة</a>
             <a href="#faq">الأسئلة الشائعة</a>
-            <a href="#">سياسة الخصوصية</a>
-            <a href="#">شروط الاستخدام</a>
+            <a href="/privacy">سياسة الخصوصية</a>
+            <a href="/terms">شروط الاستخدام</a>
           </div>
 
           <div className="wl-foot-col">

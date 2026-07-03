@@ -43,10 +43,9 @@ const FALLBACK: WorkspaceData = {
 export async function getWorkspaceData(userId?: string | null): Promise<WorkspaceData> {
   if (!hasDatabase()) return FALLBACK;
 
-  // Visible rows: shared/demo (no owner) + the current user's own.
-  const owned = userId
-    ? { OR: [{ ownerId: null }, { ownerId: userId }] }
-    : {};
+  // Each account sees only its own rows, so new users start with a clean
+  // workspace. When no user is scoped (open/owner mode) everything is shown.
+  const owned = userId ? { ownerId: userId } : {};
 
   try {
     const [requirements, acceptanceCriteria, businessRules, openQuestions, auditEvents] =

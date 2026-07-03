@@ -17,6 +17,8 @@ export default async function Page() {
     return <LandingPage />;
   }
 
+  // Real accounts are scoped to their own data; legacy "owner" mode sees all.
+  const scopeId = user && user.uid !== "owner" ? user.uid : undefined;
   const {
     requirements,
     acceptanceCriteria,
@@ -24,7 +26,7 @@ export default async function Page() {
     openQuestions,
     auditEvents,
     source,
-  } = await getWorkspaceData(user?.uid);
+  } = await getWorkspaceData(scopeId);
 
   return (
     <WorkspaceClient

@@ -55,11 +55,11 @@ async function requireActor(): Promise<Actor | null> {
 }
 
 /**
- * Ownership filter for mutations: a user may touch their own rows and the
- * shared demo rows; in open mode everything is reachable (single-tenant).
+ * Ownership filter for mutations: a user may only touch their own rows; in
+ * open/owner mode (uid null) everything is reachable (single-tenant).
  */
 function ownedBy(uid: string | null) {
-  return uid ? { OR: [{ ownerId: null }, { ownerId: uid }] } : {};
+  return uid ? { ownerId: uid } : {};
 }
 
 /**

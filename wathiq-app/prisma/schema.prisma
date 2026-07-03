@@ -14,11 +14,12 @@ datasource db {
 
 /// A registered account. Passwords are stored as scrypt hashes, never plain.
 model User {
-  id           String   @id @default(cuid())
-  name         String
-  email        String   @unique
-  passwordHash String
-  createdAt    DateTime @default(now())
+  id            String   @id @default(cuid())
+  name          String
+  email         String   @unique
+  passwordHash  String
+  analysisCount Int      @default(0)
+  createdAt     DateTime @default(now())
 }
 
 model Requirement {
