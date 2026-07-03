@@ -1,24 +1,17 @@
 import Image from "next/image";
 import { Icon } from "@/components/ds";
+import { PLANS, PLAN_ORDER, whatsappUpgradeLink, type Plan } from "@/lib/plans";
 
 export const dynamic = "force-dynamic";
 
 export const metadata = {
-  title: "الاشتراك · وثّق",
-  description: "خطط اشتراك منصة وثّق لتحليل المتطلبات بالذكاء الاصطناعي.",
+  title: "الباقات والأسعار · وثّق",
+  description: "باقات منصة وثّق لتحليل المتطلبات بالذكاء الاصطناعي: مجاني، احترافي، والأعمال.",
 };
-
-const WHATSAPP =
-  "https://wa.me/966531800106?text=" +
-  encodeURIComponent("مرحبًا، أرغب في ترقية اشتراكي في منصة وثّق للحصول على تحليلات إضافية.");
-
-const FREE = ["تحليل واحد مجاني بالذكاء الاصطناعي", "استخراج المتطلبات والمعايير والأسئلة", "تصدير PDF · Word · Excel", "مساحة عمل خاصة وآمنة"];
-const PRO = ["تحليلات غير محدودة", "أولوية في المعالجة", "دعم مباشر عبر واتساب", "كل مميزات الخطة المجانية"];
 
 export default function PricingPage() {
   return (
-    <div style={{ minHeight: "100vh", background: "var(--bg-app)", display: "flex", flexDirection: "column" }}>
-      {/* header */}
+    <div style={{ minHeight: "100vh", background: "var(--bg-app)" }}>
       <header
         style={{
           height: 64,
@@ -50,149 +43,106 @@ export default function PricingPage() {
         </a>
       </header>
 
-      <main style={{ flex: 1, padding: "56px 24px", maxWidth: 900, margin: "0 auto", width: "100%" }}>
-        <div style={{ textAlign: "center", marginBottom: 40 }}>
-          <span
-            style={{
-              display: "inline-block",
-              font: "var(--weight-bold) 12.5px/1 var(--font-sans)",
-              letterSpacing: ".12em",
-              textTransform: "uppercase",
-              color: "var(--teal-600)",
-              marginBottom: 12,
-            }}
-          >
-            الاشتراك
+      <main style={{ maxWidth: 1080, margin: "0 auto", padding: "56px 24px 72px" }}>
+        <div style={{ textAlign: "center", marginBottom: 44 }}>
+          <span style={{ display: "inline-block", font: "var(--weight-bold) 12.5px/1 var(--font-sans)", letterSpacing: ".12em", textTransform: "uppercase", color: "var(--teal-600)", marginBottom: 12 }}>
+            الباقات
           </span>
           <h1 style={{ font: "var(--weight-bold) 34px/1.3 var(--font-sans)", color: "var(--navy-950)", margin: "0 0 10px" }}>
-            ابدأ مجانًا، وارتقِ عند الحاجة
+            اختر الباقة المناسبة لك
           </h1>
           <p style={{ font: "16px/1.7 var(--font-sans)", color: "var(--text-muted)", margin: 0 }}>
-            جرّب وثّق بتحليل مجاني، وعند الحاجة لمزيد تواصل معنا مباشرة عبر واتساب — ووسيلة الدفع الإلكتروني قريبًا.
+            ابدأ مجانًا، وارتقِ عند الحاجة. الترقية حاليًا تتم يدويًّا عبر التواصل المباشر — والدفع الإلكتروني قريبًا.
           </p>
         </div>
 
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 20, alignItems: "start" }}>
-          {/* Free */}
-          <div
-            style={{
-              background: "var(--surface-card)",
-              border: "1px solid var(--border-default)",
-              borderRadius: "var(--radius-xl)",
-              padding: 28,
-            }}
-          >
-            <h2 style={{ font: "var(--weight-semibold) 18px/1 var(--font-sans)", color: "var(--text-strong)", margin: "0 0 8px" }}>مجاني</h2>
-            <div style={{ font: "var(--weight-bold) 34px/1 var(--font-sans)", color: "var(--navy-950)", margin: "0 0 4px" }}>
-              0<span style={{ font: "14px var(--font-sans)", color: "var(--text-muted)" }}> ريال</span>
-            </div>
-            <p style={{ font: "13px var(--font-sans)", color: "var(--text-muted)", margin: "0 0 20px" }}>للتجربة والاستخدام الفردي</p>
-            <Plan items={FREE} />
-            <a
-              href="/signup"
-              style={{
-                display: "flex",
-                justifyContent: "center",
-                marginTop: 22,
-                height: 44,
-                alignItems: "center",
-                borderRadius: "var(--radius-pill)",
-                border: "1px solid var(--border-strong)",
-                background: "var(--surface-card)",
-                color: "var(--navy-900)",
-                font: "var(--weight-semibold) 15px var(--font-sans)",
-                textDecoration: "none",
-              }}
-            >
-              ابدأ الآن مجانًا
-            </a>
-          </div>
-
-          {/* Pro */}
-          <div
-            style={{
-              position: "relative",
-              background: "linear-gradient(150deg, #071B3D, #0C2566)",
-              borderRadius: "var(--radius-xl)",
-              padding: 28,
-              color: "#fff",
-              boxShadow: "var(--shadow-xl)",
-            }}
-          >
-            <span
-              style={{
-                position: "absolute",
-                insetInlineStart: 20,
-                top: -12,
-                background: "var(--teal-500)",
-                color: "#fff",
-                font: "var(--weight-semibold) 11px/1 var(--font-sans)",
-                padding: "6px 12px",
-                borderRadius: "var(--radius-pill)",
-              }}
-            >
-              الأكثر قيمة
-            </span>
-            <h2 style={{ font: "var(--weight-semibold) 18px/1 var(--font-sans)", margin: "0 0 8px" }}>احترافي</h2>
-            <div style={{ font: "var(--weight-bold) 26px/1.2 var(--font-sans)", margin: "0 0 4px" }}>تواصل معنا</div>
-            <p style={{ font: "13px var(--font-sans)", color: "rgba(255,255,255,.7)", margin: "0 0 20px" }}>للفرق والاستخدام المكثّف</p>
-            <Plan items={PRO} dark />
-            <a
-              href={WHATSAPP}
-              target="_blank"
-              rel="noopener noreferrer"
-              style={{
-                display: "flex",
-                justifyContent: "center",
-                alignItems: "center",
-                gap: 8,
-                marginTop: 22,
-                height: 44,
-                borderRadius: "var(--radius-pill)",
-                background: "#25D366",
-                color: "#06231A",
-                font: "var(--weight-bold) 15px var(--font-sans)",
-                textDecoration: "none",
-              }}
-            >
-              <Icon name="message-circle" size={18} color="#06231A" /> تواصل عبر واتساب
-            </a>
-            <a
-              href="mailto:wathiq.ai.app@gmail.com"
-              style={{
-                display: "flex",
-                justifyContent: "center",
-                alignItems: "center",
-                gap: 8,
-                marginTop: 10,
-                height: 40,
-                color: "rgba(255,255,255,.85)",
-                font: "14px var(--font-sans)",
-                textDecoration: "none",
-              }}
-            >
-              <Icon name="mail" size={15} color="rgba(255,255,255,.85)" /> wathiq.ai.app@gmail.com
-            </a>
-          </div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(300px, 100%), 1fr))", gap: 20, alignItems: "stretch" }}>
+          {PLAN_ORDER.map((id) => (
+            <PlanCard key={id} plan={PLANS[id]} />
+          ))}
         </div>
 
-        <p style={{ textAlign: "center", marginTop: 32, font: "13px var(--font-sans)", color: "var(--text-subtle)" }}>
-          وسيلة دفع إلكترونية ستُضاف قريبًا. حاليًا تتم الترقية يدويًّا عبر التواصل المباشر.
+        <p style={{ textAlign: "center", marginTop: 34, font: "13px var(--font-sans)", color: "var(--text-subtle)" }}>
+          جميع الباقات تشمل واجهة عربية كاملة (RTL) وعزلًا آمنًا لبياناتك.
         </p>
       </main>
     </div>
   );
 }
 
-function Plan({ items, dark = false }: { items: string[]; dark?: boolean }) {
+function PlanCard({ plan }: { plan: Plan }) {
+  const recommended = plan.recommended;
+  const dark = recommended;
   return (
-    <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "flex", flexDirection: "column", gap: 12 }}>
-      {items.map((t) => (
-        <li key={t} style={{ display: "flex", alignItems: "flex-start", gap: 9, font: "14px/1.5 var(--font-sans)", color: dark ? "rgba(255,255,255,.9)" : "var(--text-body)" }}>
-          <Icon name="check" size={16} color={dark ? "var(--teal-300)" : "var(--green-500)"} strokeWidth={2.5} />
-          <span>{t}</span>
-        </li>
-      ))}
-    </ul>
+    <div
+      style={{
+        position: "relative",
+        display: "flex",
+        flexDirection: "column",
+        padding: 28,
+        borderRadius: "var(--radius-xl)",
+        background: dark ? "linear-gradient(160deg, #071B3D, #0C2566)" : "var(--surface-card)",
+        color: dark ? "#fff" : "var(--text-body)",
+        border: dark ? "none" : "1px solid var(--border-default)",
+        boxShadow: dark ? "var(--shadow-xl)" : "none",
+      }}
+    >
+      {recommended && (
+        <span style={{ position: "absolute", insetInlineStart: 24, top: -12, background: "var(--teal-500)", color: "#fff", font: "var(--weight-semibold) 11px/1 var(--font-sans)", padding: "6px 12px", borderRadius: "var(--radius-pill)" }}>
+          الأكثر قيمة
+        </span>
+      )}
+      <div style={{ marginBottom: 6 }}>
+        <span style={{ font: "var(--weight-semibold) 18px/1 var(--font-sans)", color: dark ? "#fff" : "var(--text-strong)" }}>{plan.name}</span>
+        <span style={{ font: "11px var(--font-mono)", color: dark ? "rgba(255,255,255,.6)" : "var(--text-subtle)", marginInlineStart: 8 }}>{plan.tag}</span>
+      </div>
+      <div style={{ display: "flex", alignItems: "baseline", gap: 6, margin: "6px 0 2px" }}>
+        <span style={{ font: `var(--weight-bold) ${plan.price.length > 4 ? "22px" : "34px"}/1.1 var(--font-sans)`, color: dark ? "#fff" : "var(--navy-950)" }}>
+          {plan.price}
+        </span>
+        <span style={{ font: "13px var(--font-sans)", color: dark ? "rgba(255,255,255,.75)" : "var(--text-muted)" }}>{plan.priceNote}</span>
+      </div>
+
+      <ul style={{ listStyle: "none", padding: 0, margin: "18px 0 0", display: "flex", flexDirection: "column", gap: 11, flex: 1 }}>
+        {plan.features.map((f) => (
+          <li key={f} style={{ display: "flex", alignItems: "flex-start", gap: 9, font: "14px/1.5 var(--font-sans)", color: dark ? "rgba(255,255,255,.92)" : "var(--text-body)" }}>
+            <Icon name="check" size={16} color={dark ? "var(--teal-300)" : "var(--green-500)"} strokeWidth={2.5} />
+            <span>{f}</span>
+          </li>
+        ))}
+        {plan.limits?.map((l) => (
+          <li key={l} style={{ display: "flex", alignItems: "flex-start", gap: 9, font: "13.5px/1.5 var(--font-sans)", color: dark ? "rgba(255,255,255,.55)" : "var(--text-subtle)" }}>
+            <Icon name="x" size={15} color={dark ? "rgba(255,255,255,.4)" : "var(--text-subtle)"} />
+            <span>{l}</span>
+          </li>
+        ))}
+      </ul>
+
+      <div style={{ marginTop: 22 }}>
+        {plan.cta === "signup" ? (
+          <a href="/signup" style={btn(false)}>ابدأ الآن مجانًا</a>
+        ) : (
+          <a href={whatsappUpgradeLink(`الترقية إلى باقة ${plan.name}`)} target="_blank" rel="noopener noreferrer" style={btn(true)}>
+            <Icon name="message-circle" size={17} color="#06231A" /> تواصل عبر واتساب
+          </a>
+        )}
+      </div>
+    </div>
   );
+}
+
+function btn(whatsapp: boolean): React.CSSProperties {
+  return {
+    display: "flex",
+    justifyContent: "center",
+    alignItems: "center",
+    gap: 8,
+    height: 44,
+    borderRadius: "var(--radius-pill)",
+    textDecoration: "none",
+    font: "var(--weight-bold) 15px var(--font-sans)",
+    ...(whatsapp
+      ? { background: "#25D366", color: "#06231A" }
+      : { background: "var(--primary)", color: "#fff" }),
+  };
 }

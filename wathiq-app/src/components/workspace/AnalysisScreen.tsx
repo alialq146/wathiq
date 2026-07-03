@@ -391,12 +391,22 @@ export function AnalysisScreen({ initialMode = "text" }: { initialMode?: "text" 
               <Icon name="sparkles" size={24} color="var(--teal-600)" />
             </span>
             <div style={{ font: "var(--weight-bold) 18px/1.4 var(--font-sans)", color: "var(--text-strong)" }}>
-              استهلكت تحليلك المجاني
+              وصلت إلى حد التحليلات المجانية
             </div>
-            <p style={{ font: "14px/1.7 var(--font-sans)", color: "var(--text-muted)", maxWidth: 420, margin: 0 }}>
-              حصلت على تحليل واحد مجاني. للحصول على تحليلات إضافية غير محدودة، تواصل معنا لترقية اشتراكك — والدفع الإلكتروني قريبًا.
+            <p style={{ font: "14px/1.7 var(--font-sans)", color: "var(--text-muted)", maxWidth: 440, margin: 0 }}>
+              قم بالترقية إلى الباقة الاحترافية (Professional) للحصول على تحليلات أكثر ومميزات متقدمة.
             </p>
             <div style={{ display: "flex", gap: 10, flexWrap: "wrap", justifyContent: "center", marginTop: 12 }}>
+              <a
+                href="/pricing"
+                style={{
+                  display: "inline-flex", alignItems: "center", gap: 8, height: 44, padding: "0 20px",
+                  borderRadius: "var(--radius-pill)", background: "var(--primary)", color: "#fff",
+                  font: "var(--weight-bold) 15px var(--font-sans)", textDecoration: "none",
+                }}
+              >
+                عرض الباقات
+              </a>
               <a
                 href={WHATSAPP}
                 target="_blank"
@@ -407,17 +417,7 @@ export function AnalysisScreen({ initialMode = "text" }: { initialMode?: "text" 
                   font: "var(--weight-bold) 15px var(--font-sans)", textDecoration: "none",
                 }}
               >
-                <Icon name="message-circle" size={18} color="#06231A" /> تواصل عبر واتساب
-              </a>
-              <a
-                href="/pricing"
-                style={{
-                  display: "inline-flex", alignItems: "center", gap: 8, height: 44, padding: "0 20px",
-                  borderRadius: "var(--radius-pill)", background: "var(--surface-card)", color: "var(--navy-900)",
-                  border: "1px solid var(--border-strong)", font: "var(--weight-semibold) 15px var(--font-sans)", textDecoration: "none",
-                }}
-              >
-                عرض خطط الاشتراك
+                <Icon name="message-circle" size={18} color="#06231A" /> التواصل عبر واتساب
               </a>
             </div>
             <button

@@ -2,12 +2,72 @@
 
 import React from "react";
 import { Badge, Button, Card, ConfidenceMeter, Icon, PriorityLabel, StatusBadge } from "@/components/ds";
-import { PROJECT, type Requirement } from "@/lib/data";
+import { type Requirement } from "@/lib/data";
+import { getPlan } from "@/lib/plans";
 import { useWorkspaceData } from "./WorkspaceDataContext";
+import type { UsageInfo } from "@/lib/workspace-data";
 
 export interface OverviewScreenProps {
   onOpen?: (req: Requirement | null) => void;
   onNewAnalysis?: () => void;
+}
+
+/* Compact plan + usage card for the dashboard. */
+function UsageCard({ usage }: { usage: UsageInfo }) {
+  const plan = getPlan(usage.plan);
+  const limit = usage.analysisLimit; // null = unlimited
+  const used = usage.analysisCount;
+  const pct = limit ? Math.min(100, Math.round((used / limit) * 100)) : 0;
+  const nearLimit = limit != null && used >= limit;
+  const canUpgrade = usage.plan !== "ENTERPRISE";
+
+  return (
+    <Card padding="lg" style={{ marginBottom: 16 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+        <span
+          style={{
+            width: 40, height: 40, borderRadius: "var(--radius-md)", flex: "0 0 40px",
+            background: "linear-gradient(150deg, var(--teal-50), var(--blue-50))",
+            border: "1px solid var(--teal-100)", display: "inline-flex", alignItems: "center", justifyContent: "center",
+          }}
+        >
+          <Icon name="gem" size={20} color="var(--teal-600)" />
+        </span>
+        <div style={{ flex: 1, minWidth: 180 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <span style={{ font: "var(--weight-semibold) 14px/1 var(--font-sans)", color: "var(--text-strong)" }}>
+              الخطة: {plan.name}
+            </span>
+            <Badge tone={usage.plan === "FREE" ? "neutral" : "ai"}>{plan.tag}</Badge>
+          </div>
+          <div style={{ font: "12px/1.5 var(--font-sans)", color: "var(--text-muted)", marginTop: 4 }}>
+            {limit == null ? (
+              <>التحليلات: <b style={{ color: "var(--text-body)" }}>غير محدودة</b></>
+            ) : (
+              <>التحليلات المستخدمة: <b style={{ color: nearLimit ? "var(--red-600)" : "var(--text-body)" }}>{used}</b> من {limit}</>
+            )}
+          </div>
+          {limit != null && (
+            <div style={{ height: 7, borderRadius: 999, background: "var(--slate-150)", overflow: "hidden", marginTop: 8, maxWidth: 320 }}>
+              <div style={{ width: `${pct}%`, height: "100%", borderRadius: 999, background: nearLimit ? "var(--red-500)" : "var(--teal-500)", transition: "width var(--dur-base)" }} />
+            </div>
+          )}
+        </div>
+        {canUpgrade && (
+          <a
+            href="/pricing"
+            style={{
+              display: "inline-flex", alignItems: "center", gap: 7, height: 38, padding: "0 16px",
+              borderRadius: "var(--radius-pill)", background: "var(--primary)", color: "#fff",
+              font: "var(--weight-semibold) 14px var(--font-sans)", textDecoration: "none",
+            }}
+          >
+            <Icon name="arrow-up" size={15} color="#fff" /> ترقية الخطة
+          </a>
+        )}
+      </div>
+    </Card>
+  );
 }
 
 const STATUS_META = [
@@ -22,14 +82,17 @@ const STATUS_META = [
 /* Project overview — BA-specific readiness view, computed from the user's
    real data. Shows an onboarding empty state for brand-new workspaces. */
 export function OverviewScreen({ onOpen, onNewAnalysis }: OverviewScreenProps) {
-  const { requirements, acceptanceCriteria, openQuestions } = useWorkspaceData();
+  const { requirements, acceptanceCriteria, openQuestions, usage, activeProject } = useWorkspaceData();
 
   const total = requirements.length;
+  const projectName = activeProject?.name ?? "مساحة العمل";
+  const projectCode = activeProject?.code ?? "";
 
   // ---- empty state (new account) ----
   if (total === 0) {
     return (
       <div style={{ padding: "24px 28px 40px", maxWidth: 1120, margin: "0 auto" }}>
+        {usage && <UsageCard usage={usage} />}
         <div
           style={{
             marginTop: 40,
@@ -106,9 +169,10 @@ export function OverviewScreen({ onOpen, onNewAnalysis }: OverviewScreenProps) {
 
   return (
     <div style={{ padding: "24px 28px 40px", maxWidth: 1120, margin: "0 auto" }}>
+      {usage && <UsageCard usage={usage} />}
       <div style={{ marginBottom: 22 }}>
         <h1 style={{ font: "var(--weight-semibold) var(--text-h1)/1.2 var(--font-sans)", color: "var(--text-strong)", margin: 0 }}>
-          {PROJECT.name}
+          {projectName}
         </h1>
         <p
           style={{
@@ -121,7 +185,7 @@ export function OverviewScreen({ onOpen, onNewAnalysis }: OverviewScreenProps) {
             flexWrap: "wrap",
           }}
         >
-          <span style={{ font: "12px var(--font-mono)", color: "var(--text-subtle)", direction: "ltr" }}>#{PROJECT.id}</span>
+          <span style={{ font: "12px var(--font-mono)", color: "var(--text-subtle)", direction: "ltr" }}>{projectCode}</span>
           <span>·</span>
           <span>{total} متطلب</span>
           <span>·</span>

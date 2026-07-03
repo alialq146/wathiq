@@ -4,15 +4,16 @@ import React from "react";
 import { Button, Icon } from "@/components/ds";
 import { saveRequirement, type RequirementInput } from "@/app/actions";
 import type { Requirement } from "@/lib/data";
-import type { RequirementStatus, PriorityLevel } from "@/components/ds";
+import type { PriorityLevel } from "@/components/ds";
 
-const STATUS_OPTIONS: { v: RequirementStatus; l: string }[] = [
-  { v: "draft", l: "مسودة" },
-  { v: "analyzing", l: "قيد التحليل" },
-  { v: "review", l: "قيد المراجعة" },
-  { v: "needs_info", l: "بحاجة لمعلومات" },
-  { v: "approved", l: "معتمد" },
-  { v: "blocked", l: "محظور" },
+const TYPE_OPTIONS: { v: string; l: string }[] = [
+  { v: "", l: "— غير محدد —" },
+  { v: "وظيفي", l: "وظيفي" },
+  { v: "غير وظيفي", l: "غير وظيفي" },
+  { v: "واجهة", l: "واجهة مستخدم" },
+  { v: "تقني", l: "تقني" },
+  { v: "أمني", l: "أمني" },
+  { v: "أخرى", l: "أخرى" },
 ];
 
 const PRIORITY_OPTIONS: { v: PriorityLevel; l: string }[] = [
@@ -76,6 +77,7 @@ export function RequirementFormDialog({
         description: initial.description,
         status: initial.status,
         priority: initial.priority,
+        type: initial.type ?? null,
         confidence: initial.confidence,
         criteria: initial.criteria,
         openQuestions: initial.openQuestions,
@@ -218,16 +220,14 @@ export function RequirementFormDialog({
 
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
             <div>
-              <label style={fieldLabel}>الحالة</label>
+              <label style={fieldLabel}>النوع</label>
               <select
-                value={form.status}
-                onChange={(e) => set("status", e.target.value as RequirementStatus)}
+                value={form.type ?? ""}
+                onChange={(e) => set("type", e.target.value || null)}
                 style={fieldBox}
               >
-                {STATUS_OPTIONS.map((o) => (
-                  <option key={o.v} value={o.v}>
-                    {o.l}
-                  </option>
+                {TYPE_OPTIONS.map((o) => (
+                  <option key={o.v} value={o.v}>{o.l}</option>
                 ))}
               </select>
             </div>
@@ -239,51 +239,9 @@ export function RequirementFormDialog({
                 style={fieldBox}
               >
                 {PRIORITY_OPTIONS.map((o) => (
-                  <option key={o.v} value={o.v}>
-                    {o.l}
-                  </option>
+                  <option key={o.v} value={o.v}>{o.l}</option>
                 ))}
               </select>
-            </div>
-          </div>
-
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12 }}>
-            <div>
-              <label style={fieldLabel}>الثقة (٪)</label>
-              <input
-                value={form.confidence ?? ""}
-                onChange={(e) =>
-                  set("confidence", e.target.value === "" ? null : Number(e.target.value))
-                }
-                type="number"
-                min={0}
-                max={100}
-                placeholder="—"
-                dir="ltr"
-                style={fieldBox}
-              />
-            </div>
-            <div>
-              <label style={fieldLabel}>معايير القبول</label>
-              <input
-                value={form.criteria}
-                onChange={(e) => set("criteria", Number(e.target.value))}
-                type="number"
-                min={0}
-                dir="ltr"
-                style={fieldBox}
-              />
-            </div>
-            <div>
-              <label style={fieldLabel}>أسئلة مفتوحة</label>
-              <input
-                value={form.openQuestions}
-                onChange={(e) => set("openQuestions", Number(e.target.value))}
-                type="number"
-                min={0}
-                dir="ltr"
-                style={fieldBox}
-              />
             </div>
           </div>
 
@@ -311,6 +269,13 @@ export function RequirementFormDialog({
                 style={fieldBox}
               />
             </div>
+          </div>
+
+          <div style={{ display: "flex", alignItems: "flex-start", gap: 8, padding: "10px 12px", borderRadius: "var(--radius-md)", background: "var(--teal-50)", border: "1px solid var(--teal-100)" }}>
+            <Icon name="sparkles" size={15} color="var(--teal-600)" style={{ marginTop: 1 }} />
+            <span style={{ font: "12px/1.6 var(--font-sans)", color: "var(--teal-700)" }}>
+              معايير القبول ودرجة الجودة والأسئلة المفتوحة تُستخرَج تلقائيًّا عند تحليل المتطلب بالذكاء الاصطناعي بعد الحفظ.
+            </span>
           </div>
 
           {error && (
@@ -368,6 +333,7 @@ function blank(): RequirementInput {
     description: "",
     status: "draft",
     priority: "medium",
+    type: null,
     confidence: null,
     criteria: 0,
     openQuestions: 0,

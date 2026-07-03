@@ -1,6 +1,7 @@
 "use client";
 
 import React from "react";
+import { useRouter } from "next/navigation";
 import { Icon } from "@/components/ds";
 import { AppShell, type ScreenId } from "./AppShell";
 import { OverviewScreen } from "./OverviewScreen";
@@ -8,6 +9,7 @@ import { RequirementsScreen } from "./RequirementsScreen";
 import { RequirementDetail, DetailRail } from "./RequirementDetailScreen";
 import { AnalysisScreen } from "./AnalysisScreen";
 import { StakeholdersScreen, RulesScreen, AuditScreen } from "./ContextScreens";
+import { ProjectFormDialog } from "./ProjectFormDialog";
 import {
   WorkspaceDataProvider,
   type WorkspaceDataValue,
@@ -58,7 +60,9 @@ function PlaceholderScreen({ label }: { label: string }) {
 }
 
 export function WorkspaceClient({ data }: { data: WorkspaceDataValue }) {
+  const router = useRouter();
   const [screen, setScreen] = React.useState<ScreenId | "detail">("overview");
+  const [projectDialog, setProjectDialog] = React.useState(false);
   const [req, setReq] = React.useState<Requirement | null>(null);
   const [analysisMode, setAnalysisMode] = React.useState<"text" | "pdf">("text");
   // Bumped on every navigation to Analysis so the screen remounts fresh in the chosen mode.
@@ -145,12 +149,23 @@ export function WorkspaceClient({ data }: { data: WorkspaceDataValue }) {
           current={current}
           onNavigate={nav}
           onNewAnalysis={() => openAnalysis("text")}
+          onNewProject={() => setProjectDialog(true)}
           search={search}
           onSearchChange={onSearchChange}
           rightRail={rail}
         >
           {main}
         </AppShell>
+        <ProjectFormDialog
+          open={projectDialog}
+          mode="create"
+          initial={null}
+          onClose={() => setProjectDialog(false)}
+          onSaved={() => {
+            setProjectDialog(false);
+            router.refresh();
+          }}
+        />
       </div>
     </WorkspaceDataProvider>
   );

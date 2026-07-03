@@ -2,9 +2,10 @@
 
 import React from "react";
 import Image from "next/image";
+import { useRouter } from "next/navigation";
 import { Avatar, Button, Icon } from "@/components/ds";
-import { PROJECT } from "@/lib/data";
 import { useTheme } from "@/lib/use-theme";
+import { setActiveProject } from "@/app/actions";
 import { useWorkspaceData } from "./WorkspaceDataContext";
 
 export type ScreenId =
@@ -26,6 +27,7 @@ export interface AppShellProps {
   current: ScreenId;
   onNavigate?: (id: ScreenId) => void;
   onNewAnalysis?: () => void;
+  onNewProject?: () => void;
   search?: string;
   onSearchChange?: (value: string) => void;
   children: React.ReactNode;
@@ -75,8 +77,9 @@ function Dropdown({
 }
 
 /** App frame: right-anchored sidebar (RTL) + topbar. */
-export function AppShell({ current, onNavigate, onNewAnalysis, search = "", onSearchChange, children, rightRail }: AppShellProps) {
-  const { requirements, source, authEnabled, user } = useWorkspaceData();
+export function AppShell({ current, onNavigate, onNewAnalysis, onNewProject, search = "", onSearchChange, children, rightRail }: AppShellProps) {
+  const { requirements, source, authEnabled, user, projects, activeProject } = useWorkspaceData();
+  const router = useRouter();
   // Demo persona when auth is off; the real account when signed in.
   const displayName = user?.name || "سارة العتيبي";
   const displayRole = user?.email || "محللة أعمال أولى";
@@ -84,6 +87,18 @@ export function AppShell({ current, onNavigate, onNewAnalysis, search = "", onSe
   const [menu, setMenu] = React.useState<null | "project" | "settings">(null);
   const [sidebarOpen, setSidebarOpen] = React.useState(false);
   const [loggingOut, setLoggingOut] = React.useState(false);
+
+  const proj = activeProject;
+  const projLabel = proj?.name ?? "مساحة العمل";
+  const projCode = proj?.icon || proj?.code?.replace(/^PRJ-?/i, "").slice(0, 4) || "PRJ";
+  const projColor = proj?.color || "var(--navy-800)";
+  const projMeta = proj?.code ?? "";
+
+  const switchProject = (id: string) => {
+    setMenu(null);
+    if (id === activeProject?.id) return;
+    setActiveProject(id).then(() => router.refresh());
+  };
   const toggleMenu = (m: "project" | "settings") => setMenu((cur) => (cur === m ? null : m));
 
   const logout = async () => {
@@ -229,33 +244,18 @@ export function AppShell({ current, onNavigate, onNewAnalysis, search = "", onSe
           >
             <span
               style={{
-                width: 24,
-                height: 24,
-                borderRadius: 6,
-                background: "var(--navy-800)",
-                color: "#fff",
-                font: "var(--weight-bold) 11px/1 var(--font-mono)",
-                display: "inline-flex",
-                alignItems: "center",
-                justifyContent: "center",
-                flex: "0 0 24px",
+                width: 24, height: 24, borderRadius: 6, background: projColor, color: "#fff",
+                font: "var(--weight-bold) 10px/1 var(--font-mono)", display: "inline-flex",
+                alignItems: "center", justifyContent: "center", flex: "0 0 24px",
               }}
             >
-              {PROJECT.code}
+              {projCode}
             </span>
             <div style={{ flex: 1, minWidth: 0, textAlign: "start" }}>
-              <div
-                style={{
-                  font: "var(--weight-semibold) 13px/1.2 var(--font-sans)",
-                  color: "var(--text-strong)",
-                  whiteSpace: "nowrap",
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                }}
-              >
-                {PROJECT.name}
+              <div style={{ font: "var(--weight-semibold) 13px/1.2 var(--font-sans)", color: "var(--text-strong)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                {projLabel}
               </div>
-              <div style={{ font: "10px/1.2 var(--font-mono)", color: "var(--text-subtle)" }}>#{PROJECT.id}</div>
+              <div style={{ font: "10px/1.2 var(--font-mono)", color: "var(--text-subtle)" }}>{projMeta}</div>
             </div>
             <Icon name="chevrons-up-down" size={15} color="var(--text-subtle)" />
           </button>
@@ -264,59 +264,46 @@ export function AppShell({ current, onNavigate, onNewAnalysis, search = "", onSe
             <div style={{ font: "var(--weight-semibold) 10px/1 var(--font-sans)", letterSpacing: ".06em", textTransform: "uppercase", color: "var(--text-subtle)", padding: "6px 8px 8px" }}>
               المشاريع
             </div>
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 9,
-                padding: "8px 8px",
-                borderRadius: "var(--radius-md)",
-                background: "var(--blue-50)",
-              }}
-            >
-              <span
-                style={{
-                  width: 24,
-                  height: 24,
-                  borderRadius: 6,
-                  background: "var(--navy-800)",
-                  color: "#fff",
-                  font: "var(--weight-bold) 11px/1 var(--font-mono)",
-                  display: "inline-flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  flex: "0 0 24px",
-                }}
-              >
-                {PROJECT.code}
-              </span>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ font: "var(--weight-semibold) 13px/1.2 var(--font-sans)", color: "var(--text-strong)" }}>{PROJECT.name}</div>
-                <div style={{ font: "10px/1.2 var(--font-mono)", color: "var(--text-subtle)" }}>#{PROJECT.id} · {requirements.length} متطلب</div>
-              </div>
-              <Icon name="check" size={15} color="var(--blue-600)" />
+            <div style={{ display: "flex", flexDirection: "column", gap: 2, maxHeight: 260, overflowY: "auto" }}>
+              {projects.map((p) => {
+                const on = p.id === activeProject?.id;
+                const code = p.icon || p.code?.replace(/^PRJ-?/i, "").slice(0, 4) || "PRJ";
+                return (
+                  <button
+                    key={p.id}
+                    onClick={() => switchProject(p.id)}
+                    style={{
+                      display: "flex", alignItems: "center", gap: 9, padding: "8px 8px", width: "100%",
+                      borderRadius: "var(--radius-md)", border: "none", cursor: "pointer", textAlign: "start",
+                      background: on ? "var(--blue-50)" : "transparent",
+                    }}
+                    onMouseEnter={(e) => { if (!on) e.currentTarget.style.background = "var(--slate-100)"; }}
+                    onMouseLeave={(e) => { if (!on) e.currentTarget.style.background = "transparent"; }}
+                  >
+                    <span style={{ width: 24, height: 24, borderRadius: 6, background: p.color || "var(--navy-800)", color: "#fff", font: "var(--weight-bold) 10px/1 var(--font-mono)", display: "inline-flex", alignItems: "center", justifyContent: "center", flex: "0 0 24px" }}>
+                      {code}
+                    </span>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ font: "var(--weight-semibold) 13px/1.2 var(--font-sans)", color: "var(--text-strong)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{p.name}</div>
+                      <div style={{ font: "10px/1.2 var(--font-mono)", color: "var(--text-subtle)" }}>{p.code}</div>
+                    </div>
+                    {on && <Icon name="check" size={15} color="var(--blue-600)" />}
+                  </button>
+                );
+              })}
             </div>
             <button
-              disabled
+              onClick={() => { setMenu(null); onNewProject?.(); }}
               style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 8,
-                width: "100%",
-                marginTop: 4,
-                padding: "8px 8px",
-                borderRadius: "var(--radius-md)",
-                border: "none",
-                background: "transparent",
-                color: "var(--text-subtle)",
-                font: "13px var(--font-sans)",
-                cursor: "not-allowed",
-                textAlign: "start",
+                display: "flex", alignItems: "center", gap: 8, width: "100%", marginTop: 4, padding: "8px 8px",
+                borderRadius: "var(--radius-md)", border: "1px dashed var(--border-strong)", background: "transparent",
+                color: "var(--text-body)", font: "var(--weight-medium) 13px var(--font-sans)", cursor: "pointer", textAlign: "start",
               }}
+              onMouseEnter={(e) => (e.currentTarget.style.background = "var(--slate-50)")}
+              onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
             >
-              <Icon name="plus" size={15} color="var(--text-subtle)" />
+              <Icon name="plus" size={15} color="var(--blue-600)" />
               <span style={{ flex: 1 }}>إضافة مشروع</span>
-              <span style={{ font: "10px var(--font-sans)", color: "var(--text-subtle)" }}>قريبًا</span>
             </button>
           </Dropdown>
         </div>
@@ -567,7 +554,7 @@ export function AppShell({ current, onNavigate, onNewAnalysis, search = "", onSe
               color: "var(--text-muted)",
             }}
           >
-            <span>{PROJECT.name}</span>
+            <span>{projLabel}</span>
             <Icon name="chevron-left" size={14} color="var(--text-subtle)" />
             <span style={{ color: "var(--text-strong)", fontWeight: "var(--weight-semibold)" as React.CSSProperties["fontWeight"] }}>
               {currentLabel}
