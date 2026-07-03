@@ -390,8 +390,8 @@ export function LandingPage() {
 
           <div className="wl-foot-col">
             <h4>تواصل معنا</h4>
-            <a href="mailto:info@wathiq.ai"><Icon name="mail" size={14} /> info@wathiq.ai</a>
-            <a href="tel:+966501234567" dir="ltr" style={{ textAlign: "start" }}><Icon name="phone" size={14} /> +966 50 123 4567</a>
+            <a href="mailto:wathiq.ai.app@gmail.com"><Icon name="mail" size={14} /> wathiq.ai.app@gmail.com</a>
+            <a href="tel:+966531800106" dir="ltr" style={{ textAlign: "start" }}><Icon name="phone" size={14} /> +966 53 180 0106</a>
             <div className="wl-social">
               <a href="#" aria-label="LinkedIn"><Icon name="linkedin" size={17} /></a>
               <a href="#" aria-label="X"><Icon name="twitter" size={17} /></a>
