@@ -82,7 +82,7 @@ export function StakeholdersScreen({ onOpen }: { onOpen: (r: Requirement) => voi
       {people.length === 0 ? (
         <p style={{ color: "var(--text-muted)" }}>لا يوجد أصحاب مصلحة بعد.</p>
       ) : (
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: 12 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(min(260px, 100%), 1fr))", gap: 12 }}>
           {people.map((p) => (
             <div
               key={p.name}

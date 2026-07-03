@@ -560,7 +560,7 @@ export function AnalysisScreen({ initialMode = "text" }: { initialMode?: "text" 
 
           {phase === "done" && result && (
             <>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12 }}>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))", gap: 12 }}>
                 {[
                   { n: result.requirements.length, l: "متطلبات", c: "var(--blue-600)" },
                   { n: result.acceptanceCriteriaCount, l: "معايير قبول", c: "var(--teal-600)" },

@@ -399,7 +399,7 @@ export function RequirementsScreen({ onOpen, onViewAnalysis, search = "", onClea
           )}
         </div>
       ) : (
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(340px, 1fr))", gap: 16 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(min(320px, 100%), 1fr))", gap: 16 }}>
           {list.map((r) => (
             <div key={r.id} className="wq-req-cell" style={{ position: "relative" }}>
               <RequirementCard {...r} onClick={() => onOpen && onOpen(r)} />

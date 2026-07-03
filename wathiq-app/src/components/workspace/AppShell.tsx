@@ -32,7 +32,7 @@ export interface AppShellProps {
   rightRail?: React.ReactNode;
 }
 
-const APP_VERSION = "1.1.0";
+const APP_VERSION = "1.2.0";
 
 /** Lightweight anchored popover with a click-catching backdrop. */
 function Dropdown({
@@ -82,6 +82,7 @@ export function AppShell({ current, onNavigate, onNewAnalysis, search = "", onSe
   const displayRole = user?.email || "محللة أعمال أولى";
   const { theme, toggle: toggleTheme } = useTheme();
   const [menu, setMenu] = React.useState<null | "project" | "settings">(null);
+  const [sidebarOpen, setSidebarOpen] = React.useState(false);
   const [loggingOut, setLoggingOut] = React.useState(false);
   const toggleMenu = (m: "project" | "settings") => setMenu((cur) => (cur === m ? null : m));
 
@@ -110,7 +111,10 @@ export function AppShell({ current, onNavigate, onNewAnalysis, search = "", onSe
     const on = current === item.id;
     return (
       <button
-        onClick={() => onNavigate && onNavigate(item.id)}
+        onClick={() => {
+          onNavigate && onNavigate(item.id);
+          setSidebarOpen(false);
+        }}
         style={{
           display: "flex",
           alignItems: "center",
@@ -157,6 +161,7 @@ export function AppShell({ current, onNavigate, onNewAnalysis, search = "", onSe
 
   return (
     <div
+      className="wq-shell"
       style={{
         display: "flex",
         height: "100vh",
@@ -165,8 +170,14 @@ export function AppShell({ current, onNavigate, onNewAnalysis, search = "", onSe
         overflow: "hidden",
       }}
     >
+      <style>{RESPONSIVE_CSS}</style>
+
+      {/* Mobile drawer backdrop */}
+      {sidebarOpen && <div className="wq-backdrop" onClick={() => setSidebarOpen(false)} />}
+
       {/* Sidebar */}
       <aside
+        className={`wq-sidebar ${sidebarOpen ? "wq-sidebar-open" : ""}`}
         style={{
           width: "var(--sidebar-w)",
           flex: "0 0 var(--sidebar-w)",
@@ -518,6 +529,7 @@ export function AppShell({ current, onNavigate, onNewAnalysis, search = "", onSe
       {/* Main column */}
       <div style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0 }}>
         <header
+          className="wq-topbar"
           style={{
             height: "var(--topbar-h)",
             flex: "0 0 var(--topbar-h)",
@@ -530,7 +542,23 @@ export function AppShell({ current, onNavigate, onNewAnalysis, search = "", onSe
             backdropFilter: "blur(6px)",
           }}
         >
+          <button
+            className="wq-burger"
+            aria-label="القائمة"
+            onClick={() => setSidebarOpen(true)}
+            style={{
+              display: "none",
+              border: "none",
+              background: "transparent",
+              cursor: "pointer",
+              padding: 4,
+              marginInlineEnd: -4,
+            }}
+          >
+            <Icon name="menu" size={22} color="var(--text-strong)" />
+          </button>
           <div
+            className="wq-crumb"
             style={{
               display: "flex",
               alignItems: "center",
@@ -554,6 +582,7 @@ export function AppShell({ current, onNavigate, onNewAnalysis, search = "", onSe
                 value={search}
                 onChange={(e) => onSearchChange && onSearchChange(e.target.value)}
                 placeholder="ابحث برقم متطلب أو نص…"
+                className="wq-search"
                 style={{
                   width: 240,
                   height: 34,
@@ -591,10 +620,11 @@ export function AppShell({ current, onNavigate, onNewAnalysis, search = "", onSe
           </div>
         </header>
 
-        <div style={{ flex: 1, display: "flex", minHeight: 0 }}>
+        <div className="wq-content" style={{ flex: 1, display: "flex", minHeight: 0 }}>
           <main style={{ flex: 1, overflowY: "auto", minWidth: 0 }}>{children}</main>
           {rightRail && (
             <aside
+              className="wq-rail"
               style={{
                 width: "var(--rail-w)",
                 flex: "0 0 var(--rail-w)",
@@ -611,3 +641,33 @@ export function AppShell({ current, onNavigate, onNewAnalysis, search = "", onSe
     </div>
   );
 }
+
+/* Responsive behaviour for the workspace shell. On narrow screens the sidebar
+   becomes an off-canvas drawer, the top bar shows a hamburger, the detail rail
+   stacks under the content, and the search field flexes to fit. */
+const RESPONSIVE_CSS = `
+@media (max-width: 860px){
+  /* App is always RTL → drawer anchored to the physical right, slides right to hide. */
+  .wq-sidebar {
+    position: fixed; top: 0; bottom: 0; right: 0; left: auto; z-index: 60;
+    transform: translateX(100%); transition: transform .25s var(--ease-out);
+  }
+  .wq-sidebar-open { transform: translateX(0); box-shadow: var(--shadow-xl); }
+  .wq-backdrop { position: fixed; inset: 0; z-index: 55; background: var(--surface-overlay); backdrop-filter: blur(2px); }
+  .wq-burger { display: inline-flex !important; }
+  .wq-topbar { padding: 0 14px !important; gap: 10px !important; }
+  .wq-content { flex-direction: column !important; overflow-y: auto; }
+  .wq-content > main { overflow: visible !important; }
+  .wq-rail {
+    width: 100% !important; flex: none !important;
+    border-inline-start: none !important; border-top: 1px solid var(--border-default);
+  }
+}
+@media (max-width: 560px){
+  .wq-crumb { display: none !important; }
+  .wq-search { width: 150px !important; }
+}
+@media (max-width: 400px){
+  .wq-search { width: 110px !important; }
+}
+`;
