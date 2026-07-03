@@ -138,7 +138,7 @@ export function AnalysisScreen({ initialMode = "text" }: { initialMode?: "text" 
 
   const WHATSAPP =
     "https://wa.me/966531800106?text=" +
-    encodeURIComponent("مرحبًا، استهلكت التحليل المجاني في وثّق وأرغب في الترقية للحصول على تحليلات إضافية.");
+    encodeURIComponent("مرحبًا، وصلت إلى حد التحليلات في خطتي الحالية بمنصة وثّق وأرغب في الترقية.");
 
   const save = async () => {
     if (!result) return;
@@ -391,10 +391,10 @@ export function AnalysisScreen({ initialMode = "text" }: { initialMode?: "text" 
               <Icon name="sparkles" size={24} color="var(--teal-600)" />
             </span>
             <div style={{ font: "var(--weight-bold) 18px/1.4 var(--font-sans)", color: "var(--text-strong)" }}>
-              وصلت إلى حد التحليلات المجانية
+              وصلت إلى حد التحليلات في خطتك الحالية
             </div>
             <p style={{ font: "14px/1.7 var(--font-sans)", color: "var(--text-muted)", maxWidth: 440, margin: 0 }}>
-              قم بالترقية إلى الباقة الاحترافية (Professional) للحصول على تحليلات أكثر ومميزات متقدمة.
+              يمكنك الترقية للحصول على مساحة أكبر للمشاريع والتحليلات المتقدمة.
             </p>
             <div style={{ display: "flex", gap: 10, flexWrap: "wrap", justifyContent: "center", marginTop: 12 }}>
               <a
@@ -417,7 +417,7 @@ export function AnalysisScreen({ initialMode = "text" }: { initialMode?: "text" 
                   font: "var(--weight-bold) 15px var(--font-sans)", textDecoration: "none",
                 }}
               >
-                <Icon name="message-circle" size={18} color="#06231A" /> التواصل عبر واتساب
+                <Icon name="message-circle" size={18} color="#06231A" /> التواصل للترقية
               </a>
             </div>
             <button

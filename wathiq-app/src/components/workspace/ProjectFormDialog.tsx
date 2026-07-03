@@ -110,17 +110,17 @@ export function ProjectFormDialog({ open, mode, initial, onClose, onSaved }: Pro
               <Icon name="folders" size={24} color="var(--teal-600)" />
             </span>
             <div style={{ font: "var(--weight-bold) 18px/1.4 var(--font-sans)", color: "var(--text-strong)" }}>
-              الباقة المجانية تتيح مشروعًا واحدًا
+              خطتك الحالية تتيح مشروعًا واحدًا
             </div>
             <p style={{ font: "14px/1.7 var(--font-sans)", color: "var(--text-muted)", maxWidth: 400, margin: 0 }}>
-              للعمل على أكثر من مشروع، قم بالترقية إلى الباقة الاحترافية للحصول على مشاريع متعددة ومميزات متقدمة.
+              للعمل على أكثر من مشروع، يمكنك الترقية للحصول على مشاريع متعددة ومساحة أكبر للتحليلات.
             </p>
             <div style={{ display: "flex", gap: 10, flexWrap: "wrap", justifyContent: "center", marginTop: 10 }}>
               <a href="/pricing" style={{ display: "inline-flex", alignItems: "center", height: 44, padding: "0 20px", borderRadius: "var(--radius-pill)", background: "var(--primary)", color: "#fff", font: "var(--weight-bold) 15px var(--font-sans)", textDecoration: "none" }}>
                 عرض الباقات
               </a>
               <a href={whatsappUpgradeLink("الترقية للحصول على مشاريع متعددة")} target="_blank" rel="noopener noreferrer" style={{ display: "inline-flex", alignItems: "center", gap: 8, height: 44, padding: "0 20px", borderRadius: "var(--radius-pill)", background: "#25D366", color: "#06231A", font: "var(--weight-bold) 15px var(--font-sans)", textDecoration: "none" }}>
-                <Icon name="message-circle" size={18} color="#06231A" /> التواصل عبر واتساب
+                <Icon name="message-circle" size={18} color="#06231A" /> التواصل للترقية
               </a>
             </div>
           </div>

@@ -36,7 +36,7 @@ function UsageCard({ usage }: { usage: UsageInfo }) {
         <div style={{ flex: 1, minWidth: 180 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
             <span style={{ font: "var(--weight-semibold) 14px/1 var(--font-sans)", color: "var(--text-strong)" }}>
-              الخطة: {plan.name}
+              الخطة الحالية: {plan.name}
             </span>
             <Badge tone={usage.plan === "FREE" ? "neutral" : "ai"}>{plan.tag}</Badge>
           </div>
@@ -70,6 +70,75 @@ function UsageCard({ usage }: { usage: UsageInfo }) {
   );
 }
 
+/* ---- getting-started guidance ---- */
+
+type StepState = "done" | "current" | "pending";
+
+const STEP_UI: Record<StepState, { bg: string; fg: string; border: string }> = {
+  done: { bg: "var(--green-50)", fg: "var(--green-600)", border: "var(--green-100)" },
+  current: { bg: "var(--blue-50)", fg: "var(--blue-600)", border: "var(--blue-100)" },
+  pending: { bg: "var(--slate-50)", fg: "var(--text-subtle)", border: "var(--border-subtle)" },
+};
+
+function StepChip({ n, label, state }: { n: number; label: string; state: StepState }) {
+  const ui = STEP_UI[state];
+  return (
+    <span
+      style={{
+        display: "inline-flex", alignItems: "center", gap: 7, padding: "6px 12px",
+        borderRadius: "var(--radius-pill)", background: ui.bg, border: `1px solid ${ui.border}`,
+        font: `var(--weight-${state === "current" ? "semibold" : "medium"}) 12.5px/1 var(--font-sans)`, color: ui.fg,
+        whiteSpace: "nowrap",
+      }}
+    >
+      {state === "done" ? <Icon name="check" size={13} color="var(--green-600)" /> : <b style={{ fontSize: 11 }}>{n}</b>}
+      {label}
+    </span>
+  );
+}
+
+/**
+ * Compact progress strip shown until the first analysis succeeds — then it
+ * disappears on its own. Never intrusive: one row of step chips + one line.
+ */
+function GettingStartedStrip({
+  states,
+  currentLabel,
+  onPrimary,
+  primaryLabel,
+}: {
+  states: [StepState, StepState, StepState, StepState];
+  currentLabel: string;
+  onPrimary?: () => void;
+  primaryLabel: string;
+}) {
+  const labels = ["إنشاء مشروع", "إضافة متطلبات", "تنفيذ التحليل", "مراجعة النتائج"];
+  return (
+    <Card padding="lg" style={{ marginBottom: 16 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+        <div style={{ flex: 1, minWidth: 240 }}>
+          <div style={{ font: "var(--weight-semibold) 13px/1 var(--font-sans)", color: "var(--text-strong)", marginBottom: 10 }}>
+            خطوات البدء
+          </div>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            {labels.map((l, i) => (
+              <StepChip key={l} n={i + 1} label={l} state={states[i]} />
+            ))}
+          </div>
+          <div style={{ font: "12.5px/1.6 var(--font-sans)", color: "var(--text-muted)", marginTop: 10 }}>
+            أنت الآن في خطوة {currentLabel}.
+          </div>
+        </div>
+        {onPrimary && (
+          <Button variant="primary" iconStart={<Icon name="sparkles" size={15} />} onClick={onPrimary}>
+            {primaryLabel}
+          </Button>
+        )}
+      </div>
+    </Card>
+  );
+}
+
 const STATUS_META = [
   { id: "approved", label: "معتمد", c: "var(--green-500)" },
   { id: "review", label: "قيد المراجعة", c: "var(--amber-500)" },
@@ -88,57 +157,121 @@ export function OverviewScreen({ onOpen, onNewAnalysis }: OverviewScreenProps) {
   const projectName = activeProject?.name ?? "مساحة العمل";
   const projectCode = activeProject?.code ?? "";
 
-  // ---- empty state (new account) ----
+  // ---- first-time onboarding (no requirements yet) ----
   if (total === 0) {
+    const hasProject = Boolean(activeProject);
+    const steps = [
+      {
+        icon: "folder-plus",
+        title: "أنشئ مشروعك الأول",
+        desc: "ابدأ مساحة عمل تجمع فيها وثائق ومتطلبات مشروعك.",
+        state: (hasProject ? "done" : "current") as StepState,
+      },
+      {
+        icon: "upload",
+        title: "أضف المتطلبات",
+        desc: "ارفع ملف PDF أو أدخل المتطلبات يدويًا داخل المشروع.",
+        state: (hasProject ? "current" : "pending") as StepState,
+      },
+      {
+        icon: "sparkles",
+        title: "راجع تحليل وثّق",
+        desc: "اطّلع على مؤشر الجودة، نقاط الغموض، الأسئلة المقترحة، ومعايير القبول.",
+        state: "pending" as StepState,
+      },
+    ];
     return (
       <div style={{ padding: "24px 28px 40px", maxWidth: 1120, margin: "0 auto" }}>
         {usage && <UsageCard usage={usage} />}
         <div
           style={{
-            marginTop: 40,
-            display: "flex",
-            flexDirection: "column",
-            alignItems: "center",
-            textAlign: "center",
-            gap: 14,
-            padding: "48px 28px",
-            border: "1px dashed var(--border-strong)",
+            marginTop: 24,
+            padding: "36px 28px",
+            border: "1px solid var(--border-default)",
             borderRadius: "var(--radius-xl)",
             background: "var(--surface-card)",
           }}
         >
-          <span
-            style={{
-              width: 60,
-              height: 60,
-              borderRadius: "var(--radius-lg)",
-              background: "linear-gradient(150deg, var(--teal-50), var(--blue-50))",
-              border: "1px solid var(--teal-100)",
-              display: "inline-flex",
-              alignItems: "center",
-              justifyContent: "center",
-            }}
-          >
-            <Icon name="sparkles" size={28} color="var(--teal-600)" />
-          </span>
-          <h1 style={{ font: "var(--weight-bold) 24px/1.3 var(--font-sans)", color: "var(--text-strong)", margin: 0 }}>
-            مرحبًا بك في وثّق 👋
-          </h1>
-          <p style={{ font: "15px/1.8 var(--font-sans)", color: "var(--text-muted)", maxWidth: 460, margin: 0 }}>
-            مساحتك جاهزة وفارغة. ابدأ بتحليل أول وثيقة متطلبات بالذكاء الاصطناعي، أو أضف متطلبًا يدويًّا — وستظهر هنا مؤشرات جاهزية مشروعك.
-          </p>
-          <div style={{ display: "flex", gap: 10, flexWrap: "wrap", justifyContent: "center", marginTop: 8 }}>
-            <Button variant="primary" iconStart={<Icon name="sparkles" size={16} />} onClick={() => onNewAnalysis && onNewAnalysis()}>
-              ابدأ أول تحليل
+          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", textAlign: "center", gap: 12 }}>
+            <span
+              style={{
+                width: 56, height: 56, borderRadius: "var(--radius-lg)",
+                background: "linear-gradient(150deg, var(--teal-50), var(--blue-50))",
+                border: "1px solid var(--teal-100)",
+                display: "inline-flex", alignItems: "center", justifyContent: "center",
+              }}
+            >
+              <Icon name="sparkles" size={26} color="var(--teal-600)" />
+            </span>
+            <h1 style={{ font: "var(--weight-bold) 23px/1.3 var(--font-sans)", color: "var(--text-strong)", margin: 0 }}>
+              مرحبًا بك في وثّق
+            </h1>
+            <p style={{ font: "14.5px/1.8 var(--font-sans)", color: "var(--text-muted)", maxWidth: 520, margin: 0 }}>
+              ابدأ بتنظيم متطلبات مشروعك، ثم ارفع وثيقة المتطلبات أو أضف المتطلبات يدويًا
+              ليقوم وثّق بتحليلها واكتشاف نقاط الغموض والتوصيات.
+            </p>
+          </div>
+
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(220px, 100%), 1fr))", gap: 14, margin: "26px 0" }}>
+            {steps.map((s, i) => {
+              const ui = STEP_UI[s.state];
+              return (
+                <div
+                  key={s.title}
+                  style={{
+                    padding: "16px 16px 14px",
+                    borderRadius: "var(--radius-lg)",
+                    border: `1px solid ${s.state === "current" ? "var(--blue-200)" : "var(--border-subtle)"}`,
+                    background: s.state === "current" ? "var(--blue-50)" : "var(--surface-card)",
+                  }}
+                >
+                  <div style={{ display: "flex", alignItems: "center", gap: 9, marginBottom: 8 }}>
+                    <span
+                      style={{
+                        width: 26, height: 26, borderRadius: "50%", flex: "0 0 26px",
+                        background: ui.bg, border: `1px solid ${ui.border}`, color: ui.fg,
+                        display: "inline-flex", alignItems: "center", justifyContent: "center",
+                        font: "var(--weight-bold) 12px var(--font-sans)",
+                      }}
+                    >
+                      {s.state === "done" ? <Icon name="check" size={14} color="var(--green-600)" /> : i + 1}
+                    </span>
+                    <Icon name={s.icon} size={17} color="var(--teal-600)" />
+                    <span style={{ font: "var(--weight-semibold) 13.5px/1.4 var(--font-sans)", color: "var(--text-strong)" }}>
+                      {s.title}
+                    </span>
+                  </div>
+                  <p style={{ font: "12.5px/1.7 var(--font-sans)", color: "var(--text-muted)", margin: 0 }}>{s.desc}</p>
+                  {s.state === "done" && (
+                    <div style={{ font: "11.5px var(--font-sans)", color: "var(--green-600)", marginTop: 8 }}>
+                      مكتملة — مشروعك «{activeProject?.name}» جاهز.
+                    </div>
+                  )}
+                  {s.state === "current" && (
+                    <div style={{ font: "11.5px var(--font-sans)", color: "var(--blue-600)", marginTop: 8 }}>الخطوة الحالية</div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+
+          <div style={{ display: "flex", gap: 10, flexWrap: "wrap", justifyContent: "center" }}>
+            <Button variant="primary" iconStart={<Icon name="upload" size={15} />} onClick={() => onNewAnalysis && onNewAnalysis()}>
+              ارفع وثيقة متطلبات
             </Button>
             <Button variant="secondary" iconStart={<Icon name="plus" size={15} />} onClick={() => onOpen && onOpen(null)}>
-              إضافة متطلب يدويًّا
+              أضف متطلبًا يدويًا
             </Button>
           </div>
         </div>
       </div>
     );
   }
+
+  // First analysis not done yet → show the compact guidance strip.
+  const hasAnalyzed =
+    (usage?.analysisCount ?? 0) > 0 ||
+    requirements.some((r) => r.analysis != null || r.confidence != null);
 
   // ---- derived metrics ----
   const statusCounts: Record<string, number> = {};
@@ -170,6 +303,14 @@ export function OverviewScreen({ onOpen, onNewAnalysis }: OverviewScreenProps) {
   return (
     <div style={{ padding: "24px 28px 40px", maxWidth: 1120, margin: "0 auto" }}>
       {usage && <UsageCard usage={usage} />}
+      {!hasAnalyzed && (
+        <GettingStartedStrip
+          states={["done", "done", "current", "pending"]}
+          currentLabel="تنفيذ التحليل"
+          primaryLabel="ابدأ أول تحليل"
+          onPrimary={() => onNewAnalysis && onNewAnalysis()}
+        />
+      )}
       <div style={{ marginBottom: 22 }}>
         <h1 style={{ font: "var(--weight-semibold) var(--text-h1)/1.2 var(--font-sans)", color: "var(--text-strong)", margin: 0 }}>
           {projectName}

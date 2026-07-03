@@ -758,9 +758,9 @@ function RequirementAnalysisPanel({ req, connected }: { req: Requirement; connec
     return (
       <div style={{ ...cardStyle, padding: 18, textAlign: "center", display: "flex", flexDirection: "column", alignItems: "center", gap: 8 }}>
         <Icon name="sparkles" size={22} color="var(--teal-600)" />
-        <div style={{ font: "var(--weight-bold) 15px/1.4 var(--font-sans)", color: "var(--text-strong)" }}>وصلت إلى حد التحليلات</div>
+        <div style={{ font: "var(--weight-bold) 15px/1.4 var(--font-sans)", color: "var(--text-strong)" }}>وصلت إلى حد التحليلات في خطتك الحالية</div>
         <p style={{ font: "12.5px/1.6 var(--font-sans)", color: "var(--text-muted)", margin: 0 }}>
-          قم بالترقية للحصول على تحليلات أكثر ومميزات متقدمة.
+          يمكنك الترقية للحصول على مساحة أكبر للمشاريع والتحليلات المتقدمة.
         </p>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "center", marginTop: 6 }}>
           <a href="/pricing" style={{ display: "inline-flex", alignItems: "center", height: 36, padding: "0 14px", borderRadius: "var(--radius-pill)", background: "var(--primary)", color: "#fff", font: "var(--weight-semibold) 13px var(--font-sans)", textDecoration: "none" }}>عرض الباقات</a>

@@ -38,6 +38,15 @@ const SORTS: { v: SortBy; l: string }[] = [
 export function RequirementsScreen({ onOpen, onViewAnalysis, search = "", onClearSearch }: RequirementsScreenProps) {
   const router = useRouter();
   const { requirements: REQUIREMENTS } = useWorkspaceData();
+  // Data-driven header/banner facts (no hardcoded demo copy).
+  const analyzedList = REQUIREMENTS.filter((r) => r.confidence != null || r.analysis != null);
+  const analyzedCount = analyzedList.length;
+  const avgConfidence = analyzedList.length
+    ? Math.round(
+        analyzedList.reduce((a, r) => a + (r.confidence ?? 0), 0) / analyzedList.length
+      )
+    : null;
+  const needsInfoCount = REQUIREMENTS.filter((r) => r.status === "needs_info").length;
   const [filter, setFilter] = React.useState<string>("all");
   const [priorities, setPriorities] = React.useState<Set<string>>(new Set());
   const [sortBy, setSortBy] = React.useState<SortBy>("default");
@@ -141,7 +150,9 @@ export function RequirementsScreen({ onOpen, onViewAnalysis, search = "", onClea
             المتطلبات
           </h1>
           <p style={{ font: "14px/1.5 var(--font-sans)", color: "var(--text-muted)", margin: "6px 0 0" }}>
-            {REQUIREMENTS.length} متطلبات مستخرجة من ٣ وثائق · آخر تحليل قبل ٣ ساعات
+            {REQUIREMENTS.length === 0
+              ? "ستظهر هنا متطلبات مشروعك بعد إضافتها."
+              : `${REQUIREMENTS.length} متطلبًا في المشروع${analyzedCount > 0 ? ` · ${analyzedCount} تم تحليله` : ""}`}
           </p>
         </div>
         <div style={{ display: "flex", gap: 8 }}>
@@ -292,7 +303,8 @@ export function RequirementsScreen({ onOpen, onViewAnalysis, search = "", onClea
         </div>
       )}
 
-      {/* AI summary banner */}
+      {/* AI summary banner — data-driven, only after something was analyzed */}
+      {analyzedCount > 0 && (
       <div
         style={{
           display: "flex",
@@ -322,13 +334,16 @@ export function RequirementsScreen({ onOpen, onViewAnalysis, search = "", onClea
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ font: "var(--weight-semibold) 14px/1.4 var(--font-sans)", color: "var(--teal-700)" }}>خلاصة وثّق</div>
           <div style={{ font: "13px/1.5 var(--font-sans)", color: "var(--text-body)" }}>
-            اكتمل تحليل ٦ متطلبات بمتوسط ثقة ٧٤٪. متطلبان بحاجة لمعلومات إضافية و٤ معايير قبول غير مكتملة قبل الاعتماد.
+            اكتمل تحليل {analyzedCount} من {REQUIREMENTS.length} متطلبًا
+            {avgConfidence != null ? ` بمتوسط جودة ${avgConfidence}٪` : ""}
+            {needsInfoCount > 0 ? ` · ${needsInfoCount} بحاجة لمعلومات إضافية قبل الاعتماد` : ""}.
           </div>
         </div>
         <Button variant="ghost" size="sm" iconEnd={<Icon name="chevron-left" size={15} />} style={{ color: "var(--teal-700)" }} onClick={onViewAnalysis}>
           عرض التحليل
         </Button>
       </div>
+      )}
 
       {/* Status filter chips */}
       <div style={{ display: "flex", gap: 8, marginBottom: 14, flexWrap: "wrap" }}>
@@ -372,7 +387,41 @@ export function RequirementsScreen({ onOpen, onViewAnalysis, search = "", onClea
         </div>
       )}
 
-      {list.length === 0 ? (
+      {REQUIREMENTS.length === 0 ? (
+        /* true empty — no requirements in this project yet */
+        <div
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            justifyContent: "center",
+            gap: 10,
+            padding: "56px 20px",
+            textAlign: "center",
+            color: "var(--text-muted)",
+            border: "1px dashed var(--border-strong)",
+            borderRadius: "var(--radius-xl)",
+            background: "var(--surface-card)",
+          }}
+        >
+          <span style={{ width: 52, height: 52, borderRadius: "var(--radius-lg)", background: "linear-gradient(150deg, var(--teal-50), var(--blue-50))", border: "1px solid var(--teal-100)", display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
+            <Icon name="clipboard-list" size={24} color="var(--teal-600)" />
+          </span>
+          <div style={{ font: "var(--weight-semibold) 16px var(--font-sans)", color: "var(--text-strong)" }}>لم تتم إضافة متطلبات بعد</div>
+          <div style={{ font: "13.5px/1.7 var(--font-sans)", maxWidth: 380 }}>
+            ابدأ برفع وثيقة متطلبات أو أضف متطلبًا يدويًا ليقوم وثّق بتحليلها لاحقًا.
+          </div>
+          <div style={{ display: "flex", gap: 10, flexWrap: "wrap", justifyContent: "center", marginTop: 8 }}>
+            <Button variant="primary" iconStart={<Icon name="upload" size={15} />} onClick={() => onViewAnalysis && onViewAnalysis()}>
+              رفع وثيقة متطلبات
+            </Button>
+            <Button variant="secondary" iconStart={<Icon name="plus" size={15} />} onClick={openCreate}>
+              إضافة متطلب يدوي
+            </Button>
+          </div>
+        </div>
+      ) : list.length === 0 ? (
+        /* filtered empty — search/filters matched nothing */
         <div
           style={{
             display: "flex",
@@ -388,12 +437,14 @@ export function RequirementsScreen({ onOpen, onViewAnalysis, search = "", onClea
           <span style={{ width: 48, height: 48, borderRadius: "var(--radius-lg)", background: "var(--slate-100)", display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
             <Icon name="search-x" size={22} color="var(--text-subtle)" />
           </span>
-          <div style={{ font: "var(--weight-semibold) 15px var(--font-sans)", color: "var(--text-strong)" }}>لا توجد متطلبات مطابقة</div>
-          <div style={{ font: "13px/1.6 var(--font-sans)", maxWidth: 320 }}>جرّب تعديل البحث أو التصفية.</div>
+          <div style={{ font: "var(--weight-semibold) 15px var(--font-sans)", color: "var(--text-strong)" }}>لا توجد نتائج مطابقة</div>
+          <div style={{ font: "13px/1.6 var(--font-sans)", maxWidth: 340 }}>
+            جرّب تعديل كلمات البحث أو إزالة بعض الفلاتر لعرض نتائج أكثر.
+          </div>
           {anyRefinement && (
             <div style={{ marginTop: 6 }}>
               <Button variant="secondary" size="sm" iconStart={<Icon name="x" size={15} />} onClick={clearAll}>
-                مسح كل الفلاتر
+                مسح الفلاتر
               </Button>
             </div>
           )}

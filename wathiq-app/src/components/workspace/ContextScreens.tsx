@@ -80,7 +80,9 @@ export function StakeholdersScreen({ onOpen }: { onOpen: (r: Requirement) => voi
         subtitle={`${people.length} من أصحاب المصلحة عبر ${requirements.length} متطلبًا في المشروع.`}
       />
       {people.length === 0 ? (
-        <p style={{ color: "var(--text-muted)" }}>لا يوجد أصحاب مصلحة بعد.</p>
+        <p style={{ color: "var(--text-muted)", font: "14px/1.8 var(--font-sans)" }}>
+          لا يوجد أصحاب مصلحة بعد — يستخرجهم وثّق تلقائيًا من المتطلبات عند إضافتها أو تحليلها.
+        </p>
       ) : (
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(min(260px, 100%), 1fr))", gap: 12 }}>
           {people.map((p) => (
@@ -143,7 +145,9 @@ export function RulesScreen({ onOpen }: { onOpen: (r: Requirement) => void }) {
         subtitle={`${businessRules.length} قاعدة عمل موزّعة على ${sources.length} مصدرًا.`}
       />
       {businessRules.length === 0 ? (
-        <p style={{ color: "var(--text-muted)" }}>لا توجد قواعد عمل بعد.</p>
+        <p style={{ color: "var(--text-muted)", font: "14px/1.8 var(--font-sans)" }}>
+          لا توجد قواعد عمل بعد — تُستخرج تلقائيًا عند تحليل وثيقة المتطلبات.
+        </p>
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: 22 }}>
           {sources.map(([source, rules]) => (
@@ -225,7 +229,9 @@ export function AuditScreen() {
         subtitle={`${auditEvents.length} حدثًا مسجّلًا على مستوى المشروع، الأحدث أولًا.`}
       />
       {auditEvents.length === 0 ? (
-        <p style={{ color: "var(--text-muted)" }}>لا توجد أحداث مسجّلة بعد. ستظهر هنا كل تغييرات الحالة والتعديلات.</p>
+        <p style={{ color: "var(--text-muted)", font: "14px/1.8 var(--font-sans)" }}>
+          لا يوجد سجل بعد — بعد تنفيذ أول تحليل أو تعديل، ستظهر هنا العمليات السابقة وتفاصيلها.
+        </p>
       ) : (
         <div style={{ display: "flex", flexDirection: "column" }}>
           {auditEvents.map((e, i) => {
