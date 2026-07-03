@@ -1,10 +1,12 @@
 "use server";
 
 import { randomUUID } from "node:crypto";
+import { cookies } from "next/headers";
 import { revalidatePath } from "next/cache";
 import { prisma, hasDatabase } from "@/lib/db";
-import { getSessionUser } from "@/lib/session";
+import { getSessionUser, getActiveProjectId, PROJECT_COOKIE } from "@/lib/session";
 import { authEnabled } from "@/lib/auth";
+import { projectLimitFor } from "@/lib/plans";
 import type { RequirementStatus, PriorityLevel } from "@/components/ds";
 
 export interface RequirementInput {
@@ -13,6 +15,7 @@ export interface RequirementInput {
   description: string;
   status: RequirementStatus;
   priority: PriorityLevel;
+  type?: string | null;
   confidence: number | null;
   criteria: number;
   openQuestions: number;
@@ -71,12 +74,16 @@ async function logAudit(
   requirementId: string | null,
   action: string,
   detail: string,
-  actorNameOverride?: string
+  actorNameOverride?: string,
+  projectId?: string | null
 ): Promise<void> {
   try {
+    // If a project wasn't supplied, attribute to the active one.
+    const pid = projectId !== undefined ? projectId : await activeProjectId(actor.uid);
     await prisma.auditEvent.create({
       data: {
         ownerId: actor.uid,
+        projectId: pid,
         requirementId,
         action,
         detail,
@@ -96,6 +103,7 @@ function clean(input: RequirementInput) {
     description: input.description.trim(),
     status: input.status,
     priority: input.priority,
+    type: input.type?.trim() || null,
     confidence:
       input.confidence == null || Number.isNaN(input.confidence)
         ? null
@@ -105,6 +113,28 @@ function clean(input: RequirementInput) {
     module: input.module.trim(),
     stakeholders: input.stakeholders.map((s) => s.trim()).filter(Boolean),
   };
+}
+
+/**
+ * Resolve the acting user's active project id (validated to belong to them),
+ * falling back to their first project. Null in open/owner mode.
+ */
+async function activeProjectId(uid: string | null): Promise<string | null> {
+  if (!uid) return null;
+  const cookieId = await getActiveProjectId();
+  if (cookieId) {
+    const p = await prisma.project.findFirst({
+      where: { id: cookieId, ownerId: uid },
+      select: { id: true },
+    });
+    if (p) return p.id;
+  }
+  const first = await prisma.project.findFirst({
+    where: { ownerId: uid },
+    orderBy: { order: "asc" },
+    select: { id: true },
+  });
+  return first?.id ?? null;
 }
 
 /** Create a new requirement, or update an existing one when originalId is given. */
@@ -134,11 +164,12 @@ export async function saveRequirement(
     } else {
       const exists = await prisma.requirement.findUnique({ where: { id } });
       if (exists) return { ok: false, error: "duplicate-id" };
+      const projectId = await activeProjectId(actor.uid);
       const max = await prisma.requirement.aggregate({ _max: { order: true } });
       await prisma.requirement.create({
-        data: { id, ownerId: actor.uid, ...data, order: (max._max.order ?? -1) + 1 },
+        data: { id, ownerId: actor.uid, projectId, ...data, order: (max._max.order ?? -1) + 1 },
       });
-      await logAudit(actor, id, "requirement_created", `إنشاء المتطلب «${data.title}».`);
+      await logAudit(actor, id, "requirement_created", `إنشاء المتطلب «${data.title}».`, undefined, projectId);
     }
 
     revalidatePath("/");
@@ -166,6 +197,7 @@ export async function saveExtractedRequirements(
   try {
     const actor = await requireActor();
     if (!actor) return { ok: false, error: "unauthorized" };
+    const projectId = await activeProjectId(actor.uid);
     const max = await prisma.requirement.aggregate({ _max: { order: true } });
     let order = (max._max.order ?? -1) + 1;
     let saved = 0;
@@ -183,7 +215,7 @@ export async function saveExtractedRequirements(
         continue;
       }
       await prisma.requirement.create({
-        data: { id, ownerId: actor.uid, ...clean(input), order: order++ },
+        data: { id, ownerId: actor.uid, projectId, ...clean(input), order: order++ },
       });
       saved++;
     }
@@ -194,7 +226,8 @@ export async function saveExtractedRequirements(
         null,
         "requirements_imported",
         `استيراد ${saved} متطلبًا من تحليل وثّق.`,
-        "وثّق"
+        "وثّق",
+        projectId
       );
     }
     revalidatePath("/");
@@ -292,6 +325,7 @@ export async function addAcceptanceCriterion(
       data: {
         id,
         ownerId: actor.uid,
+        projectId: parent.projectId,
         requirementId: rid,
         text: body,
         done: false,
@@ -371,6 +405,136 @@ export async function answerOpenQuestion(
     return { ok: true };
   } catch (err) {
     console.error("[answerOpenQuestion]", err);
+    return { ok: false, error: "server" };
+  }
+}
+
+/* ---------------- projects (axis 3) ---------------- */
+
+export interface ProjectInput {
+  name: string;
+  code: string;
+  description: string;
+  domain: string;
+  client: string;
+  status: string; // draft | active | completed
+  color: string;
+  icon: string;
+}
+
+/** Create a project — plan-gated (FREE = one project). */
+export async function createProject(input: ProjectInput): Promise<ActionResult> {
+  if (!hasDatabase()) return { ok: false, error: "no-db" };
+  const actor = await requireActor();
+  if (!actor || !actor.uid) return { ok: false, error: "unauthorized" };
+
+  const name = input.name.trim();
+  if (name.length < 2) return { ok: false, error: "missing-name" };
+
+  try {
+    // Plan gate.
+    const user = await prisma.user.findUnique({ where: { id: actor.uid }, select: { plan: true } });
+    const limit = projectLimitFor(user?.plan);
+    const count = await prisma.project.count({ where: { ownerId: actor.uid } });
+    if (limit != null && count >= limit) return { ok: false, error: "plan-limit" };
+
+    const code = input.code.trim() || `PRJ-${String(count + 1).padStart(4, "0")}`;
+    const status = ["draft", "active", "completed"].includes(input.status) ? input.status : "active";
+
+    const project = await prisma.project.create({
+      data: {
+        ownerId: actor.uid,
+        name,
+        code,
+        description: input.description.trim() || null,
+        domain: input.domain.trim() || null,
+        client: input.client.trim() || null,
+        status,
+        color: input.color.trim() || null,
+        icon: input.icon.trim() || null,
+        order: count,
+      },
+    });
+
+    // Switch to the new project immediately.
+    const store = await cookies();
+    store.set(PROJECT_COOKIE, project.id, { httpOnly: false, sameSite: "lax", path: "/", maxAge: 60 * 60 * 24 * 365 });
+
+    await logAudit(actor, null, "project_created", `إنشاء مشروع «${name}».`, undefined, project.id);
+    revalidatePath("/");
+    return { ok: true };
+  } catch (err) {
+    console.error("[createProject]", err);
+    return { ok: false, error: "server" };
+  }
+}
+
+/** Update an existing project's fields. */
+export async function updateProject(id: string, input: ProjectInput): Promise<ActionResult> {
+  if (!hasDatabase()) return { ok: false, error: "no-db" };
+  const actor = await requireActor();
+  if (!actor || !actor.uid) return { ok: false, error: "unauthorized" };
+  if (input.name.trim().length < 2) return { ok: false, error: "missing-name" };
+
+  try {
+    const target = await prisma.project.findFirst({ where: { id, ownerId: actor.uid } });
+    if (!target) return { ok: false, error: "not-found" };
+    const status = ["draft", "active", "completed"].includes(input.status) ? input.status : target.status;
+    await prisma.project.update({
+      where: { id },
+      data: {
+        name: input.name.trim(),
+        code: input.code.trim() || target.code,
+        description: input.description.trim() || null,
+        domain: input.domain.trim() || null,
+        client: input.client.trim() || null,
+        status,
+        color: input.color.trim() || null,
+        icon: input.icon.trim() || null,
+      },
+    });
+    revalidatePath("/");
+    return { ok: true };
+  } catch (err) {
+    console.error("[updateProject]", err);
+    return { ok: false, error: "server" };
+  }
+}
+
+/** Switch the active project (stored in a cookie). */
+export async function setActiveProject(id: string): Promise<ActionResult> {
+  if (!hasDatabase()) return { ok: false, error: "no-db" };
+  const actor = await requireActor();
+  if (!actor || !actor.uid) return { ok: false, error: "unauthorized" };
+  try {
+    const p = await prisma.project.findFirst({ where: { id, ownerId: actor.uid }, select: { id: true } });
+    if (!p) return { ok: false, error: "not-found" };
+    const store = await cookies();
+    store.set(PROJECT_COOKIE, id, { httpOnly: false, sameSite: "lax", path: "/", maxAge: 60 * 60 * 24 * 365 });
+    revalidatePath("/");
+    return { ok: true };
+  } catch (err) {
+    console.error("[setActiveProject]", err);
+    return { ok: false, error: "server" };
+  }
+}
+
+/** Adopt an AI-improved requirement description. */
+export async function applyImprovedRequirement(id: string, description: string): Promise<ActionResult> {
+  if (!hasDatabase()) return { ok: false, error: "no-db" };
+  const body = description.trim();
+  if (body.length < 3) return { ok: false, error: "too-short" };
+  try {
+    const actor = await requireActor();
+    if (!actor) return { ok: false, error: "unauthorized" };
+    const target = await prisma.requirement.findFirst({ where: { id, ...ownedBy(actor.uid) } });
+    if (!target) return { ok: false, error: "not-found" };
+    await prisma.requirement.update({ where: { id }, data: { description: body } });
+    await logAudit(actor, id, "requirement_improved", `اعتماد صياغة محسّنة للمتطلب «${target.title}».`);
+    revalidatePath("/");
+    return { ok: true };
+  } catch (err) {
+    console.error("[applyImprovedRequirement]", err);
     return { ok: false, error: "server" };
   }
 }

@@ -7,7 +7,9 @@ import type {
   BusinessRule,
   OpenQuestion,
   AuditEvent,
+  Project,
 } from "@/lib/data";
+import type { UsageInfo } from "@/lib/workspace-data";
 
 export interface WorkspaceDataValue {
   requirements: Requirement[];
@@ -15,6 +17,9 @@ export interface WorkspaceDataValue {
   businessRules: BusinessRule[];
   openQuestions: OpenQuestion[];
   auditEvents: AuditEvent[];
+  projects: Project[];
+  activeProject: Project | null;
+  usage: UsageInfo | null;
   /** Whether the data is backed by the live database (writes will persist). */
   source: "database" | "fallback";
   /** Whether sign-in is configured (controls showing the logout action). */

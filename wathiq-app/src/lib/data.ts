@@ -3,17 +3,58 @@
 
 import type { RequirementStatus, PriorityLevel } from "@/components/ds";
 
+/** Per-requirement AI analysis result (axis 2). */
+export type ReqAnalysisStatus = "ready" | "needs_info" | "needs_improvement" | "high_risk";
+
+export interface RequirementAnalysis {
+  qualityScore: number;
+  status: ReqAnalysisStatus;
+  summary: string;
+  ambiguity: {
+    vagueWords: string[];
+    missingInfo: string[];
+    assumptions: string[];
+    risks: string[];
+  };
+  stakeholderQuestions: string[];
+  acceptanceCriteria: string[];
+  smart: {
+    specific: boolean;
+    measurable: boolean;
+    achievable: boolean;
+    relevant: boolean;
+    testable: boolean;
+    notes: string;
+  };
+  improvedVersion: string;
+}
+
 export interface Requirement {
   id: string;
   title: string;
   description: string;
   status: RequirementStatus;
   priority: PriorityLevel;
+  type?: string | null;
   confidence: number | null;
   criteria: number;
   openQuestions: number;
   module: string;
   stakeholders: string[];
+  projectId?: string | null;
+  analysis?: RequirementAnalysis | null;
+}
+
+export interface Project {
+  id: string;
+  name: string;
+  code: string;
+  description: string | null;
+  domain: string | null;
+  client: string | null;
+  status: string;
+  color: string | null;
+  icon: string | null;
 }
 
 export const PROJECT = {

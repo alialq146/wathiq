@@ -1,5 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import type { AnalysisResult } from "./analysis-types";
+import type { RequirementAnalysis } from "./data";
 
 export type { AnalysisResult, ExtractedRequirement } from "./analysis-types";
 
@@ -128,4 +129,114 @@ export async function analyzePdf(base64: string): Promise<AnalysisResult> {
       text: "حلّل وثيقة المتطلبات المرفقة (ملف PDF) واستخرج منها المتطلبات بشكل منظّم.",
     },
   ] as UserContent);
+}
+
+/* ============================================================
+   Per-requirement quality analysis (axis 2). Reuses the same
+   model/service — a single requirement in, a structured quality
+   evaluation out.
+   ============================================================ */
+
+const REQ_ANALYSIS_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  properties: {
+    qualityScore: { type: "integer" },
+    status: {
+      type: "string",
+      enum: ["ready", "needs_info", "needs_improvement", "high_risk"],
+    },
+    summary: { type: "string" },
+    ambiguity: {
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        vagueWords: { type: "array", items: { type: "string" } },
+        missingInfo: { type: "array", items: { type: "string" } },
+        assumptions: { type: "array", items: { type: "string" } },
+        risks: { type: "array", items: { type: "string" } },
+      },
+      required: ["vagueWords", "missingInfo", "assumptions", "risks"],
+    },
+    stakeholderQuestions: { type: "array", items: { type: "string" } },
+    acceptanceCriteria: { type: "array", items: { type: "string" } },
+    smart: {
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        specific: { type: "boolean" },
+        measurable: { type: "boolean" },
+        achievable: { type: "boolean" },
+        relevant: { type: "boolean" },
+        testable: { type: "boolean" },
+        notes: { type: "string" },
+      },
+      required: ["specific", "measurable", "achievable", "relevant", "testable", "notes"],
+    },
+    improvedVersion: { type: "string" },
+  },
+  required: [
+    "qualityScore",
+    "status",
+    "summary",
+    "ambiguity",
+    "stakeholderQuestions",
+    "acceptanceCriteria",
+    "smart",
+    "improvedVersion",
+  ],
+} as const;
+
+const REQ_SYSTEM_PROMPT = `أنت "وثّق"، محلّل أعمال خبير. مهمتك تقييم جودة متطلب واحد بدقة وشفافية، وليس استخراج متطلبات.
+
+أعد النتائج بالعربية الفصحى الواضحة، والتزم بالتالي:
+- qualityScore: درجة جودة المتطلب من ٠ إلى ١٠٠ بناءً على الوضوح والاكتمال وقابلية الاختبار وغياب الغموض.
+- status: اختر واحدة — "ready" (جاهز)، "needs_info" (بحاجة لمعلومات)، "needs_improvement" (بحاجة لتحسين)، "high_risk" (مخاطر عالية).
+- summary: جملة أو جملتان تلخّصان تقييمك.
+- ambiguity: حلّل الغموض — vagueWords (كلمات غامضة كـ«سريع»، «سهل»)، missingInfo (معلومات ناقصة)، assumptions (افتراضات غير مؤكدة)، risks (مخاطر محتملة). كل حقل قائمة قد تكون فارغة.
+- stakeholderQuestions: أسئلة دقيقة يجب الرجوع بها لأصحاب المصلحة لسد النواقص.
+- acceptanceCriteria: معايير قبول قابلة للاختبار (صيغة واضحة قابلة للتحقق).
+- smart: قيّم المتطلب وفق SMART بقيم منطقية (specific/measurable/achievable/relevant/testable) مع notes تشرح أي جانب ناقص.
+- improvedVersion: أعد صياغة المتطلب بنسخة محسّنة أوضح وأكثر قابلية للاختبار، مع الحفاظ على القصد الأصلي.
+- كن صادقًا: إذا كان المتطلب غامضًا اخفض الدرجة واذكر السبب. لا تخترع تفاصيل غير مذكورة، بل اطرحها كأسئلة أو معلومات ناقصة.`;
+
+export interface RequirementForAnalysis {
+  id: string;
+  title: string;
+  description: string;
+  module?: string;
+  priority?: string;
+  type?: string | null;
+  stakeholders?: string[];
+}
+
+/** Analyze a single requirement's quality and return a structured evaluation. */
+export async function analyzeRequirement(
+  req: RequirementForAnalysis
+): Promise<RequirementAnalysis> {
+  const client = new Anthropic();
+  const userText = `قيّم جودة المتطلب التالي:
+
+الرقم: ${req.id}
+العنوان: ${req.title}
+الوصف: ${req.description}
+${req.type ? `النوع: ${req.type}\n` : ""}الوحدة: ${req.module ?? "—"}
+الأولوية: ${req.priority ?? "—"}
+أصحاب المصلحة: ${(req.stakeholders ?? []).join("، ") || "—"}`;
+
+  const response = await client.messages.create({
+    model: MODEL,
+    max_tokens: 4000,
+    system: REQ_SYSTEM_PROMPT,
+    output_config: {
+      format: { type: "json_schema", schema: REQ_ANALYSIS_SCHEMA },
+    },
+    messages: [{ role: "user", content: userText }],
+  } as Anthropic.MessageCreateParamsNonStreaming);
+
+  const textBlock = response.content.find((b) => b.type === "text");
+  if (!textBlock || textBlock.type !== "text") {
+    throw new Error("No text content returned from model");
+  }
+  return JSON.parse(textBlock.text) as RequirementAnalysis;
 }

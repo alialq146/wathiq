@@ -11,15 +11,12 @@ export const maxDuration = 60;
 // Base64 cap (~4.4MB of base64 ≈ a ~3.3MB PDF) — stays under Vercel's request limit.
 const MAX_PDF_BASE64 = 4_400_000;
 
-// Free plan: how many analyses a registered account gets before upgrading.
-const FREE_ANALYSES = 1;
-
 export async function POST(req: Request) {
   if (!hasAnthropicKey()) {
     return NextResponse.json({ ok: false, error: "no-key" });
   }
 
-  // --- account gating + free-tier quota (only in accounts mode) ---
+  // --- account gating + plan quota (only in accounts mode) ---
   let quotaUserId: string | null = null;
   if (authEnabled()) {
     const user = await getSessionUser();
@@ -31,10 +28,11 @@ export async function POST(req: Request) {
       try {
         const dbUser = await prisma.user.findUnique({
           where: { id: user.uid },
-          select: { analysisCount: true },
+          select: { analysisCount: true, analysisLimit: true },
         });
-        if ((dbUser?.analysisCount ?? 0) >= FREE_ANALYSES) {
-          return NextResponse.json({ ok: false, error: "limit", limit: FREE_ANALYSES });
+        const limit = dbUser?.analysisLimit ?? 3;
+        if ((dbUser?.analysisCount ?? 0) >= limit) {
+          return NextResponse.json({ ok: false, error: "limit", limit });
         }
         quotaUserId = user.uid;
       } catch (err) {

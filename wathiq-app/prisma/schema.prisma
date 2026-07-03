@@ -14,34 +14,60 @@ datasource db {
 
 /// A registered account. Passwords are stored as scrypt hashes, never plain.
 model User {
-  id            String   @id @default(cuid())
-  name          String
-  email         String   @unique
-  passwordHash  String
-  analysisCount Int      @default(0)
-  createdAt     DateTime @default(now())
+  id                 String   @id @default(cuid())
+  name               String
+  email              String   @unique
+  passwordHash       String
+  plan               String   @default("FREE") // FREE | PRO | ENTERPRISE
+  analysisCount      Int      @default(0)
+  analysisLimit      Int      @default(3)
+  subscriptionStatus String   @default("active")
+  createdAt          DateTime @default(now())
+}
+
+/// A workspace/project. Requirements and analyses belong to exactly one.
+model Project {
+  id          String   @id @default(cuid())
+  ownerId     String
+  name        String
+  code        String
+  description String?
+  domain      String?
+  client      String?
+  status      String   @default("active") // draft | active | completed
+  color       String?
+  icon        String?
+  order       Int      @default(0)
+  createdAt   DateTime @default(now())
+
+  @@index([ownerId])
 }
 
 model Requirement {
-  id            String  @id
+  id            String   @id
   ownerId       String?
+  projectId     String?
   title         String
   description   String
   status        String
   priority      String
+  type          String?
   confidence    Int?
   criteria      Int
   openQuestions Int
   module        String
   stakeholders  String[]
-  order         Int     @default(0)
+  analysis      Json?
+  order         Int      @default(0)
 
   @@index([ownerId])
+  @@index([projectId])
 }
 
 model AcceptanceCriterion {
   id            String  @id
   ownerId       String?
+  projectId     String?
   requirementId String?
   text          String
   done          Boolean
@@ -50,11 +76,13 @@ model AcceptanceCriterion {
 
   @@index([requirementId])
   @@index([ownerId])
+  @@index([projectId])
 }
 
 model BusinessRule {
   id            String  @id
   ownerId       String?
+  projectId     String?
   requirementId String?
   text          String
   source        String
@@ -62,11 +90,13 @@ model BusinessRule {
 
   @@index([requirementId])
   @@index([ownerId])
+  @@index([projectId])
 }
 
 model OpenQuestion {
   id            String  @id
   ownerId       String?
+  projectId     String?
   requirementId String?
   text          String
   to            String
@@ -76,12 +106,14 @@ model OpenQuestion {
 
   @@index([requirementId])
   @@index([ownerId])
+  @@index([projectId])
 }
 
 /// Append-only activity log for the audit trail screen.
 model AuditEvent {
   id            String   @id @default(cuid())
   ownerId       String?
+  projectId     String?
   requirementId String?
   action        String
   detail        String
@@ -91,4 +123,5 @@ model AuditEvent {
   @@index([requirementId])
   @@index([createdAt])
   @@index([ownerId])
+  @@index([projectId])
 }
