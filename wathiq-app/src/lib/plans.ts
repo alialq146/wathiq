@@ -8,7 +8,9 @@ export type PlanId = "FREE" | "PRO" | "ENTERPRISE";
 
 export interface Plan {
   id: PlanId;
-  name: string; // Arabic label
+  name: string; // short Arabic label (dashboard, admin, logs)
+  title: string; // display title on the pricing page
+  desc: string; // one-line description on the pricing page
   tag: string; // English tag
   price: string; // display price
   priceNote: string;
@@ -26,24 +28,30 @@ export const PLANS: Record<PlanId, Plan> = {
   FREE: {
     id: "FREE",
     name: "مجاني",
+    title: "الخطة المجانية",
+    desc: "مناسبة لتجربة وثّق على مشروع واحد قبل الترقية.",
     tag: "Free",
     price: "0",
-    priceNote: "ريال · للتجربة",
+    priceNote: "ريال",
     analysisLimit: 3,
     projectLimit: 1,
     features: [
       "مشروع واحد",
-      "٣ تحليلات بالذكاء الاصطناعي",
-      "رفع ملفات محدود",
-      "عرض نتائج التحليل",
+      "٣ تحليلات ذكاء اصطناعي شهريًا",
+      "رفع ملف PDF محدود",
+      "إضافة متطلبات يدويًا",
+      "عرض مؤشر الجودة ونقاط الغموض",
+      "الأسئلة المقترحة الأساسية",
       "لوحة تحكم أساسية",
     ],
-    limits: ["لا تصدير PDF احترافي", "لا مشاركة فريق", "لا سجل تحليلات متقدم"],
+    limits: ["لا تشمل المشاريع المتعددة أو حدود التحليل الأعلى."],
     cta: "signup",
   },
   PRO: {
     id: "PRO",
     name: "احترافي",
+    title: "الخطة الاحترافية",
+    desc: "للمحللين ومدراء المشاريع الذين يحتاجون إلى تحليل متطلبات أكثر احترافية.",
     tag: "Professional",
     price: "149",
     priceNote: "ريال / شهريًا",
@@ -51,34 +59,36 @@ export const PLANS: Record<PlanId, Plan> = {
     analysisLimit: 50,
     projectLimit: null,
     features: [
-      "حتى ٥٠ تحليل AI شهريًا",
+      "حتى ٥٠ تحليل ذكاء اصطناعي شهريًا",
       "مشاريع متعددة",
       "رفع ملفات أكبر",
-      "تحليل متقدم للمتطلبات",
-      "اكتشاف النواقص والمخاطر",
-      "اقتراح تحسينات",
-      "تصدير تقارير PDF",
+      "تحليل أعمق لنقاط الغموض والنواقص",
+      "توليد الأسئلة المقترحة للعميل",
+      "إنشاء معايير قبول واضحة",
+      "اقتراح تحسين صياغة المتطلبات",
       "سجل التحليلات",
-      "دعم أفضل",
+      "مناسبة لمحللي الأعمال ومدراء المشاريع",
     ],
     cta: "whatsapp",
   },
   ENTERPRISE: {
     id: "ENTERPRISE",
     name: "الأعمال",
+    title: "خطة الأعمال",
+    desc: "للشركات والجهات التي تحتاج إلى حدود مخصصة ودعم أعلى.",
     tag: "Business / Enterprise",
     price: "تواصل معنا",
     priceNote: "للفرق والمؤسسات",
     analysisLimit: null,
     projectLimit: null,
     features: [
-      "مستخدمون متعددون",
-      "مساحة عمل للفريق",
-      "صلاحيات المستخدمين",
-      "سجل تدقيق Audit Log",
-      "تقارير تنفيذية",
-      "دعم مخصص",
-      "API / SSO مستقبلًا",
+      "عدد تحليلات مخصص",
+      "عدد مشاريع مخصص",
+      "إعدادات تحليل تناسب طبيعة الجهة",
+      "دعم مباشر",
+      "متابعة أعلى للاستخدام والتكلفة",
+      "خيارات أمان وتخصيص حسب الاتفاق",
+      "مناسبة للجهات الحكومية، الشركات، ومكاتب إدارة المشاريع",
     ],
     cta: "whatsapp",
   },

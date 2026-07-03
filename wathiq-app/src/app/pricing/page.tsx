@@ -9,6 +9,14 @@ export const metadata = {
   description: "باقات منصة وثّق لتحليل المتطلبات بالذكاء الاصطناعي: مجاني، احترافي، والأعمال.",
 };
 
+const PRICING_FAQS = [
+  { q: "هل أحتاج بطاقة ائتمانية للتجربة؟", a: "لا، يمكنك إنشاء حساب وتجربة الخطة المجانية دون بطاقة ائتمانية." },
+  { q: "ماذا يحدث عند انتهاء التحليلات المجانية؟", a: "سيتم إيقاف التحليل مؤقتًا، ويمكنك الترقية إلى الخطة الاحترافية لمتابعة تحليل مشاريعك." },
+  { q: "هل يمكنني استخدام وثّق لأكثر من مشروع؟", a: "نعم، المشاريع المتعددة متاحة في الخطة الاحترافية وخطة الأعمال." },
+  { q: "هل خطة الأعمال مناسبة للجهات الحكومية؟", a: "نعم، خطة الأعمال مناسبة للجهات الحكومية والشركات التي تحتاج إلى حدود مخصصة ودعم أعلى." },
+  { q: "هل يتم الدفع داخل المنصة؟", a: "حاليًا تتم الترقية بالتواصل المباشر مع فريق وثّق، وسيتم دعم الدفع الإلكتروني لاحقًا." },
+];
+
 export default function PricingPage() {
   return (
     <div style={{ minHeight: "100vh", background: "var(--bg-app)" }}>
@@ -49,10 +57,10 @@ export default function PricingPage() {
             الباقات
           </span>
           <h1 style={{ font: "var(--weight-bold) 34px/1.3 var(--font-sans)", color: "var(--navy-950)", margin: "0 0 10px" }}>
-            اختر الباقة المناسبة لك
+            باقات واضحة تبدأ بالتجربة وتنمو مع احتياجك
           </h1>
           <p style={{ font: "16px/1.7 var(--font-sans)", color: "var(--text-muted)", margin: 0 }}>
-            ابدأ مجانًا، وارتقِ عند الحاجة. الترقية حاليًا تتم يدويًّا عبر التواصل المباشر — والدفع الإلكتروني قريبًا.
+            ابدأ مجانًا لاختبار تحليل المتطلبات، ثم انتقل إلى الخطة الاحترافية عندما تحتاج إلى مشاريع أكثر وتحليلات أعمق.
           </p>
         </div>
 
@@ -62,9 +70,47 @@ export default function PricingPage() {
           ))}
         </div>
 
-        <p style={{ textAlign: "center", marginTop: 34, font: "13px var(--font-sans)", color: "var(--text-subtle)" }}>
-          جميع الباقات تشمل واجهة عربية كاملة (RTL) وعزلًا آمنًا لبياناتك.
+        <p style={{ textAlign: "center", marginTop: 34, font: "13.5px/1.8 var(--font-sans)", color: "var(--text-muted)" }}>
+          يمكنك البدء بالخطة المجانية دون بطاقة ائتمانية. الترقية إلى الخطط المدفوعة تتم حاليًا بالتواصل المباشر مع فريق وثّق.
+          <br />
+          <span style={{ color: "var(--text-subtle)", fontSize: 12.5 }}>جميع الباقات تشمل واجهة عربية كاملة (RTL) وعزلًا آمنًا لبياناتك.</span>
         </p>
+
+        {/* ---- الفرق بين الباقات ---- */}
+        <section style={{ maxWidth: 760, margin: "48px auto 0", textAlign: "center" }}>
+          <h2 style={{ font: "var(--weight-bold) 22px/1.4 var(--font-sans)", color: "var(--navy-950)", margin: "0 0 10px" }}>
+            ما الفرق بين الباقات؟
+          </h2>
+          <p style={{ font: "15px/1.9 var(--font-sans)", color: "var(--text-muted)", margin: 0 }}>
+            الخطة المجانية تمنحك تجربة أولية، بينما تمنحك الخطة الاحترافية مساحة أكبر لتحليل مشاريع متعددة،
+            أما خطة الأعمال فهي مخصصة للجهات التي تحتاج إلى حدود ودعم مخصص.
+          </p>
+        </section>
+
+        {/* ---- أسئلة شائعة عن الأسعار ---- */}
+        <section style={{ maxWidth: 760, margin: "44px auto 0" }}>
+          <h2 style={{ font: "var(--weight-bold) 22px/1.4 var(--font-sans)", color: "var(--navy-950)", margin: "0 0 18px", textAlign: "center" }}>
+            أسئلة شائعة عن الأسعار
+          </h2>
+          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            {PRICING_FAQS.map((f) => (
+              <div
+                key={f.q}
+                style={{
+                  background: "var(--surface-card)",
+                  border: "1px solid var(--border-default)",
+                  borderRadius: "var(--radius-lg)",
+                  padding: "16px 20px",
+                }}
+              >
+                <h3 style={{ font: "var(--weight-semibold) 15px/1.5 var(--font-sans)", color: "var(--text-strong)", margin: "0 0 6px" }}>
+                  {f.q}
+                </h3>
+                <p style={{ font: "14px/1.8 var(--font-sans)", color: "var(--text-muted)", margin: 0 }}>{f.a}</p>
+              </div>
+            ))}
+          </div>
+        </section>
       </main>
     </div>
   );
@@ -89,13 +135,16 @@ function PlanCard({ plan }: { plan: Plan }) {
     >
       {recommended && (
         <span style={{ position: "absolute", insetInlineStart: 24, top: -12, background: "var(--teal-500)", color: "#fff", font: "var(--weight-semibold) 11px/1 var(--font-sans)", padding: "6px 12px", borderRadius: "var(--radius-pill)" }}>
-          الأكثر قيمة
+          الأكثر مناسبة
         </span>
       )}
       <div style={{ marginBottom: 6 }}>
-        <span style={{ font: "var(--weight-semibold) 18px/1 var(--font-sans)", color: dark ? "#fff" : "var(--text-strong)" }}>{plan.name}</span>
+        <span style={{ font: "var(--weight-semibold) 18px/1 var(--font-sans)", color: dark ? "#fff" : "var(--text-strong)" }}>{plan.title}</span>
         <span style={{ font: "11px var(--font-mono)", color: dark ? "rgba(255,255,255,.6)" : "var(--text-subtle)", marginInlineStart: 8 }}>{plan.tag}</span>
       </div>
+      <p style={{ font: "13px/1.7 var(--font-sans)", color: dark ? "rgba(255,255,255,.75)" : "var(--text-muted)", margin: "0 0 4px" }}>
+        {plan.desc}
+      </p>
       <div style={{ display: "flex", alignItems: "baseline", gap: 6, margin: "6px 0 2px" }}>
         <span style={{ font: `var(--weight-bold) ${plan.price.length > 4 ? "22px" : "34px"}/1.1 var(--font-sans)`, color: dark ? "#fff" : "var(--navy-950)" }}>
           {plan.price}
@@ -120,10 +169,11 @@ function PlanCard({ plan }: { plan: Plan }) {
 
       <div style={{ marginTop: 22 }}>
         {plan.cta === "signup" ? (
-          <a href="/signup" style={btn(false)}>ابدأ الآن مجانًا</a>
+          <a href="/signup" style={btn(false)}>ابدأ مجانًا</a>
         ) : (
-          <a href={whatsappUpgradeLink(`الترقية إلى باقة ${plan.name}`)} target="_blank" rel="noopener noreferrer" style={btn(true)}>
-            <Icon name="message-circle" size={17} color="#06231A" /> تواصل عبر واتساب
+          <a href={whatsappUpgradeLink(`الترقية إلى ${plan.title}`)} target="_blank" rel="noopener noreferrer" style={btn(true)}>
+            <Icon name="message-circle" size={17} color="#06231A" />
+            {plan.id === "PRO" ? "طلب الترقية عبر واتساب" : "تواصل معنا"}
           </a>
         )}
       </div>
