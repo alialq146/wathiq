@@ -129,7 +129,7 @@ export async function getWorkspaceData(
       prisma.project.findMany({ where: { ownerId: userId }, orderBy: { order: "asc" } }),
       prisma.user.findUnique({
         where: { id: userId },
-        select: { plan: true, analysisCount: true, analysisLimit: true, subscriptionStatus: true },
+        select: { plan: true, analysisCount: true, analysisLimit: true, subscriptionStatus: true, limitOverride: true },
       }),
     ]);
     const projects = projectsRaw.map(toProject);
@@ -157,7 +157,7 @@ export async function getWorkspaceData(
         ? {
             plan: user.plan,
             analysisCount: user.analysisCount,
-            analysisLimit: analysisLimitFor(user.plan), // plan is the source of truth
+            analysisLimit: user.limitOverride ? user.analysisLimit : analysisLimitFor(user.plan),
             subscriptionStatus: user.subscriptionStatus,
           }
         : null,

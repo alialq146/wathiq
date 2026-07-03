@@ -60,7 +60,7 @@ function nextMonth(from: Date): Date {
 export async function resolveQuota(userId: string): Promise<Quota | null> {
   const user = await prisma.user.findUnique({
     where: { id: userId },
-    select: { plan: true, analysisCount: true, analysisLimit: true, resetDate: true },
+    select: { plan: true, analysisCount: true, analysisLimit: true, resetDate: true, limitOverride: true },
   });
   if (!user) return null;
 
@@ -75,7 +75,8 @@ export async function resolveQuota(userId: string): Promise<Quota | null> {
       .catch(() => {});
   }
 
-  const limit = getPlan(user.plan).analysisLimit; // plan is the source of truth
+  // Plan is the source of truth, unless an admin set a per-user override.
+  const limit = user.limitOverride ? user.analysisLimit : getPlan(user.plan).analysisLimit;
   return {
     plan: user.plan,
     count,

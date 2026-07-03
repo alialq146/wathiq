@@ -6,6 +6,7 @@ import { Button, Icon } from "@/components/ds";
 
 const ERR: Record<string, string> = {
   invalid: "البريد أو كلمة المرور غير صحيحة.",
+  disabled: "هذا الحساب معطَّل. تواصل مع الدعم لإعادة تفعيله.",
   "bad-request": "طلب غير صالح. حاول مرة أخرى.",
   "not-configured": "المصادقة غير مُفعّلة على الخادم.",
   network: "تعذّر الاتصال بالخادم. تحقّق من الشبكة.",

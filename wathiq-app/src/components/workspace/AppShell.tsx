@@ -34,7 +34,7 @@ export interface AppShellProps {
   rightRail?: React.ReactNode;
 }
 
-const APP_VERSION = "1.4.0";
+import { APP_VERSION } from "@/lib/version";
 
 /** Lightweight anchored popover with a click-catching backdrop. */
 function Dropdown({

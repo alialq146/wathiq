@@ -35,6 +35,9 @@ export async function POST(req: Request) {
     try {
       const user = await prisma.user.findUnique({ where: { email } });
       if (user && verifyPassword(password, user.passwordHash)) {
+        if (user.accountStatus === "DISABLED") {
+          return NextResponse.json({ ok: false, error: "disabled" });
+        }
         sessionUser = { uid: user.id, name: user.name, email: user.email };
       }
     } catch (err) {

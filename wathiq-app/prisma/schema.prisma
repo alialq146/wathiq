@@ -23,6 +23,9 @@ model User {
   analysisLimit      Int       @default(3)
   subscriptionStatus String    @default("ACTIVE") // ACTIVE | INACTIVE | TRIALING | CANCELED | MANUAL
   resetDate          DateTime? // when the monthly analysis counter resets
+  role               String    @default("USER") // USER | ADMIN | SUPER_ADMIN — never self-assigned
+  accountStatus      String    @default("ACTIVE") // ACTIVE | DISABLED
+  limitOverride      Boolean   @default(false) // true → analysisLimit is an admin-set custom cap
   createdAt          DateTime  @default(now())
 }
 
