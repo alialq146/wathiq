@@ -2,6 +2,9 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
+  metadataBase: new URL(
+    process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "https://wathiq-ai.vercel.app"
+  ),
   title: "وثّق · تحليل المتطلبات بالذكاء الاصطناعي",
   description:
     "منصة وثّق العربية لتحليل متطلبات الأعمال بالذكاء الاصطناعي: استخراج المتطلبات، اكتشاف النواقص، تقييم الجودة، وإنتاج وثيقة جاهزة للاعتماد.",

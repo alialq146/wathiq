@@ -40,6 +40,10 @@ export async function middleware(req: NextRequest) {
 }
 
 export const config = {
-  // Run on everything except Next internals and static assets.
-  matcher: ["/((?!_next/static|_next/image|favicon.ico|assets/).*)"],
+  // Run on everything except Next internals, static assets, and the
+  // file-based metadata routes (favicon, OpenGraph/Twitter images) — those
+  // must stay public so browsers and social crawlers can fetch them.
+  matcher: [
+    "/((?!_next/static|_next/image|favicon.ico|icon.png|apple-icon.png|opengraph-image.png|twitter-image.png|assets/).*)",
+  ],
 };
