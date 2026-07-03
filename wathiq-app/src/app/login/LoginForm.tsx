@@ -5,11 +5,12 @@ import Image from "next/image";
 import { Button, Icon } from "@/components/ds";
 
 const ERR: Record<string, string> = {
-  invalid: "البريد أو كلمة المرور غير صحيحة.",
-  disabled: "هذا الحساب معطَّل. تواصل مع الدعم لإعادة تفعيله.",
-  "bad-request": "طلب غير صالح. حاول مرة أخرى.",
+  invalid: "تعذر تسجيل الدخول. تأكد من البريد الإلكتروني وكلمة المرور ثم حاول مرة أخرى.",
+  disabled: "تم إيقاف هذا الحساب مؤقتًا. يرجى التواصل مع فريق وثّق للمساعدة.",
+  "bad-request": "حدثت مشكلة غير متوقعة. حاول مرة أخرى بعد قليل.",
+  server: "حدثت مشكلة غير متوقعة. حاول مرة أخرى بعد قليل.",
   "not-configured": "المصادقة غير مُفعّلة على الخادم.",
-  network: "تعذّر الاتصال بالخادم. تحقّق من الشبكة.",
+  network: "تعذّر الاتصال بالخادم. تحقّق من الشبكة وحاول مرة أخرى.",
 };
 
 const field: React.CSSProperties = {
@@ -75,9 +76,9 @@ export function LoginForm({ next, showSignup = false }: { next: string; showSign
       <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 10, marginBottom: 4 }}>
         <Image src="/assets/wathiq-mark.png" alt="Wathiq" width={44} height={44} style={{ borderRadius: 10 }} />
         <div style={{ textAlign: "center" }}>
-          <div style={{ font: "var(--weight-bold) 20px/1 var(--font-sans)", color: "var(--navy-900)" }}>وثّق</div>
-          <div style={{ font: "12px/1.5 var(--font-sans)", color: "var(--text-muted)", marginTop: 6 }}>
-            سجّل الدخول للوصول إلى مساحة العمل
+          <div style={{ font: "var(--weight-bold) 20px/1.4 var(--font-sans)", color: "var(--navy-900)" }}>مرحبًا بعودتك إلى وثّق</div>
+          <div style={{ font: "12px/1.6 var(--font-sans)", color: "var(--text-muted)", marginTop: 6 }}>
+            سجّل دخولك لمتابعة تحليل المتطلبات وإدارة مشاريعك.
           </div>
         </div>
       </div>
@@ -146,14 +147,14 @@ export function LoginForm({ next, showSignup = false }: { next: string; showSign
           />
         }
       >
-        {loading ? "جارٍ الدخول…" : "تسجيل الدخول"}
+        {loading ? "جاري التحقق من بياناتك..." : "تسجيل الدخول"}
       </Button>
 
       {showSignup && (
         <div style={{ textAlign: "center", font: "13px var(--font-sans)", color: "var(--text-muted)" }}>
-          ليس لديك حساب؟{" "}
+          ليس لديك حساب في وثّق؟{" "}
           <a href="/signup" style={{ color: "var(--text-link)", textDecoration: "none", fontWeight: 600 }}>
-            أنشئ حسابًا جديدًا
+            أنشئ حسابًا مجانيًا
           </a>
         </div>
       )}

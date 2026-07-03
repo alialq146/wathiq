@@ -8,12 +8,12 @@ const ERR: Record<string, string> = {
   "bad-name": "اكتب اسمك (حرفان على الأقل).",
   "bad-email": "أدخل بريدًا إلكترونيًا صحيحًا.",
   "weak-password": "كلمة المرور قصيرة — ٨ أحرف على الأقل.",
-  "email-taken": "هذا البريد مسجّل بالفعل. جرّب تسجيل الدخول.",
+  "email-taken": "يوجد حساب مسجل بهذا البريد الإلكتروني. يمكنك تسجيل الدخول بدلًا من إنشاء حساب جديد.",
   "no-db": "قاعدة البيانات غير متصلة — لا يمكن إنشاء حسابات حاليًا.",
-  "bad-request": "طلب غير صالح. حاول مرة أخرى.",
+  "bad-request": "حدثت مشكلة غير متوقعة. حاول مرة أخرى بعد قليل.",
   mismatch: "كلمتا المرور غير متطابقتين.",
-  server: "تعذّر إنشاء الحساب. حاول مرة أخرى.",
-  network: "تعذّر الاتصال بالخادم. تحقّق من الشبكة.",
+  server: "حدثت مشكلة غير متوقعة. حاول مرة أخرى بعد قليل.",
+  network: "تعذّر الاتصال بالخادم. تحقّق من الشبكة وحاول مرة أخرى.",
 };
 
 const field: React.CSSProperties = {
@@ -92,9 +92,9 @@ export function SignupForm() {
       <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 10, marginBottom: 4 }}>
         <Image src="/assets/wathiq-mark.png" alt="Wathiq" width={44} height={44} style={{ borderRadius: 10 }} />
         <div style={{ textAlign: "center" }}>
-          <div style={{ font: "var(--weight-bold) 20px/1 var(--font-sans)", color: "var(--navy-900)" }}>وثّق</div>
-          <div style={{ font: "12px/1.5 var(--font-sans)", color: "var(--text-muted)", marginTop: 6 }}>
-            أنشئ حسابك وابدأ توثيق متطلباتك
+          <div style={{ font: "var(--weight-bold) 20px/1.4 var(--font-sans)", color: "var(--navy-900)" }}>ابدأ رحلتك مع وثّق</div>
+          <div style={{ font: "12px/1.6 var(--font-sans)", color: "var(--text-muted)", marginTop: 6 }}>
+            أنشئ حسابك المجاني وابدأ تحليل متطلبات مشروعك خلال دقائق.
           </div>
         </div>
       </div>
@@ -189,8 +189,12 @@ export function SignupForm() {
           />
         }
       >
-        {loading ? "جارٍ إنشاء الحساب…" : "إنشاء حساب"}
+        {loading ? "جاري إنشاء حسابك..." : "إنشاء حساب مجاني"}
       </Button>
+
+      <div style={{ textAlign: "center", font: "12px/1.6 var(--font-sans)", color: "var(--text-subtle)" }}>
+        يمكنك تجربة وثّق مجانًا، ولا تحتاج إلى بطاقة ائتمانية.
+      </div>
 
       <div style={{ textAlign: "center", font: "13px var(--font-sans)", color: "var(--text-muted)" }}>
         لديك حساب بالفعل؟{" "}
