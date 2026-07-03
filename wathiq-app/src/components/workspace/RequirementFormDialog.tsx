@@ -89,6 +89,13 @@ export function RequirementFormDialog({
     }
   }, [open, mode, initial]);
 
+  React.useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open, onClose]);
+
   if (!open) return null;
 
   const set = <K extends keyof RequirementInput>(k: K, v: RequirementInput[K]) =>
