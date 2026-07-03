@@ -84,16 +84,30 @@ const SYSTEM_PROMPT = `أنت "وثّق"، محلّل أعمال خبير ومس
 - إن كانت الوثيقة غامضة أو ناقصة، اخفض الثقة واذكر ذلك في التوصيات.
 - لا تخترع متطلبات غير مدعومة بالنص؛ استخرج ما هو موجود فقط.`;
 
-const MODEL = "claude-opus-4-8";
+// Fallback model when the caller doesn't pass one (per-plan routing lives in
+// lib/usage.ts and is passed in by the API routes).
+const DEFAULT_MODEL = "claude-opus-4-8";
 
 type UserContent = Anthropic.MessageParam["content"];
 
+/** Token usage returned alongside every analysis, for cost tracking. */
+export interface AiMeta {
+  model: string;
+  inputTokens: number | null;
+  outputTokens: number | null;
+}
+
+export interface Analyzed<T> {
+  result: T;
+  meta: AiMeta;
+}
+
 /** Shared analysis runner — sends the user content and parses the structured result. */
-async function runAnalysis(content: UserContent): Promise<AnalysisResult> {
+async function runAnalysis(content: UserContent, model: string): Promise<Analyzed<AnalysisResult>> {
   const client = new Anthropic();
 
   const response = await client.messages.create({
-    model: MODEL,
+    model,
     max_tokens: 8000,
     system: SYSTEM_PROMPT,
     output_config: {
@@ -107,28 +121,39 @@ async function runAnalysis(content: UserContent): Promise<AnalysisResult> {
     throw new Error("No text content returned from model");
   }
 
-  return JSON.parse(textBlock.text) as AnalysisResult;
+  return {
+    result: JSON.parse(textBlock.text) as AnalysisResult,
+    meta: {
+      model,
+      inputTokens: response.usage?.input_tokens ?? null,
+      outputTokens: response.usage?.output_tokens ?? null,
+    },
+  };
 }
 
 /** Analyze a pasted requirements document (plain text). */
-export async function analyzeDocument(text: string): Promise<AnalysisResult> {
+export async function analyzeDocument(text: string, model: string = DEFAULT_MODEL): Promise<Analyzed<AnalysisResult>> {
   return runAnalysis(
-    `حلّل وثيقة المتطلبات التالية واستخرج منها المتطلبات بشكل منظّم:\n\n---\n${text}\n---`
+    `حلّل وثيقة المتطلبات التالية واستخرج منها المتطلبات بشكل منظّم:\n\n---\n${text}\n---`,
+    model
   );
 }
 
 /** Analyze an uploaded requirements PDF (base64, no data-URL prefix). */
-export async function analyzePdf(base64: string): Promise<AnalysisResult> {
-  return runAnalysis([
-    {
-      type: "document",
-      source: { type: "base64", media_type: "application/pdf", data: base64 },
-    },
-    {
-      type: "text",
-      text: "حلّل وثيقة المتطلبات المرفقة (ملف PDF) واستخرج منها المتطلبات بشكل منظّم.",
-    },
-  ] as UserContent);
+export async function analyzePdf(base64: string, model: string = DEFAULT_MODEL): Promise<Analyzed<AnalysisResult>> {
+  return runAnalysis(
+    [
+      {
+        type: "document",
+        source: { type: "base64", media_type: "application/pdf", data: base64 },
+      },
+      {
+        type: "text",
+        text: "حلّل وثيقة المتطلبات المرفقة (ملف PDF) واستخرج منها المتطلبات بشكل منظّم.",
+      },
+    ] as UserContent,
+    model
+  );
 }
 
 /* ============================================================
@@ -208,12 +233,14 @@ export interface RequirementForAnalysis {
   priority?: string;
   type?: string | null;
   stakeholders?: string[];
+  notes?: string | null;
 }
 
 /** Analyze a single requirement's quality and return a structured evaluation. */
 export async function analyzeRequirement(
-  req: RequirementForAnalysis
-): Promise<RequirementAnalysis> {
+  req: RequirementForAnalysis,
+  model: string = DEFAULT_MODEL
+): Promise<Analyzed<RequirementAnalysis>> {
   const client = new Anthropic();
   const userText = `قيّم جودة المتطلب التالي:
 
@@ -222,10 +249,10 @@ export async function analyzeRequirement(
 الوصف: ${req.description}
 ${req.type ? `النوع: ${req.type}\n` : ""}الوحدة: ${req.module ?? "—"}
 الأولوية: ${req.priority ?? "—"}
-أصحاب المصلحة: ${(req.stakeholders ?? []).join("، ") || "—"}`;
+أصحاب المصلحة: ${(req.stakeholders ?? []).join("، ") || "—"}${req.notes ? `\nملاحظات: ${req.notes}` : ""}`;
 
   const response = await client.messages.create({
-    model: MODEL,
+    model,
     max_tokens: 4000,
     system: REQ_SYSTEM_PROMPT,
     output_config: {
@@ -238,5 +265,12 @@ ${req.type ? `النوع: ${req.type}\n` : ""}الوحدة: ${req.module ?? "—
   if (!textBlock || textBlock.type !== "text") {
     throw new Error("No text content returned from model");
   }
-  return JSON.parse(textBlock.text) as RequirementAnalysis;
+  return {
+    result: JSON.parse(textBlock.text) as RequirementAnalysis,
+    meta: {
+      model,
+      inputTokens: response.usage?.input_tokens ?? null,
+      outputTokens: response.usage?.output_tokens ?? null,
+    },
+  };
 }

@@ -14,15 +14,38 @@ datasource db {
 
 /// A registered account. Passwords are stored as scrypt hashes, never plain.
 model User {
-  id                 String   @id @default(cuid())
+  id                 String    @id @default(cuid())
   name               String
-  email              String   @unique
+  email              String    @unique
   passwordHash       String
-  plan               String   @default("FREE") // FREE | PRO | ENTERPRISE
-  analysisCount      Int      @default(0)
-  analysisLimit      Int      @default(3)
-  subscriptionStatus String   @default("active")
-  createdAt          DateTime @default(now())
+  plan               String    @default("FREE") // FREE | PRO | ENTERPRISE
+  analysisCount      Int       @default(0)
+  analysisLimit      Int       @default(3)
+  subscriptionStatus String    @default("ACTIVE") // ACTIVE | INACTIVE | TRIALING | CANCELED | MANUAL
+  resetDate          DateTime? // when the monthly analysis counter resets
+  createdAt          DateTime  @default(now())
+}
+
+/// One row per AI analysis attempt (success or blocked) — for cost/usage
+/// monitoring. Token/cost fields are nullable when the model omits usage.
+model AiUsage {
+  id            String   @id @default(cuid())
+  userId        String
+  projectId     String?
+  requirementId String?
+  documentId    String?
+  modelUsed     String
+  inputTokens   Int?
+  outputTokens  Int?
+  estimatedCost Float?
+  status        String // SUCCESS | FAILED | BLOCKED_LIMIT | BLOCKED_AUTH | BLOCKED_SIZE
+  errorMessage  String?
+  createdAt     DateTime @default(now())
+
+  @@index([userId])
+  @@index([projectId])
+  @@index([requirementId])
+  @@index([createdAt])
 }
 
 /// A workspace/project. Requirements and analyses belong to exactly one.
@@ -57,6 +80,7 @@ model Requirement {
   openQuestions Int
   module        String
   stakeholders  String[]
+  notes         String?
   analysis      Json?
   order         Int      @default(0)
 

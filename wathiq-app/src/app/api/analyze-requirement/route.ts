@@ -4,29 +4,33 @@ import { analyzeRequirement, hasAnthropicKey } from "@/lib/ai";
 import { prisma, hasDatabase } from "@/lib/db";
 import { getSessionUser } from "@/lib/session";
 import { authEnabled } from "@/lib/auth";
+import { resolveQuota, consumeQuota, logAiUsage } from "@/lib/usage";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
+
+const DEFAULT_MODEL = "claude-opus-4-8";
 
 export async function POST(req: Request) {
   if (!hasAnthropicKey()) return NextResponse.json({ ok: false, error: "no-key" });
   if (!hasDatabase()) return NextResponse.json({ ok: false, error: "no-db" });
 
-  // Auth + quota
+  // Auth + plan quota + model routing.
   let userId: string | null = null;
+  let model = DEFAULT_MODEL;
   if (authEnabled()) {
     const user = await getSessionUser();
     if (!user) return NextResponse.json({ ok: false, error: "unauthorized" });
     if (user.uid !== "owner") {
-      const dbUser = await prisma.user.findUnique({
-        where: { id: user.uid },
-        select: { analysisCount: true, analysisLimit: true },
-      });
-      const limit = dbUser?.analysisLimit ?? 3;
-      if ((dbUser?.analysisCount ?? 0) >= limit) {
-        return NextResponse.json({ ok: false, error: "limit", limit });
+      const quota = await resolveQuota(user.uid);
+      if (quota) {
+        model = quota.model;
+        if (quota.exceeded) {
+          await logAiUsage({ userId: user.uid, modelUsed: model, status: "BLOCKED_LIMIT" });
+          return NextResponse.json({ ok: false, error: "limit", limit: quota.limit });
+        }
+        userId = user.uid;
       }
-      userId = user.uid;
     }
   }
 
@@ -45,15 +49,19 @@ export async function POST(req: Request) {
   if (!reqRow) return NextResponse.json({ ok: false, error: "not-found" });
 
   try {
-    const analysis = await analyzeRequirement({
-      id: reqRow.id,
-      title: reqRow.title,
-      description: reqRow.description,
-      module: reqRow.module,
-      priority: reqRow.priority,
-      type: reqRow.type,
-      stakeholders: reqRow.stakeholders,
-    });
+    const { result: analysis, meta } = await analyzeRequirement(
+      {
+        id: reqRow.id,
+        title: reqRow.title,
+        description: reqRow.description,
+        module: reqRow.module,
+        priority: reqRow.priority,
+        type: reqRow.type,
+        stakeholders: reqRow.stakeholders,
+        notes: reqRow.notes,
+      },
+      model
+    );
 
     // Persist: store the rich analysis, set confidence, and regenerate the
     // AI-authored criteria + questions (preserving any manual ones).
@@ -119,16 +127,33 @@ export async function POST(req: Request) {
       });
     });
 
-    // Count against the user's quota.
+    // Count against the user's quota + log usage.
     if (userId) {
-      await prisma.user
-        .update({ where: { id: userId }, data: { analysisCount: { increment: 1 } } })
-        .catch((e) => console.error("[analyze-requirement] quota inc", e));
+      await consumeQuota(userId);
+      await logAiUsage({
+        userId,
+        projectId: reqRow.projectId,
+        requirementId: id,
+        modelUsed: meta.model,
+        inputTokens: meta.inputTokens,
+        outputTokens: meta.outputTokens,
+        status: "SUCCESS",
+      });
     }
 
     return NextResponse.json({ ok: true, analysis });
   } catch (err) {
     console.error("[/api/analyze-requirement]", err);
+    if (userId) {
+      await logAiUsage({
+        userId,
+        projectId: reqRow.projectId,
+        requirementId: id,
+        modelUsed: model,
+        status: "FAILED",
+        errorMessage: String(err).slice(0, 300),
+      });
+    }
     return NextResponse.json({ ok: false, error: "failed" });
   }
 }

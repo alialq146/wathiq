@@ -14,6 +14,7 @@ import {
   type Project,
   type RequirementAnalysis,
 } from "./data";
+import { analysisLimitFor } from "./plans";
 import type { RequirementStatus, PriorityLevel } from "@/components/ds";
 
 export interface UsageInfo {
@@ -156,7 +157,7 @@ export async function getWorkspaceData(
         ? {
             plan: user.plan,
             analysisCount: user.analysisCount,
-            analysisLimit: user.analysisLimit,
+            analysisLimit: analysisLimitFor(user.plan), // plan is the source of truth
             subscriptionStatus: user.subscriptionStatus,
           }
         : null,
