@@ -190,6 +190,7 @@ function mapEntities(
       openQuestions: r.openQuestions as number,
       module: r.module as string,
       stakeholders: r.stakeholders as string[],
+      notes: (r.notes as string | null) ?? null,
       projectId: (r.projectId as string | null) ?? null,
       analysis: (r.analysis as RequirementAnalysis | null) ?? null,
     })),

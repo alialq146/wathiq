@@ -6,6 +6,12 @@ import type { RequirementStatus, PriorityLevel } from "@/components/ds";
 /** Per-requirement AI analysis result (axis 2). */
 export type ReqAnalysisStatus = "ready" | "needs_info" | "needs_improvement" | "high_risk";
 
+export type SmartRating = "pass" | "partial" | "fail";
+export interface SmartItem {
+  rating: SmartRating;
+  reason: string;
+}
+
 export interface RequirementAnalysis {
   qualityScore: number;
   status: ReqAnalysisStatus;
@@ -19,12 +25,11 @@ export interface RequirementAnalysis {
   stakeholderQuestions: string[];
   acceptanceCriteria: string[];
   smart: {
-    specific: boolean;
-    measurable: boolean;
-    achievable: boolean;
-    relevant: boolean;
-    testable: boolean;
-    notes: string;
+    specific: SmartItem;
+    measurable: SmartItem;
+    achievable: SmartItem;
+    relevant: SmartItem;
+    testable: SmartItem;
   };
   improvedVersion: string;
 }
@@ -41,6 +46,7 @@ export interface Requirement {
   openQuestions: number;
   module: string;
   stakeholders: string[];
+  notes?: string | null;
   projectId?: string | null;
   analysis?: RequirementAnalysis | null;
 }

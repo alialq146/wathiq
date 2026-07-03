@@ -8,12 +8,11 @@ import type { PriorityLevel } from "@/components/ds";
 
 const TYPE_OPTIONS: { v: string; l: string }[] = [
   { v: "", l: "— غير محدد —" },
-  { v: "وظيفي", l: "وظيفي" },
-  { v: "غير وظيفي", l: "غير وظيفي" },
-  { v: "واجهة", l: "واجهة مستخدم" },
-  { v: "تقني", l: "تقني" },
-  { v: "أمني", l: "أمني" },
-  { v: "أخرى", l: "أخرى" },
+  { v: "وظيفي", l: "وظيفي (Functional)" },
+  { v: "غير وظيفي", l: "غير وظيفي (Non-Functional)" },
+  { v: "قاعدة عمل", l: "قاعدة عمل (Business Rule)" },
+  { v: "قيد", l: "قيد (Constraint)" },
+  { v: "أخرى", l: "أخرى (Other)" },
 ];
 
 const PRIORITY_OPTIONS: { v: PriorityLevel; l: string }[] = [
@@ -83,6 +82,7 @@ export function RequirementFormDialog({
         openQuestions: initial.openQuestions,
         module: initial.module,
         stakeholders: initial.stakeholders,
+        notes: initial.notes ?? null,
       });
     } else {
       setForm(blank());
@@ -278,6 +278,17 @@ export function RequirementFormDialog({
             </div>
           </div>
 
+          <div>
+            <label style={fieldLabel}>ملاحظات (اختياري)</label>
+            <textarea
+              value={form.notes ?? ""}
+              onChange={(e) => set("notes", e.target.value)}
+              placeholder="أي سياق أو قيود إضافية تساعد التحليل…"
+              rows={2}
+              style={{ ...fieldBox, resize: "vertical", lineHeight: 1.6 }}
+            />
+          </div>
+
           <div style={{ display: "flex", alignItems: "flex-start", gap: 8, padding: "10px 12px", borderRadius: "var(--radius-md)", background: "var(--teal-50)", border: "1px solid var(--teal-100)" }}>
             <Icon name="sparkles" size={15} color="var(--teal-600)" style={{ marginTop: 1 }} />
             <span style={{ font: "12px/1.6 var(--font-sans)", color: "var(--teal-700)" }}>
@@ -346,5 +357,6 @@ function blank(): RequirementInput {
     openQuestions: 0,
     module: "",
     stakeholders: [],
+    notes: null,
   };
 }

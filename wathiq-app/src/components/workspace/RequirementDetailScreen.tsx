@@ -673,6 +673,12 @@ const SMART_LABELS: [string, string][] = [
   ["testable", "قابل للاختبار"],
 ];
 
+const SMART_RATING: Record<string, { label: string; icon: string; fg: string; bg: string }> = {
+  pass: { label: "مستوفٍ", icon: "check", fg: "var(--green-600)", bg: "var(--green-50)" },
+  partial: { label: "جزئي", icon: "minus", fg: "var(--amber-600)", bg: "var(--amber-50)" },
+  fail: { label: "غير مستوفٍ", icon: "x", fg: "var(--red-600)", bg: "var(--red-50)" },
+};
+
 function AmbiguityGroup({ icon, title, items, color }: { icon: string; title: string; items: string[]; color: string }) {
   if (!items.length) return null;
   return (
@@ -821,17 +827,24 @@ function RequirementAnalysisPanel({ req, connected }: { req: Requirement; connec
         {/* SMART */}
         <div>
           <div style={{ font: "var(--weight-semibold) 11px/1 var(--font-sans)", letterSpacing: ".04em", color: "var(--text-subtle)", marginBottom: 8, textTransform: "uppercase" }}>تقييم SMART</div>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
             {SMART_LABELS.map(([k, label]) => {
-              const ok = (a.smart as unknown as Record<string, boolean>)[k];
+              const item = (a.smart as unknown as Record<string, { rating?: string; reason?: string }>)[k] || {};
+              const m = SMART_RATING[item.rating ?? "fail"] ?? SMART_RATING.fail;
               return (
-                <span key={k} style={{ display: "inline-flex", alignItems: "center", gap: 5, font: "12px/1 var(--font-sans)", color: ok ? "var(--green-600)" : "var(--text-subtle)", background: ok ? "var(--green-50)" : "var(--slate-100)", padding: "5px 9px", borderRadius: "var(--radius-pill)" }}>
-                  <Icon name={ok ? "check" : "x"} size={12} color={ok ? "var(--green-500)" : "var(--text-subtle)"} strokeWidth={2.5} /> {label}
-                </span>
+                <div key={k} style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
+                  <span style={{ width: 18, height: 18, flex: "0 0 18px", borderRadius: "50%", background: m.bg, display: "inline-flex", alignItems: "center", justifyContent: "center", marginTop: 1 }}>
+                    <Icon name={m.icon} size={11} color={m.fg} strokeWidth={2.5} />
+                  </span>
+                  <div style={{ flex: 1 }}>
+                    <span style={{ font: "var(--weight-semibold) 12.5px/1.4 var(--font-sans)", color: "var(--text-strong)" }}>{label}</span>
+                    <span style={{ font: "11px var(--font-sans)", color: m.fg, marginInlineStart: 6 }}>· {m.label}</span>
+                    {item.reason && <div style={{ font: "11.5px/1.55 var(--font-sans)", color: "var(--text-muted)", marginTop: 1 }}>{item.reason}</div>}
+                  </div>
+                </div>
               );
             })}
           </div>
-          {a.smart.notes && <p style={{ margin: "8px 0 0", font: "12px/1.6 var(--font-sans)", color: "var(--text-muted)" }}>{a.smart.notes}</p>}
         </div>
 
         {/* Ambiguity */}

@@ -21,6 +21,7 @@ export interface RequirementInput {
   openQuestions: number;
   module: string;
   stakeholders: string[];
+  notes?: string | null;
 }
 
 export type ActionResult = { ok: true } | { ok: false; error: string };
@@ -112,6 +113,7 @@ function clean(input: RequirementInput) {
     openQuestions: Math.max(0, Math.round(input.openQuestions) || 0),
     module: input.module.trim(),
     stakeholders: input.stakeholders.map((s) => s.trim()).filter(Boolean),
+    notes: input.notes?.trim() || null,
   };
 }
 
