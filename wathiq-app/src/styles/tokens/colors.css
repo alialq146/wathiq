@@ -131,3 +131,79 @@
   --priority-medium:   var(--blue-500);
   --priority-low:      var(--slate-400);
 }
+
+/* ============================================================
+   DARK THEME
+   Activated by data-theme="dark" on <html>. The app is entirely
+   token-driven, so remapping the neutral scale, the tint-50/100
+   backgrounds, the navy text tones, and the semantic aliases
+   cascades dark styling across the whole product. Marketing
+   dark-bands (footer/stats) use fixed hex so they stay dark in
+   both themes.
+   ============================================================ */
+:root[data-theme="dark"] {
+  /* Neutrals — inverted cool slate (0 = card, 50 = app bg) */
+  --slate-0:   #141B24;
+  --slate-25:  #121924;
+  --slate-50:  #0F161E;
+  --slate-100: #1C2632;
+  --slate-150: #232F3C;
+  --slate-200: #2B3745;
+  --slate-300: #3A4756;
+  --slate-400: #64707F;
+  --slate-500: #8B96A4;
+  --slate-600: #AAB4C0;
+  --slate-700: #D0D7DF;
+  --slate-800: #E4E9EF;
+  --slate-900: #EFF2F6;
+  --slate-950: #F8FAFB;
+
+  /* Navy is used as strong text inside the app → lighten it */
+  --navy-950: #F3F6FB;
+  --navy-900: #E7ECF4;
+
+  /* Tint backgrounds → darkened, hue preserved (badges, soft fills) */
+  --blue-50:  #16233F;  --blue-100: #1E2E54;
+  --teal-50:  #0D2622;  --teal-100: #123B36;
+  --green-50: #0F2619;  --green-100:#143A27;
+  --amber-50: #2C2411;  --amber-100:#3D3216;
+  --red-50:   #2C161A;  --red-100:  #3E2026;
+  --violet-50:#201A38;
+
+  /* Surfaces & backgrounds */
+  --bg-app:         #0B1017;
+  --bg-canvas:      #0F161E;
+  --surface-card:   #141B24;
+  --surface-sunken: #0F161E;
+  --surface-raised: #1A232E;
+  --surface-overlay: rgba(2, 6, 14, 0.62);
+
+  /* Text */
+  --text-strong: #F3F6FB;
+  --text-body:   #D0D7DF;
+  --text-muted:  #93A0AF;
+  --text-subtle: #6B7787;
+  --text-link:   #8FAAFA;
+
+  /* Borders */
+  --border-subtle: #212C38;
+  --border-default:#2A3745;
+  --border-strong: #3A4756;
+
+  /* Interactive soft fills */
+  --primary-soft: #16233F;
+  --accent-soft:  #0D2622;
+
+  /* Status neutral (others follow the remapped tint-50/fg tokens) */
+  --status-neutral-bg: #1C2632;
+  --status-neutral-fg: #AAB4C0;
+
+  /* Shadows read softer on dark */
+  --shadow-xs: 0 1px 2px rgba(0,0,0,.4);
+  --shadow-sm: 0 1px 2px rgba(0,0,0,.4), 0 1px 3px rgba(0,0,0,.3);
+  --shadow-md: 0 2px 6px rgba(0,0,0,.45), 0 4px 12px rgba(0,0,0,.35);
+  --shadow-lg: 0 10px 28px rgba(0,0,0,.5), 0 2px 8px rgba(0,0,0,.4);
+  --shadow-xl: 0 18px 50px rgba(0,0,0,.6), 0 4px 14px rgba(0,0,0,.45);
+}
+
+:root[data-theme="dark"] body { background: var(--bg-app); }

@@ -112,7 +112,7 @@ export default function PricingPage() {
           <div
             style={{
               position: "relative",
-              background: "linear-gradient(150deg, var(--navy-900), var(--navy-700))",
+              background: "linear-gradient(150deg, #071B3D, #0C2566)",
               borderRadius: "var(--radius-xl)",
               padding: 28,
               color: "#fff",

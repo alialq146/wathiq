@@ -99,7 +99,7 @@ export function WorkspaceClient({ data }: { data: WorkspaceDataValue }) {
   let current: ScreenId = screen === "detail" ? "requirements" : screen;
 
   if (screen === "overview") {
-    main = <OverviewScreen onOpen={openReq} />;
+    main = <OverviewScreen onOpen={openReq} onNewAnalysis={() => openAnalysis("text")} />;
   } else if (screen === "requirements") {
     main = (
       <RequirementsScreen
@@ -135,7 +135,7 @@ export function WorkspaceClient({ data }: { data: WorkspaceDataValue }) {
     current = screen as ScreenId;
     main = <PlaceholderScreen label={CONTEXT_LABELS[screen as ScreenId] as string} />;
   } else {
-    main = <OverviewScreen onOpen={openReq} />;
+    main = <OverviewScreen onOpen={openReq} onNewAnalysis={() => openAnalysis("text")} />;
   }
 
   return (

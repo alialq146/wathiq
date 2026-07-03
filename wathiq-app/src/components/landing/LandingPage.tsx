@@ -3,6 +3,7 @@
 import React from "react";
 import Image from "next/image";
 import { Icon } from "@/components/ds";
+import { useTheme } from "@/lib/use-theme";
 
 /* ============================================================
    Wathiq — public marketing landing page (RTL, Arabic-first).
@@ -98,6 +99,7 @@ export function LandingPage() {
   const [openFaq, setOpenFaq] = React.useState<number | null>(0);
   const [lightbox, setLightbox] = React.useState<number | null>(null);
   const [statsIn, setStatsIn] = React.useState(false);
+  const { theme, toggle: toggleTheme } = useTheme();
 
   // Sticky-nav shadow after scrolling a little.
   React.useEffect(() => {
@@ -158,10 +160,13 @@ export function LandingPage() {
           </nav>
 
           <div className="wl-nav-actions">
+            <button className="wl-theme-btn" aria-label="تبديل المظهر" onClick={toggleTheme}>
+              <Icon name={theme === "dark" ? "sun" : "moon"} size={18} color="var(--text-body)" />
+            </button>
             <a href="/login" className="wl-login-sm">دخول</a>
             <CTA href="/signup" variant="primary">ابدأ مجانًا</CTA>
             <button className="wl-burger" aria-label="القائمة" onClick={() => setMenuOpen((v) => !v)}>
-              <Icon name={menuOpen ? "x" : "menu"} size={22} color="var(--navy-900)" />
+              <Icon name={menuOpen ? "x" : "menu"} size={22} color="var(--text-strong)" />
             </button>
           </div>
         </div>
@@ -483,6 +488,9 @@ html { scroll-behavior: smooth; }
 .wl-nav-actions { display:flex; align-items:center; gap:10px; margin-inline-start:auto; }
 .wl-login-sm { display:none; text-decoration:none; color: var(--navy-900); font: var(--weight-semibold) 14.5px/1 var(--font-sans); padding:0 6px; }
 .wl-burger { display:none; background:transparent; border:none; cursor:pointer; padding:6px; }
+.wl-theme-btn { display:inline-flex; align-items:center; justify-content:center; width:38px; height:38px; border-radius: var(--radius-md);
+  background: var(--slate-50); border:1px solid var(--border-subtle); cursor:pointer; transition: background .15s; }
+.wl-theme-btn:hover { background: var(--slate-100); }
 
 /* hero */
 .wl-hero { position:relative; padding: 64px 0 40px; background:
@@ -562,7 +570,7 @@ html { scroll-behavior: smooth; }
 
 /* stats */
 .wl-stats { display:grid; grid-template-columns: repeat(4,1fr); gap:18px; padding:36px; border-radius: var(--radius-2xl);
-  background: linear-gradient(135deg, var(--navy-900), var(--navy-700)); box-shadow: var(--shadow-xl); }
+  background: linear-gradient(135deg, #071B3D, #0C2566); box-shadow: var(--shadow-xl); }
 .wl-stat { text-align:center; color:#fff; }
 .wl-stat-num { font: var(--weight-bold) 40px/1 var(--font-sans); background: linear-gradient(90deg,#fff,var(--teal-200));
   -webkit-background-clip:text; background-clip:text; color:transparent; direction:ltr; }
@@ -590,7 +598,7 @@ html { scroll-behavior: smooth; }
 .wl-cta .wl-btn { position:relative; }
 
 /* footer */
-.wl-footer { background: var(--navy-950); color: rgba(255,255,255,.72); padding:56px 0 26px; }
+.wl-footer { background: #04142E; color: rgba(255,255,255,.72); padding:56px 0 26px; }
 .wl-foot-grid { display:grid; grid-template-columns: 1.6fr 1fr 1fr 1.2fr; gap:32px; padding-bottom:34px; border-bottom:1px solid rgba(255,255,255,.1); }
 .wl-footer .wl-brand-text b { color:#fff; }
 .wl-foot-about p { font: 13.5px/1.8 var(--font-sans); margin-top:14px; max-width:320px; }
@@ -649,4 +657,14 @@ html { scroll-behavior: smooth; }
   .wl-aud, .wl-feat, .wl-steps { grid-template-columns: 1fr; }
   .wl-foot-grid { grid-template-columns: 1fr; }
 }
+
+/* dark-theme fixes for hardcoded light surfaces */
+:root[data-theme="dark"] .wl-nav-solid { background: rgba(15,21,29,.85); border-bottom-color: var(--border-subtle); }
+:root[data-theme="dark"] .wl-links { background: var(--surface-card); border-bottom-color: var(--border-subtle); }
+:root[data-theme="dark"] .wl-hero {
+  background: radial-gradient(1100px 460px at 85% -8%, rgba(21,152,145,.12) 0%, rgba(0,0,0,0) 60%),
+             radial-gradient(900px 420px at 10% 0%, rgba(43,87,224,.14) 0%, rgba(0,0,0,0) 55%);
+}
+:root[data-theme="dark"] .wl-feat-ic { background: linear-gradient(150deg, var(--teal-50), var(--blue-50)); }
+:root[data-theme="dark"] .wl-frame-url { background: var(--slate-100); }
 `;

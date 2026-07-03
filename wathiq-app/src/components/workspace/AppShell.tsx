@@ -4,6 +4,7 @@ import React from "react";
 import Image from "next/image";
 import { Avatar, Button, Icon } from "@/components/ds";
 import { PROJECT } from "@/lib/data";
+import { useTheme } from "@/lib/use-theme";
 import { useWorkspaceData } from "./WorkspaceDataContext";
 
 export type ScreenId =
@@ -79,6 +80,7 @@ export function AppShell({ current, onNavigate, onNewAnalysis, search = "", onSe
   // Demo persona when auth is off; the real account when signed in.
   const displayName = user?.name || "سارة العتيبي";
   const displayRole = user?.email || "محللة أعمال أولى";
+  const { theme, toggle: toggleTheme } = useTheme();
   const [menu, setMenu] = React.useState<null | "project" | "settings">(null);
   const [loggingOut, setLoggingOut] = React.useState(false);
   const toggleMenu = (m: "project" | "settings") => setMenu((cur) => (cur === m ? null : m));
@@ -420,6 +422,41 @@ export function AppShell({ current, onNavigate, onNewAnalysis, search = "", onSe
                 <span style={{ flex: 1 }}>عدد المتطلبات</span>
                 <span style={{ font: "var(--weight-semibold) 12px var(--font-mono)", color: "var(--text-strong)" }}>{requirements.length}</span>
               </div>
+              {/* Theme toggle */}
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 8,
+                  padding: "8px 8px",
+                  font: "12px/1 var(--font-sans)",
+                  color: "var(--text-body)",
+                }}
+              >
+                <Icon name={theme === "dark" ? "moon" : "sun"} size={14} color="var(--text-subtle)" />
+                <span style={{ flex: 1 }}>المظهر الداكن</span>
+                <button
+                  onClick={toggleTheme}
+                  role="switch"
+                  aria-checked={theme === "dark"}
+                  aria-label="تبديل المظهر الداكن"
+                  style={{
+                    width: 38,
+                    height: 22,
+                    borderRadius: 999,
+                    border: "none",
+                    cursor: "pointer",
+                    padding: 2,
+                    background: theme === "dark" ? "var(--primary)" : "var(--slate-300)",
+                    display: "inline-flex",
+                    justifyContent: theme === "dark" ? "flex-start" : "flex-end",
+                    transition: "background var(--dur-fast)",
+                  }}
+                >
+                  <span style={{ width: 18, height: 18, borderRadius: "50%", background: "#fff", boxShadow: "var(--shadow-xs)" }} />
+                </button>
+              </div>
+
               <button
                 onClick={() => { setMenu(null); onNavigate?.("audit"); }}
                 style={{
@@ -427,7 +464,7 @@ export function AppShell({ current, onNavigate, onNewAnalysis, search = "", onSe
                   alignItems: "center",
                   gap: 8,
                   width: "100%",
-                  marginTop: 4,
+                  marginTop: 2,
                   padding: "8px 8px",
                   borderRadius: "var(--radius-md)",
                   border: "none",

@@ -7,34 +7,102 @@ import { useWorkspaceData } from "./WorkspaceDataContext";
 
 export interface OverviewScreenProps {
   onOpen?: (req: Requirement | null) => void;
+  onNewAnalysis?: () => void;
 }
 
-/* Project overview — BA-specific: readiness, status distribution,
-   acceptance-criteria coverage, missing information. Not a generic dashboard. */
-export function OverviewScreen({ onOpen }: OverviewScreenProps) {
-  const { requirements: REQUIREMENTS } = useWorkspaceData();
-  const statusCounts: Record<string, number> = {
-    approved: 1,
-    review: 1,
-    needs_info: 1,
-    analyzing: 1,
-    draft: 1,
-    blocked: 1,
-  };
-  const statusMeta = [
-    { id: "approved", label: "معتمد", c: "var(--green-500)" },
-    { id: "review", label: "قيد المراجعة", c: "var(--amber-500)" },
-    { id: "needs_info", label: "بحاجة لمعلومات", c: "var(--teal-500)" },
-    { id: "analyzing", label: "قيد التحليل", c: "var(--blue-600)" },
-    { id: "draft", label: "مسودة", c: "var(--slate-400)" },
-    { id: "blocked", label: "محظور", c: "var(--red-500)" },
-  ];
+const STATUS_META = [
+  { id: "approved", label: "معتمد", c: "var(--green-500)" },
+  { id: "review", label: "قيد المراجعة", c: "var(--amber-500)" },
+  { id: "needs_info", label: "بحاجة لمعلومات", c: "var(--teal-500)" },
+  { id: "analyzing", label: "قيد التحليل", c: "var(--blue-600)" },
+  { id: "draft", label: "مسودة", c: "var(--slate-400)" },
+  { id: "blocked", label: "محظور", c: "var(--red-500)" },
+];
 
+/* Project overview — BA-specific readiness view, computed from the user's
+   real data. Shows an onboarding empty state for brand-new workspaces. */
+export function OverviewScreen({ onOpen, onNewAnalysis }: OverviewScreenProps) {
+  const { requirements, acceptanceCriteria, openQuestions } = useWorkspaceData();
+
+  const total = requirements.length;
+
+  // ---- empty state (new account) ----
+  if (total === 0) {
+    return (
+      <div style={{ padding: "24px 28px 40px", maxWidth: 1120, margin: "0 auto" }}>
+        <div
+          style={{
+            marginTop: 40,
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            textAlign: "center",
+            gap: 14,
+            padding: "48px 28px",
+            border: "1px dashed var(--border-strong)",
+            borderRadius: "var(--radius-xl)",
+            background: "var(--surface-card)",
+          }}
+        >
+          <span
+            style={{
+              width: 60,
+              height: 60,
+              borderRadius: "var(--radius-lg)",
+              background: "linear-gradient(150deg, var(--teal-50), var(--blue-50))",
+              border: "1px solid var(--teal-100)",
+              display: "inline-flex",
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            <Icon name="sparkles" size={28} color="var(--teal-600)" />
+          </span>
+          <h1 style={{ font: "var(--weight-bold) 24px/1.3 var(--font-sans)", color: "var(--text-strong)", margin: 0 }}>
+            مرحبًا بك في وثّق 👋
+          </h1>
+          <p style={{ font: "15px/1.8 var(--font-sans)", color: "var(--text-muted)", maxWidth: 460, margin: 0 }}>
+            مساحتك جاهزة وفارغة. ابدأ بتحليل أول وثيقة متطلبات بالذكاء الاصطناعي، أو أضف متطلبًا يدويًّا — وستظهر هنا مؤشرات جاهزية مشروعك.
+          </p>
+          <div style={{ display: "flex", gap: 10, flexWrap: "wrap", justifyContent: "center", marginTop: 8 }}>
+            <Button variant="primary" iconStart={<Icon name="sparkles" size={16} />} onClick={() => onNewAnalysis && onNewAnalysis()}>
+              ابدأ أول تحليل
+            </Button>
+            <Button variant="secondary" iconStart={<Icon name="plus" size={15} />} onClick={() => onOpen && onOpen(null)}>
+              إضافة متطلب يدويًّا
+            </Button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ---- derived metrics ----
+  const statusCounts: Record<string, number> = {};
+  for (const r of requirements) statusCounts[r.status] = (statusCounts[r.status] || 0) + 1;
+
+  const stakeholders = new Set<string>();
+  for (const r of requirements) r.stakeholders.forEach((s) => stakeholders.add(s));
+
+  const approved = statusCounts["approved"] || 0;
+  const review = statusCounts["review"] || 0;
+  const readiness = Math.round(((approved + review * 0.5) / total) * 100);
+
+  const confs = requirements.map((r) => r.confidence).filter((c): c is number => c != null);
+  const avgConf = confs.length ? Math.round(confs.reduce((a, b) => a + b, 0) / confs.length) : 0;
+
+  const doneCriteria = acceptanceCriteria.filter((c) => c.done).length;
+  const coverage = acceptanceCriteria.length ? Math.round((doneCriteria / acceptanceCriteria.length) * 100) : 0;
+
+  // Missing info: requirements needing info, then low-confidence ones.
+  const needsInfo = requirements.filter((r) => r.status === "needs_info");
+  const lowConf = requirements.filter((r) => r.confidence != null && r.confidence < 60 && r.status !== "needs_info");
   const missing = [
-    { req: "FR-033", text: "تعريف الصلاحيات الدقيقة لكل دور وظيفي غير مكتمل.", sev: "high" },
-    { req: "FR-008", text: "معايير قبول التصدير غير محددة (الصيغ، الحدود).", sev: "medium" },
-    { req: "NFR-003", text: "بيئة قياس الأداء وشروط الحمل غير موثّقة.", sev: "medium" },
-  ];
+    ...needsInfo.map((r) => ({ r, text: `«${r.title}» بحاجة لمعلومات إضافية قبل الاعتماد.`, sev: "high" as const })),
+    ...lowConf.map((r) => ({ r, text: `ثقة منخفضة (${r.confidence}٪) — يُنصح بمراجعة بشرية.`, sev: "medium" as const })),
+  ].slice(0, 5);
+
+  const readinessTone = readiness >= 75 ? "success" : readiness >= 40 ? "warning" : "danger";
 
   return (
     <div style={{ padding: "24px 28px 40px", maxWidth: 1120, margin: "0 auto" }}>
@@ -50,13 +118,14 @@ export function OverviewScreen({ onOpen }: OverviewScreenProps) {
             display: "flex",
             alignItems: "center",
             gap: 10,
+            flexWrap: "wrap",
           }}
         >
           <span style={{ font: "12px var(--font-mono)", color: "var(--text-subtle)", direction: "ltr" }}>#{PROJECT.id}</span>
           <span>·</span>
-          <span>٦ متطلبات</span>
+          <span>{total} متطلب</span>
           <span>·</span>
-          <span>٥ أصحاب مصلحة</span>
+          <span>{stakeholders.size} أصحاب مصلحة</span>
         </p>
       </div>
 
@@ -67,26 +136,17 @@ export function OverviewScreen({ onOpen }: OverviewScreenProps) {
             <span style={{ font: "var(--weight-semibold) 14px var(--font-sans)", color: "var(--text-strong)" }}>
               جاهزية المتطلبات للاعتماد
             </span>
-            <Badge tone="warning">٦٢٪</Badge>
+            <Badge tone={readinessTone}>{readiness}٪</Badge>
           </div>
           <div style={{ height: 10, borderRadius: 999, background: "var(--slate-150)", overflow: "hidden", display: "flex" }}>
-            <div style={{ width: "17%", background: "var(--green-500)" }} />
-            <div style={{ width: "17%", background: "var(--amber-500)" }} />
-            <div style={{ width: "17%", background: "var(--teal-500)" }} />
-            <div style={{ width: "11%", background: "var(--blue-600)" }} />
+            {STATUS_META.map((s) => {
+              const w = ((statusCounts[s.id] || 0) / total) * 100;
+              return w > 0 ? <div key={s.id} style={{ width: `${w}%`, background: s.c }} /> : null;
+            })}
           </div>
           <div style={{ display: "flex", flexWrap: "wrap", gap: "8px 16px", marginTop: 14 }}>
-            {statusMeta.map((s) => (
-              <span
-                key={s.id}
-                style={{
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: 6,
-                  font: "12px var(--font-sans)",
-                  color: "var(--text-muted)",
-                }}
-              >
+            {STATUS_META.filter((s) => statusCounts[s.id]).map((s) => (
+              <span key={s.id} style={{ display: "inline-flex", alignItems: "center", gap: 6, font: "12px var(--font-sans)", color: "var(--text-muted)" }}>
                 <span style={{ width: 8, height: 8, borderRadius: 2, background: s.c }} /> {s.label}
                 <span style={{ font: "11px var(--font-mono)", color: "var(--text-subtle)" }}>{statusCounts[s.id]}</span>
               </span>
@@ -96,19 +156,21 @@ export function OverviewScreen({ onOpen }: OverviewScreenProps) {
         <Card padding="lg" style={{ display: "flex", flexDirection: "column", justifyContent: "center" }}>
           <span style={{ font: "12px var(--font-sans)", color: "var(--text-muted)", marginBottom: 8 }}>تغطية معايير القبول</span>
           <div style={{ font: "var(--weight-bold) 32px/1 var(--font-sans)", color: "var(--text-strong)" }}>
-            78<span style={{ fontSize: 18, color: "var(--text-muted)" }}>٪</span>
+            {coverage}<span style={{ fontSize: 18, color: "var(--text-muted)" }}>٪</span>
           </div>
           <div style={{ marginTop: 10 }}>
-            <ConfidenceMeter value={78} label="٢٢ من ٢٨ مكتملة" />
+            <ConfidenceMeter value={coverage} label={`${doneCriteria} من ${acceptanceCriteria.length} مكتملة`} />
           </div>
         </Card>
         <Card padding="lg" style={{ display: "flex", flexDirection: "column", justifyContent: "center" }}>
           <span style={{ font: "12px var(--font-sans)", color: "var(--text-muted)", marginBottom: 8 }}>متوسط ثقة الذكاء الاصطناعي</span>
           <div style={{ font: "var(--weight-bold) 32px/1 var(--font-sans)", color: "var(--teal-600)" }}>
-            74<span style={{ fontSize: 18, color: "var(--text-muted)" }}>٪</span>
+            {avgConf}<span style={{ fontSize: 18, color: "var(--text-muted)" }}>٪</span>
           </div>
           <div style={{ marginTop: 10, font: "12px/1.5 var(--font-sans)", color: "var(--text-muted)" }}>
-            متطلب واحد بثقة منخفضة يحتاج مراجعة بشرية.
+            {lowConf.length > 0
+              ? `${lowConf.length} متطلب بثقة منخفضة يحتاج مراجعة بشرية.`
+              : "لا توجد متطلبات بثقة منخفضة."}
           </div>
         </Card>
       </div>
@@ -119,49 +181,36 @@ export function OverviewScreen({ onOpen }: OverviewScreenProps) {
           <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "14px 18px", borderBottom: "1px solid var(--border-subtle)" }}>
             <Icon name="alert-triangle" size={17} color="var(--amber-600)" />
             <span style={{ font: "var(--weight-semibold) 14px var(--font-sans)", color: "var(--text-strong)" }}>معلومات ناقصة</span>
-            <Badge tone="warning" style={{ marginInlineStart: "auto" }}>
+            <Badge tone={missing.length ? "warning" : "success"} style={{ marginInlineStart: "auto" }}>
               {missing.length}
             </Badge>
           </div>
-          <div style={{ display: "flex", flexDirection: "column" }}>
-            {missing.map((m, i) => (
-              <button
-                key={m.req}
-                onClick={() =>
-                  onOpen && onOpen(REQUIREMENTS.find((r) => r.id === m.req) || REQUIREMENTS[0])
-                }
-                style={{
-                  display: "flex",
-                  gap: 11,
-                  alignItems: "flex-start",
-                  padding: "13px 18px",
-                  borderTop: i ? "1px solid var(--border-subtle)" : "none",
-                  background: "transparent",
-                  border: "none",
-                  cursor: "pointer",
-                  textAlign: "start",
-                }}
-              >
-                <span
+          {missing.length === 0 ? (
+            <div style={{ padding: "22px 18px", font: "13px/1.6 var(--font-sans)", color: "var(--text-muted)", display: "flex", alignItems: "center", gap: 8 }}>
+              <Icon name="check-circle" size={16} color="var(--green-500)" /> لا توجد معلومات ناقصة — كل المتطلبات مكتملة.
+            </div>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column" }}>
+              {missing.map((m, i) => (
+                <button
+                  key={m.r.id}
+                  onClick={() => onOpen && onOpen(m.r)}
                   style={{
-                    width: 7,
-                    height: 7,
-                    borderRadius: "50%",
-                    background: m.sev === "high" ? "var(--red-500)" : "var(--amber-500)",
-                    marginTop: 6,
-                    flex: "0 0 7px",
+                    display: "flex", gap: 11, alignItems: "flex-start", padding: "13px 18px",
+                    borderTop: i ? "1px solid var(--border-subtle)" : "none",
+                    background: "transparent", border: "none", cursor: "pointer", textAlign: "start",
                   }}
-                />
-                <div style={{ flex: 1 }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                    <span style={{ font: "var(--font-mono-id)", color: "var(--blue-700)", direction: "ltr" }}>{m.req}</span>
+                >
+                  <span style={{ width: 7, height: 7, borderRadius: "50%", background: m.sev === "high" ? "var(--red-500)" : "var(--amber-500)", marginTop: 6, flex: "0 0 7px" }} />
+                  <div style={{ flex: 1 }}>
+                    <span style={{ font: "var(--font-mono-id)", color: "var(--blue-700)", direction: "ltr" }}>{m.r.id}</span>
+                    <div style={{ font: "13px/1.5 var(--font-sans)", color: "var(--text-body)", marginTop: 3 }}>{m.text}</div>
                   </div>
-                  <div style={{ font: "13px/1.5 var(--font-sans)", color: "var(--text-body)", marginTop: 3 }}>{m.text}</div>
-                </div>
-                <Icon name="chevron-left" size={15} color="var(--text-subtle)" />
-              </button>
-            ))}
-          </div>
+                  <Icon name="chevron-left" size={15} color="var(--text-subtle)" />
+                </button>
+              ))}
+            </div>
+          )}
         </Card>
 
         {/* Recently analyzed */}
@@ -174,36 +223,20 @@ export function OverviewScreen({ onOpen }: OverviewScreenProps) {
             </Button>
           </div>
           <div style={{ display: "flex", flexDirection: "column" }}>
-            {REQUIREMENTS.slice(0, 4).map((r, i) => (
+            {requirements.slice(0, 4).map((r, i) => (
               <button
                 key={r.id}
                 onClick={() => onOpen && onOpen(r)}
                 style={{
-                  display: "flex",
-                  gap: 11,
-                  alignItems: "center",
-                  padding: "12px 18px",
+                  display: "flex", gap: 11, alignItems: "center", padding: "12px 18px",
                   borderTop: i ? "1px solid var(--border-subtle)" : "none",
-                  background: "transparent",
-                  border: "none",
-                  cursor: "pointer",
-                  textAlign: "start",
+                  background: "transparent", border: "none", cursor: "pointer", textAlign: "start",
                 }}
               >
                 <PriorityLabel level={r.priority} showLabel={false} />
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                    <span style={{ font: "var(--font-mono-id)", color: "var(--text-muted)", direction: "ltr", fontSize: 12 }}>{r.id}</span>
-                  </div>
-                  <div
-                    style={{
-                      font: "var(--weight-medium) 13px/1.4 var(--font-sans)",
-                      color: "var(--text-strong)",
-                      whiteSpace: "nowrap",
-                      overflow: "hidden",
-                      textOverflow: "ellipsis",
-                    }}
-                  >
+                  <span style={{ font: "var(--font-mono-id)", color: "var(--text-muted)", direction: "ltr", fontSize: 12 }}>{r.id}</span>
+                  <div style={{ font: "var(--weight-medium) 13px/1.4 var(--font-sans)", color: "var(--text-strong)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                     {r.title}
                   </div>
                 </div>

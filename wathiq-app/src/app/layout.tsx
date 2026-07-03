@@ -12,8 +12,13 @@ export default function RootLayout({
 }: {
   children: React.ReactNode;
 }) {
+  // Set the theme before first paint to avoid a flash of the wrong theme.
+  const themeInit = `(function(){try{var t=localStorage.getItem('wathiq-theme');if(!t){t=window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';}document.documentElement.setAttribute('data-theme',t);}catch(e){}})();`;
   return (
-    <html dir="rtl" lang="ar">
+    <html dir="rtl" lang="ar" suppressHydrationWarning>
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: themeInit }} />
+      </head>
       <body>{children}</body>
     </html>
   );

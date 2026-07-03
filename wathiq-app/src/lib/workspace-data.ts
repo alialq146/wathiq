@@ -57,8 +57,10 @@ export async function getWorkspaceData(userId?: string | null): Promise<Workspac
         prisma.auditEvent.findMany({ where: owned, orderBy: { createdAt: "desc" }, take: 200 }),
       ]);
 
-    // Not seeded yet → keep the app populated with the fallback content.
-    if (requirements.length === 0) return FALLBACK;
+    // In open/owner mode (no scoped user) an empty table means "not seeded"
+    // → show demo content. For a scoped account, empty is legitimate: a new
+    // user simply starts with a clean, empty workspace.
+    if (!userId && requirements.length === 0) return FALLBACK;
 
     return {
       requirements: requirements.map((r) => ({
