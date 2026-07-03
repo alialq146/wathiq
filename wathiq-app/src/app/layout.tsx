@@ -2,9 +2,9 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "وثّق · Wathiq Workspace",
+  title: "وثّق · تحليل المتطلبات بالذكاء الاصطناعي",
   description:
-    "منصة وثّق لتحليل متطلبات الأعمال — مساحة عمل احترافية لتحليل ومراجعة وتنقيح المتطلبات.",
+    "منصة وثّق العربية لتحليل متطلبات الأعمال بالذكاء الاصطناعي: استخراج المتطلبات، اكتشاف النواقص، تقييم الجودة، وإنتاج وثيقة جاهزة للاعتماد.",
 };
 
 export default function RootLayout({

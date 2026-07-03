@@ -4,6 +4,7 @@ import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { prisma, hasDatabase } from "@/lib/db";
 import { getSessionUser } from "@/lib/session";
+import { authEnabled } from "@/lib/auth";
 import type { RequirementStatus, PriorityLevel } from "@/components/ds";
 
 export interface RequirementInput {
@@ -39,10 +40,17 @@ interface Actor {
   name: string;
 }
 
-async function currentActor(): Promise<Actor> {
+/**
+ * Resolve the acting user, or null when the request is unauthenticated in a
+ * mode that requires sign-in. Because the landing page makes "/" public, a
+ * server action could be reached without a session — so mutations must deny
+ * that case instead of silently acting as the shared/demo actor.
+ */
+async function requireActor(): Promise<Actor | null> {
   const user = await getSessionUser();
   if (user && user.uid !== "owner") return { uid: user.uid, name: user.name };
   if (user) return { uid: null, name: user.name || "المالك" }; // legacy owner mode
+  if (authEnabled()) return null; // sign-in required but not signed in → deny
   return { uid: null, name: "سارة العتيبي" }; // open mode (demo persona)
 }
 
@@ -111,7 +119,8 @@ export async function saveRequirement(
   if (!input.title.trim()) return { ok: false, error: "missing-title" };
 
   try {
-    const actor = await currentActor();
+    const actor = await requireActor();
+    if (!actor) return { ok: false, error: "unauthorized" };
     const data = clean(input);
 
     if (originalId) {
@@ -155,7 +164,8 @@ export async function saveExtractedRequirements(
   if (!inputs.length) return { ok: false, error: "empty" };
 
   try {
-    const actor = await currentActor();
+    const actor = await requireActor();
+    if (!actor) return { ok: false, error: "unauthorized" };
     const max = await prisma.requirement.aggregate({ _max: { order: true } });
     let order = (max._max.order ?? -1) + 1;
     let saved = 0;
@@ -206,7 +216,8 @@ export async function updateRequirementStatus(
   if (!rid) return { ok: false, error: "missing-id" };
 
   try {
-    const actor = await currentActor();
+    const actor = await requireActor();
+    if (!actor) return { ok: false, error: "unauthorized" };
     const target = await prisma.requirement.findFirst({
       where: { id: rid, ...ownedBy(actor.uid) },
     });
@@ -230,7 +241,8 @@ export async function updateRequirementStatus(
 export async function deleteRequirement(id: string): Promise<ActionResult> {
   if (!hasDatabase()) return { ok: false, error: "no-db" };
   try {
-    const actor = await currentActor();
+    const actor = await requireActor();
+    if (!actor) return { ok: false, error: "unauthorized" };
     const target = await prisma.requirement.findFirst({
       where: { id, ...ownedBy(actor.uid) },
     });
@@ -263,7 +275,8 @@ export async function addAcceptanceCriterion(
   if (body.length < 3) return { ok: false, error: "too-short" };
 
   try {
-    const actor = await currentActor();
+    const actor = await requireActor();
+    if (!actor) return { ok: false, error: "unauthorized" };
     // The parent requirement must be visible to this user.
     const parent = await prisma.requirement.findFirst({
       where: { id: rid, ...ownedBy(actor.uid) },
@@ -307,7 +320,8 @@ export async function toggleAcceptanceCriterion(
 ): Promise<ActionResult> {
   if (!hasDatabase()) return { ok: false, error: "no-db" };
   try {
-    const actor = await currentActor();
+    const actor = await requireActor();
+    if (!actor) return { ok: false, error: "unauthorized" };
     const target = await prisma.acceptanceCriterion.findFirst({
       where: { id, ...ownedBy(actor.uid) },
     });
@@ -339,7 +353,8 @@ export async function answerOpenQuestion(
   if (body.length < 2) return { ok: false, error: "too-short" };
 
   try {
-    const actor = await currentActor();
+    const actor = await requireActor();
+    if (!actor) return { ok: false, error: "unauthorized" };
     const target = await prisma.openQuestion.findFirst({
       where: { id, ...ownedBy(actor.uid) },
     });

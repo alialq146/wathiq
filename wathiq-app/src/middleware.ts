@@ -12,8 +12,11 @@ export async function middleware(req: NextRequest) {
 
   const { pathname } = req.nextUrl;
 
-  // Always-allow: auth pages, auth endpoints, and the health check.
+  // Always-allow: the public landing page ("/" branches to a marketing page
+  // for guests and the workspace for signed-in users), auth pages, auth
+  // endpoints, and the health check. Mutations are still guarded server-side.
   if (
+    pathname === "/" ||
     pathname.startsWith("/login") ||
     pathname.startsWith("/signup") ||
     pathname.startsWith("/api/auth") ||
