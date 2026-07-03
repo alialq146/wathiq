@@ -16,7 +16,7 @@ import { useTheme } from "@/lib/use-theme";
 const NAV = [
   { href: "#home", label: "الرئيسية" },
   { href: "#features", label: "المميزات" },
-  { href: "#how", label: "كيف يعمل" },
+  { href: "#how", label: "كيف يعمل وثّق" },
   { href: "#screens", label: "لقطات من النظام" },
   { href: "/pricing", label: "الأسعار" },
   { href: "#faq", label: "الأسئلة الشائعة" },
@@ -24,34 +24,34 @@ const NAV = [
 ];
 
 const AUDIENCES = [
-  { icon: "landmark", label: "الجهات الحكومية", desc: "توثيق متطلبات الأنظمة الحكومية بدقة ووضوح." },
-  { icon: "building-2", label: "الشركات والمؤسسات", desc: "تسريع دورة تحليل المتطلبات عبر الفرق." },
-  { icon: "briefcase", label: "مدراء المشاريع", desc: "رؤية موحّدة لحالة كل متطلب وقراراته." },
-  { icon: "user-search", label: "محللو الأعمال", desc: "استخراج وتنقيح المتطلبات بمساعدة الذكاء." },
-  { icon: "refresh-cw", label: "فرق التحول الرقمي", desc: "معايير جودة موحّدة لكل مبادرة رقمية." },
+  { icon: "landmark", label: "الجهات الحكومية", desc: "توثيق متطلبات الأنظمة والمبادرات الحكومية بوضوح وقابلية للمراجعة." },
+  { icon: "building-2", label: "الشركات والمؤسسات", desc: "تسريع مراجعة المتطلبات وتقليل سوء الفهم بين فرق العمل والموردين." },
+  { icon: "briefcase", label: "مدراء المشاريع", desc: "متابعة جاهزية المتطلبات قبل تحويلها إلى مهام تنفيذية." },
+  { icon: "user-search", label: "محللو الأعمال", desc: "اكتشاف النواقص وتوليد أسئلة دقيقة للرجوع بها إلى أصحاب المصلحة." },
+  { icon: "refresh-cw", label: "فرق التحول الرقمي", desc: "توحيد جودة المتطلبات عبر المبادرات الرقمية المختلفة." },
 ];
 
 const FEATURES = [
-  { icon: "sparkles", title: "تحليل ذكي", desc: "يقرأ وثائقك ويستخرج المتطلبات بدقة عالية عبر نموذج Claude." },
-  { icon: "scan-search", title: "اكتشاف النواقص", desc: "يكشف المتطلبات الغامضة أو الناقصة ويطرح أسئلة توضيحية." },
-  { icon: "shield-check", title: "تقييم جودة المتطلبات", desc: "يقيس وضوح كل متطلب واكتماله وفق معايير معتمدة." },
-  { icon: "users", title: "استخراج أصحاب المصلحة", desc: "يحدّد الأطراف المعنية وأدوارهم في كل متطلب تلقائيًا." },
-  { icon: "scale", title: "قواعد العمل", desc: "يوثّق القواعد والقيود التنظيمية ويربطها بمصادرها." },
-  { icon: "history", title: "سجل التحليلات", desc: "خط زمني كامل لكل تغيير — من أنشأه ومتى ولماذا." },
-  { icon: "file-text", title: "التقارير والتصدير", desc: "صدّر وثيقة متطلبات كاملة إلى PDF أو Word أو Excel." },
-  { icon: "languages", title: "دعم اللغة العربية", desc: "مبنية عربيًّا أولًا (RTL) — لا ترجمة ولا التواء." },
+  { icon: "sparkles", title: "تحليل ذكي", desc: "يقرأ وثائقك ويستخرج المتطلبات الوظيفية وغير الوظيفية بدقة." },
+  { icon: "scan-search", title: "اكتشاف النواقص", desc: "يكشف المتطلبات الغامضة أو غير المكتملة، ويقترح أسئلة توضيحية." },
+  { icon: "shield-check", title: "تقييم جودة المتطلبات", desc: "يعطي كل متطلب مؤشر جودة يساعدك على معرفة مدى جاهزيته." },
+  { icon: "users", title: "استخراج أصحاب المصلحة", desc: "يحدد الأطراف المرتبطة بكل متطلب وأدوارهم المتوقعة." },
+  { icon: "scale", title: "قواعد العمل", desc: "يستخرج قواعد العمل ويربطها بالمتطلبات ذات العلاقة." },
+  { icon: "history", title: "سجل التحليلات", desc: "يحتفظ بسجل واضح للتحليلات والتعديلات لمراجعتها لاحقًا." },
+  { icon: "file-text", title: "التقارير والتصدير", desc: "جهّز نتائج التحليل للتصدير والمشاركة مع فريقك أو عميلك." },
+  { icon: "languages", title: "دعم اللغة العربية", desc: "مصمم بواجهة عربية ويدعم تحليل المتطلبات المكتوبة بالعربية." },
 ];
 
 const STEPS = [
-  { icon: "folder-plus", title: "أنشئ مشروعًا", desc: "ابدأ مساحة عمل جديدة لمتطلبات مشروعك." },
-  { icon: "upload", title: "ارفع ملف المتطلبات", desc: "الصق نصًّا أو ارفع مستند PDF — يدعمه النظام مباشرة." },
-  { icon: "cpu", title: "تحليل بالذكاء الاصطناعي", desc: "يستخرج وثّق المتطلبات والمعايير والأسئلة والقواعد." },
-  { icon: "list-checks", title: "النتائج والتوصيات", desc: "راجع، عدّل، اعتمد، وصدّر وثيقتك النهائية." },
+  { icon: "folder-plus", title: "أنشئ مشروعًا", desc: "ابدأ مساحة عمل جديدة واجمع فيها متطلبات مشروعك." },
+  { icon: "upload", title: "ارفع ملف المتطلبات", desc: "ارفع ملف PDF أو أضف المتطلبات يدويًا داخل النظام." },
+  { icon: "cpu", title: "حلّل بالذكاء الاصطناعي", desc: "يقوم وثّق باكتشاف الغموض، النواقص، والأسئلة المقترحة." },
+  { icon: "list-checks", title: "راجع النتائج والتوصيات", desc: "راجع مؤشر الجودة، حسّن المتطلبات، ثم جهّزها للاعتماد." },
 ];
 
 const SCREENS = [
-  { src: "/assets/screens/requirements.png", title: "إدارة المتطلبات", desc: "بطاقات واضحة بالحالة والأولوية ودرجة الثقة." },
-  { src: "/assets/screens/detail.png", title: "تفاصيل المتطلب", desc: "معايير القبول، القواعد، والأسئلة المفتوحة في مكان واحد." },
+  { src: "/assets/screens/requirements.png", title: "إدارة المتطلبات", desc: "بطاقات واضحة تعرض الحالة، الأولوية، ومؤشر الجودة لكل متطلب." },
+  { src: "/assets/screens/detail.png", title: "تفاصيل المتطلب", desc: "كل ما تحتاجه للمراجعة في مكان واحد: معايير القبول، الأسئلة، وقواعد العمل." },
   { src: "/assets/screens/analysis.png", title: "تحليل وثّق", desc: "لصق النص أو رفع PDF ثم استخراج فوري بالذكاء الاصطناعي." },
   { src: "/assets/screens/audit.png", title: "سجل التدقيق", desc: "توثيق شفّاف لكل عملية على مستوى المشروع." },
 ];
@@ -65,7 +65,7 @@ const STATS = [
 
 const FAQS = [
   { q: "ما هي منصة وثّق؟", a: "منصة عربية لتحليل متطلبات الأعمال بالذكاء الاصطناعي: تستخرج المتطلبات من وثائقك، تكشف النواقص، تقيس الجودة، وتنتج وثيقة جاهزة للاعتماد." },
-  { q: "كيف تحلّل المنصة المتطلبات؟", a: "عبر نموذج Claude (Opus) مع مخرجات منظّمة، فتستخرج المتطلبات ومعايير القبول والأسئلة المفتوحة مع درجة ثقة شفّافة لكل نتيجة." },
+  { q: "كيف تحلّل المنصة المتطلبات؟", a: "عبر نماذج ذكاء اصطناعي متقدمة بمخرجات منظّمة، فتستخرج المتطلبات ومعايير القبول والأسئلة المفتوحة مع مؤشر جودة شفّاف لكل نتيجة." },
   { q: "هل بياناتي آمنة وخاصة؟", a: "نعم. لكل حساب مساحة عمل معزولة — لا يرى أحد بيانات غيره. وكلمات المرور مخزّنة مشفّرة، والجلسات موقّعة بأمان." },
   { q: "ما صيغ الملفات المدعومة؟", a: "يمكنك لصق النص مباشرة أو رفع مستند PDF ليحلّله النظام. والتصدير متاح إلى PDF و Word و Excel." },
   { q: "هل أحتاج بطاقة ائتمانية للبدء؟", a: "لا. أنشئ حسابًا بالبريد وكلمة المرور وابدأ فورًا دون أي بطاقة." },
@@ -177,29 +177,29 @@ export function LandingPage() {
         <div className="wl-wrap wl-hero-grid">
           <div className="wl-hero-copy wl-reveal">
             <span className="wl-eyebrow">
-              <Icon name="sparkles" size={14} color="var(--teal-600)" /> مدعوم بالذكاء الاصطناعي · Claude
+              <Icon name="sparkles" size={14} color="var(--teal-600)" /> مدعوم بنماذج ذكاء اصطناعي متقدمة
             </span>
             <h1 className="wl-h1">
               حلّل المتطلبات التقنية
               <br />
-              <span className="wl-grad">بالذكاء الاصطناعي</span> خلال دقائق
+              <span className="wl-grad">واكتشف الغموض</span> قبل بدء التطوير
             </h1>
             <p className="wl-lead">
-              منصة وثّق تساعد الجهات الحكومية والشركات على تحليل المتطلبات الوظيفية،
-              واكتشاف النواقص، وتقييم الجودة، وإنتاج وثيقة جاهزة للاعتماد — بالعربية وبدقة عالية.
+              تساعدك وثّق على تحليل وثائق المتطلبات، اكتشاف النواقص، توليد الأسئلة المقترحة،
+              وإنشاء معايير قبول واضحة — مدعومة بنماذج ذكاء اصطناعي متقدمة.
             </p>
             <div className="wl-hero-cta">
               <CTA href="/signup" variant="primary" large>
                 ابدأ مجانًا <Icon name="arrow-left" size={18} />
               </CTA>
-              <CTA href="#screens" variant="ghost" large>
-                <Icon name="play" size={16} /> مشاهدة النظام
+              <CTA href="#how" variant="ghost" large>
+                <Icon name="play" size={16} /> شاهد كيف يعمل وثّق
               </CTA>
             </div>
             <ul className="wl-hero-badges">
               <li><Icon name="check" size={15} color="var(--green-500)" /> لا يتطلب بطاقة ائتمانية</li>
               <li><Icon name="check" size={15} color="var(--green-500)" /> يدعم العربية بالكامل</li>
-              <li><Icon name="check" size={15} color="var(--green-500)" /> بياناتك معزولة وآمنة</li>
+              <li><Icon name="check" size={15} color="var(--green-500)" /> بياناتك محفوظة وآمنة</li>
             </ul>
           </div>
 
@@ -229,6 +229,9 @@ export function LandingPage() {
           <div className="wl-sec-head wl-reveal">
             <span className="wl-kicker">لمن صُمّمت وثّق</span>
             <h2 className="wl-h2">منصة واحدة لكل من يحلّل المتطلبات</h2>
+            <p className="wl-sub">
+              سواء كنت محلل أعمال، مدير مشروع، أو ضمن فريق تحول رقمي — تساعدك وثّق على تحويل المتطلبات إلى قرارات أوضح.
+            </p>
           </div>
           <div className="wl-aud wl-reveal">
             {AUDIENCES.map((a) => (
@@ -249,8 +252,8 @@ export function LandingPage() {
         <div className="wl-wrap">
           <div className="wl-sec-head wl-reveal">
             <span className="wl-kicker">المميزات</span>
-            <h2 className="wl-h2">كل ما تحتاجه لتوثيق متطلبات محترفة</h2>
-            <p className="wl-sub">من الاستخراج الذكي إلى التقرير النهائي — في مسار واحد متكامل.</p>
+            <h2 className="wl-h2">كل ما تحتاجه لتحليل وتوثيق متطلبات احترافية</h2>
+            <p className="wl-sub">من استخراج المتطلبات إلى تقييم الجودة وتوليد معايير القبول — في مسار واحد واضح.</p>
           </div>
           <div className="wl-feat wl-reveal">
             {FEATURES.map((f) => (
@@ -268,7 +271,7 @@ export function LandingPage() {
       <section className="wl-sec" id="how">
         <div className="wl-wrap">
           <div className="wl-sec-head wl-reveal">
-            <span className="wl-kicker">كيف يعمل</span>
+            <span className="wl-kicker">كيف يعمل وثّق</span>
             <h2 className="wl-h2">من الوثيقة إلى القرار في أربع خطوات</h2>
           </div>
           <div className="wl-steps wl-reveal">
@@ -291,8 +294,8 @@ export function LandingPage() {
         <div className="wl-wrap">
           <div className="wl-sec-head wl-reveal">
             <span className="wl-kicker">لقطات من النظام</span>
-            <h2 className="wl-h2">تصميم عربي نظيف يركّز على العمل</h2>
-            <p className="wl-sub">اضغط أي صورة لتكبيرها.</p>
+            <h2 className="wl-h2">واجهة عربية تساعدك على مراجعة المتطلبات بوضوح</h2>
+            <p className="wl-sub">تابع حالة كل متطلب، راجع نقاط الغموض، وافتح التفاصيل لاتخاذ القرار المناسب — اضغط أي صورة لتكبيرها.</p>
           </div>
           <div className="wl-shots wl-reveal">
             {SCREENS.map((s, i) => (
@@ -359,7 +362,7 @@ export function LandingPage() {
           <div className="wl-cta wl-reveal">
             <div className="wl-cta-glow" aria-hidden />
             <h2>جاهز لتحليل أول مشروع؟</h2>
-            <p>ابدأ الآن مجانًا واكتشف قوة الذكاء الاصطناعي في تحليل المتطلبات.</p>
+            <p>ابدأ الآن مجانًا واكتشف قوة نماذج الذكاء الاصطناعي في تحليل المتطلبات.</p>
             <CTA href="/signup" variant="light" large>
               ابدأ أول تحليل الآن <Icon name="arrow-left" size={18} />
             </CTA>
