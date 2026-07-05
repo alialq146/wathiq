@@ -4,14 +4,18 @@ import React from "react";
 import { Button, Icon } from "@/components/ds";
 import { useWorkspaceData } from "./WorkspaceDataContext";
 import {
-  exportPDF,
-  exportWord,
   exportCSV,
+  exportDocumentPDF,
+  exportDocumentWord,
+  buildReportBody,
+  projectSlug,
   DEFAULT_SECTIONS,
   type ReportContext,
   type ReportOptions,
   type ReportSections,
 } from "@/lib/export";
+import { buildBRDBody, buildSRSBody } from "@/lib/documents";
+import { DOC_TYPES, type DocType } from "@/lib/report-config";
 
 export interface ExportDialogProps {
   open: boolean;
@@ -61,7 +65,9 @@ export function ExportDialog({ open, onClose, filteredIds }: ExportDialogProps) 
   const { requirements, acceptanceCriteria, businessRules, openQuestions, activeProject, user } =
     useWorkspaceData();
 
+  const [docType, setDocType] = React.useState<DocType>("report");
   const [detailed, setDetailed] = React.useState(true);
+  const [phase, setPhase] = React.useState<"idle" | "working" | "done">("idle");
   const [fmt, setFmt] = React.useState<Fmt>("pdf");
   const [scope, setScope] = React.useState<Scope>("all");
   const [sections, setSections] = React.useState<ReportSections>({ ...DEFAULT_SECTIONS });
@@ -88,7 +94,8 @@ export function ExportDialog({ open, onClose, filteredIds }: ExportDialogProps) 
 
   const run = () => {
     // البيانات مصدرها سياق مساحة العمل المُرشَّح في الخادم لمالكها —
-    // لا يمكن أن يصل التقرير لبيانات مستخدم أو مشروع آخر.
+    // لا يمكن أن تصل أي وثيقة لبيانات مستخدم أو مشروع آخر.
+    setPhase("working");
     const ctx: ReportContext = {
       project: activeProject,
       userName: user?.name ?? null,
@@ -97,16 +104,30 @@ export function ExportDialog({ open, onClose, filteredIds }: ExportDialogProps) 
       businessRules: businessRules.filter((b) => b.requirementId && scopedIds.has(b.requirementId)),
       openQuestions: openQuestions.filter((q) => q.requirementId && scopedIds.has(q.requirementId)),
     };
-    const opts: ReportOptions = {
-      detailed,
-      sections,
-      scopeLabel:
-        scope === "filtered" ? `النتائج المفلترة (${scopedReqs.length} من ${requirements.length})` : null,
-    };
-    if (fmt === "pdf") exportPDF(ctx, opts);
-    else if (fmt === "word") exportWord(ctx, opts);
-    else exportCSV(ctx);
-    onClose();
+    const scopeLabel =
+      scope === "filtered" ? `النتائج المفلترة (${scopedReqs.length} من ${requirements.length})` : null;
+
+    // نُبنى الوثيقة حسب النوع — كلها تعمل بدون ذكاء اصطناعي.
+    setTimeout(() => {
+      if (fmt === "csv") {
+        exportCSV(ctx);
+      } else {
+        const body =
+          docType === "brd"
+            ? buildBRDBody(ctx, { detailed, scopeLabel })
+            : docType === "srs"
+              ? buildSRSBody(ctx, { detailed, scopeLabel })
+              : buildReportBody(ctx, { detailed, sections, scopeLabel } as ReportOptions);
+        const title = DOC_TYPES[docType].title;
+        if (fmt === "pdf") exportDocumentPDF(title, body);
+        else exportDocumentWord(title, body, `${DOC_TYPES[docType].filePrefix}-${projectSlug(ctx)}.doc`);
+      }
+      setPhase("done");
+      setTimeout(() => {
+        setPhase("idle");
+        onClose();
+      }, 900);
+    }, 150);
   };
 
   const toggleSection = (k: keyof ReportSections) =>
@@ -144,6 +165,39 @@ export function ExportDialog({ open, onClose, filteredIds }: ExportDialogProps) 
 
         {/* Body */}
         <div style={{ padding: 20, display: "flex", flexDirection: "column", gap: 16 }}>
+          {/* نوع المستند */}
+          <div>
+            <div style={groupLabel}>نوع المستند</div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {(Object.keys(DOC_TYPES) as DocType[]).map((t) => {
+                const on = docType === t;
+                return (
+                  <button
+                    key={t}
+                    onClick={() => setDocType(t)}
+                    style={{
+                      display: "flex", alignItems: "flex-start", gap: 10, textAlign: "start",
+                      padding: "10px 12px", borderRadius: "var(--radius-md)",
+                      border: `1px solid ${on ? "var(--blue-400)" : "var(--border-default)"}`,
+                      background: on ? "var(--blue-50)" : "var(--surface-card)",
+                      cursor: "pointer",
+                    }}
+                  >
+                    <Icon name={t === "report" ? "gauge" : t === "brd" ? "briefcase" : "file-code"} size={17} color={on ? "var(--blue-600)" : "var(--text-subtle)"} style={{ marginTop: 2 }} />
+                    <span>
+                      <span style={{ display: "block", font: "var(--weight-semibold) 13.5px/1.4 var(--font-sans)", color: on ? "var(--blue-700)" : "var(--text-strong)" }}>
+                        {DOC_TYPES[t].title}
+                      </span>
+                      <span style={{ display: "block", font: "11.5px/1.6 var(--font-sans)", color: "var(--text-muted)", marginTop: 2 }}>
+                        {DOC_TYPES[t].desc}
+                      </span>
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
           {/* النطاق */}
           {filterActive && (
             <div>
@@ -178,7 +232,9 @@ export function ExportDialog({ open, onClose, filteredIds }: ExportDialogProps) 
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
               <button style={fmt === "pdf" ? optActive : opt} onClick={() => setFmt("pdf")}>PDF</button>
               <button style={fmt === "word" ? optActive : opt} onClick={() => setFmt("word")}>Word (قابل للتعديل)</button>
-              <button style={fmt === "csv" ? optActive : opt} onClick={() => setFmt("csv")}>Excel (CSV)</button>
+              {docType === "report" && (
+                <button style={fmt === "csv" ? optActive : opt} onClick={() => setFmt("csv")}>Excel (CSV)</button>
+              )}
             </div>
             {fmt === "pdf" && (
               <div style={{ font: "11.5px/1.6 var(--font-sans)", color: "var(--text-subtle)", marginTop: 6 }}>
@@ -187,8 +243,8 @@ export function ExportDialog({ open, onClose, filteredIds }: ExportDialogProps) 
             )}
           </div>
 
-          {/* المحتويات */}
-          {fmt !== "csv" && (
+          {/* المحتويات — خاصة بتقرير التحليل؛ BRD/SRS أقسامهما قياسية */}
+          {fmt !== "csv" && docType === "report" && (
             <div>
               <div style={groupLabel}>محتويات التقرير</div>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
@@ -222,15 +278,20 @@ export function ExportDialog({ open, onClose, filteredIds }: ExportDialogProps) 
           )}
 
           <div style={{ font: "12px/1.6 var(--font-sans)", color: "var(--text-muted)", padding: "8px 12px", background: "var(--slate-50)", borderRadius: "var(--radius-md)", border: "1px solid var(--border-subtle)" }}>
-            سيشمل التقرير <b style={{ color: "var(--text-body)" }}>{scopedReqs.length}</b> متطلبًا من مشروع «{activeProject?.name ?? "مساحة العمل"}».
+            سيشمل المستند <b style={{ color: "var(--text-body)" }}>{scopedReqs.length}</b> متطلبًا من مشروع «{activeProject?.name ?? "مساحة العمل"}».
           </div>
         </div>
 
         {/* Footer */}
         <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, padding: "14px 20px", borderTop: "1px solid var(--border-subtle)", background: "var(--slate-25)" }}>
           <Button variant="secondary" onClick={onClose}>إلغاء</Button>
-          <Button variant="primary" onClick={run} disabled={scopedReqs.length === 0} iconStart={<Icon name="download" size={15} />}>
-            تصدير التقرير
+          <Button
+            variant="primary"
+            onClick={run}
+            disabled={scopedReqs.length === 0 || phase === "working"}
+            iconStart={<Icon name={phase === "working" ? "loader-circle" : phase === "done" ? "check" : "download"} size={15} style={phase === "working" ? { animation: "wq-spin 0.7s linear infinite" } : undefined} />}
+          >
+            {phase === "working" ? "جاري تجهيز المستند..." : phase === "done" ? "تم تجهيز المستند بنجاح" : "إنشاء المستند"}
           </Button>
         </div>
       </div>

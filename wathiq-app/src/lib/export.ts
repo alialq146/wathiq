@@ -59,7 +59,7 @@ export const DEFAULT_SECTIONS: ReportSections = {
 
 /* ---------------- labels ---------------- */
 
-const STATUS_AR: Record<string, string> = {
+export const STATUS_AR: Record<string, string> = {
   draft: "مسودة",
   analyzing: "قيد التحليل",
   review: "قيد المراجعة",
@@ -67,7 +67,7 @@ const STATUS_AR: Record<string, string> = {
   approved: "معتمد",
   blocked: "محظور",
 };
-const STATUS_COLOR: Record<string, string> = {
+export const STATUS_COLOR: Record<string, string> = {
   draft: "#64748b",
   analyzing: "#2563eb",
   review: "#b45309",
@@ -75,13 +75,13 @@ const STATUS_COLOR: Record<string, string> = {
   approved: "#15803d",
   blocked: "#b91c1c",
 };
-const PRIORITY_AR: Record<string, string> = {
+export const PRIORITY_AR: Record<string, string> = {
   critical: "حرجة",
   high: "عالية",
   medium: "متوسطة",
   low: "منخفضة",
 };
-const PRIORITY_COLOR: Record<string, string> = {
+export const PRIORITY_COLOR: Record<string, string> = {
   critical: "#b91c1c",
   high: "#b45309",
   medium: "#1d4ed8",
@@ -93,7 +93,7 @@ const PROJECT_STATUS_AR: Record<string, string> = {
   completed: "مكتمل",
 };
 
-function esc(s: string): string {
+export function esc(s: string): string {
   return String(s)
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
@@ -101,19 +101,19 @@ function esc(s: string): string {
     .replace(/"/g, "&quot;");
 }
 
-function today(): string {
+export function today(): string {
   return new Intl.DateTimeFormat("ar-SA-u-ca-gregory-nu-latn", {
     dateStyle: "long",
     timeZone: "Asia/Riyadh",
   }).format(new Date());
 }
 
-const badge = (label: string, color: string) =>
+export const badge = (label: string, color: string) =>
   `<span class="badge" style="color:${color};border-color:${color}66;background:${color}14">${esc(label)}</span>`;
 
 /* ---------------- derived stats (no AI needed) ---------------- */
 
-interface Stats {
+export interface Stats {
   total: number;
   byStatus: Array<[string, number]>;
   byPriority: Array<[string, number]>;
@@ -129,7 +129,7 @@ interface Stats {
   needsReview: Requirement[];
 }
 
-function computeStats(ctx: ReportContext): Stats {
+export function computeStats(ctx: ReportContext): Stats {
   const reqs = ctx.requirements;
   const total = reqs.length;
   const count = (pred: (r: Requirement) => boolean) => reqs.filter(pred).length;
@@ -403,6 +403,7 @@ export const REPORT_CSS = `
   ul { margin: 0; padding-inline-start: 20px; } li { margin: 4px 0; }
   .mono { font-family: "Courier New", monospace; direction: ltr; unicode-bidi: embed; }
   .muted { color: #94a3b8; }
+  .todo { color: #b45309; background: #fffbeb; border: 1px dashed #f59e0b88; border-radius: 8px; padding: 7px 12px; font-size: 12.5px; margin: 6px 0; }
 
   .cover { text-align: center; padding: 46px 0 22px; border-bottom: 3px double #12406f; margin-bottom: 8px; page-break-after: avoid; }
   .cover-brand { display: flex; align-items: center; justify-content: center; gap: 10px; color: #475569; font-size: 14px; margin-bottom: 18px; }
@@ -456,9 +457,39 @@ export const REPORT_CSS = `
   }
 `;
 
+
+/* ---------------- generic document exporters (report / BRD / SRS) ---------------- */
+
+/** يفتح نافذة طباعة لأي وثيقة جاهزة — «حفظ كـ PDF» من المتصفح. */
+export function exportDocumentPDF(title: string, bodyHTML: string): void {
+  const win = window.open("", "_blank");
+  if (!win) {
+    window.alert("منع المتصفح فتح نافذة الطباعة. اسمح بالنوافذ المنبثقة ثم أعد المحاولة.");
+    return;
+  }
+  const html = `<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8">
+    <title>${esc(title)}</title><style>${REPORT_CSS}
+    .bar { position: sticky; top: 0; background: #0f213f; color: #fff; padding: 10px 16px; display: flex; gap: 12px; align-items: center; z-index: 5; }
+    .bar button { font: inherit; background: #2563eb; color: #fff; border: none; padding: 8px 16px; border-radius: 8px; cursor: pointer; }
+    </style></head><body>
+    <div class="bar no-print"><b>المستند جاهز</b><button onclick="window.print()">طباعة / حفظ PDF</button><span>اختر «حفظ كـ PDF» من وجهة الطابعة.</span></div>
+    ${bodyHTML}
+    <script>window.onload=function(){setTimeout(function(){window.print();},400);};<\/script>
+    </body></html>`;
+  win.document.open();
+  win.document.write(html);
+  win.document.close();
+}
+
+/** ينزّل أي وثيقة كـ .doc يفتحه Word قابلًا للتعديل بالكامل. */
+export function exportDocumentWord(title: string, bodyHTML: string, filename: string): void {
+  const html = `<!doctype html><html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40" lang="ar" dir="rtl"><head><meta charset="utf-8"><title>${esc(title)}</title><style>${REPORT_CSS}</style></head><body>${bodyHTML}</body></html>`;
+  triggerDownload(new Blob(["\ufeff", html], { type: "application/msword;charset=utf-8" }), filename);
+}
+
 /* ---------------- exporters ---------------- */
 
-function projectSlug(ctx: ReportContext): string {
+export function projectSlug(ctx: ReportContext): string {
   return ctx.project?.code?.replace(/[^\w-]/g, "") || "report";
 }
 
@@ -482,7 +513,7 @@ export function exportPDF(ctx: ReportContext, opts: ReportOptions): void {
   win.document.close();
 }
 
-function triggerDownload(blob: Blob, filename: string): void {
+export function triggerDownload(blob: Blob, filename: string): void {
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
