@@ -17,7 +17,8 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: false, error: "no-key" });
   }
 
-  // --- account gating + plan quota + model routing (accounts mode) ---
+  // فحوصات مسبقة في الخادم قبل أي استدعاء لـ Claude: الجلسة، حد الخطة،
+  // واختيار النموذج — تُسجَّل المحاولات المحجوبة في AiUsage ولا تُحتسب من الرصيد.
   let userId: string | null = null; // set only when the call is metered
   let model = DEFAULT_MODEL;
   if (authEnabled()) {

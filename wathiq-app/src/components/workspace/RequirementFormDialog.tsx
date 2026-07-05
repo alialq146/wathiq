@@ -15,6 +15,16 @@ const TYPE_OPTIONS: { v: string; l: string }[] = [
   { v: "أخرى", l: "أخرى (Other)" },
 ];
 
+const SOURCE_OPTIONS: { v: string; l: string }[] = [
+  { v: "", l: "— غير محدد —" },
+  { v: "عميل", l: "عميل" },
+  { v: "اجتماع", l: "اجتماع" },
+  { v: "وثيقة", l: "وثيقة" },
+  { v: "بريد", l: "بريد" },
+  { v: "ورشة عمل", l: "ورشة عمل" },
+  { v: "أخرى", l: "أخرى" },
+];
+
 const PRIORITY_OPTIONS: { v: PriorityLevel; l: string }[] = [
   { v: "critical", l: "حرجة" },
   { v: "high", l: "عالية" },
@@ -83,6 +93,9 @@ export function RequirementFormDialog({
         module: initial.module,
         stakeholders: initial.stakeholders,
         notes: initial.notes ?? null,
+        source: initial.source ?? null,
+        assignee: initial.assignee ?? null,
+        version: initial.version ?? 1,
       });
     } else {
       setForm(blank());
@@ -252,6 +265,41 @@ export function RequirementFormDialog({
             </div>
           </div>
 
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 84px", gap: 12 }}>
+            <div>
+              <label style={fieldLabel}>المصدر</label>
+              <select
+                value={form.source ?? ""}
+                onChange={(e) => set("source", e.target.value || null)}
+                style={fieldBox}
+              >
+                {SOURCE_OPTIONS.map((o) => (
+                  <option key={o.v} value={o.v}>{o.l}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label style={fieldLabel}>المسؤول (اختياري)</label>
+              <input
+                value={form.assignee ?? ""}
+                onChange={(e) => set("assignee", e.target.value || null)}
+                placeholder="اسم المالك"
+                style={fieldBox}
+              />
+            </div>
+            <div>
+              <label style={fieldLabel}>الإصدار</label>
+              <input
+                type="number"
+                min={1}
+                value={form.version ?? 1}
+                onChange={(e) => set("version", Math.max(1, Number(e.target.value) || 1))}
+                dir="ltr"
+                style={fieldBox}
+              />
+            </div>
+          </div>
+
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
             <div>
               <label style={fieldLabel}>الوحدة</label>
@@ -292,7 +340,7 @@ export function RequirementFormDialog({
           <div style={{ display: "flex", alignItems: "flex-start", gap: 8, padding: "10px 12px", borderRadius: "var(--radius-md)", background: "var(--teal-50)", border: "1px solid var(--teal-100)" }}>
             <Icon name="sparkles" size={15} color="var(--teal-600)" style={{ marginTop: 1 }} />
             <span style={{ font: "12px/1.6 var(--font-sans)", color: "var(--teal-700)" }}>
-              معايير القبول ودرجة الجودة والأسئلة المفتوحة تُستخرَج تلقائيًّا عند تحليل المتطلب بالذكاء الاصطناعي بعد الحفظ.
+              المتطلب يعمل بالكامل بدون تحليل. وعند الحاجة، يقترح «مساعد وثّق» معايير قبول وأسئلة ومؤشر جودة — اختياريًا بعد الحفظ.
             </span>
           </div>
 
@@ -358,5 +406,8 @@ function blank(): RequirementInput {
     module: "",
     stakeholders: [],
     notes: null,
+    source: null,
+    assignee: null,
+    version: 1,
   };
 }

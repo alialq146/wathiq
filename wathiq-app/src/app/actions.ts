@@ -22,6 +22,9 @@ export interface RequirementInput {
   module: string;
   stakeholders: string[];
   notes?: string | null;
+  source?: string | null;
+  assignee?: string | null;
+  version?: number | null;
 }
 
 export type ActionResult = { ok: true } | { ok: false; error: string };
@@ -50,6 +53,8 @@ interface Actor {
  * server action could be reached without a session — so mutations must deny
  * that case instead of silently acting as the shared/demo actor.
  */
+// حارس كل Server Action: يقرأ الجلسة في الخادم ويرفض أي طلب غير مصادَق
+// عند تفعيل الحسابات — لا يُتخذ أي قرار أمني في الواجهة.
 async function requireActor(): Promise<Actor | null> {
   const user = await getSessionUser();
   if (user && user.uid !== "owner") return { uid: user.uid, name: user.name };
@@ -62,6 +67,7 @@ async function requireActor(): Promise<Actor | null> {
  * Ownership filter for mutations: a user may only touch their own rows; in
  * open/owner mode (uid null) everything is reachable (single-tenant).
  */
+// شرط الملكية المُلحق بكل استعلام كتابة/قراءة حساس — يضمن عزل بيانات كل مستخدم.
 function ownedBy(uid: string | null) {
   return uid ? { ownerId: uid } : {};
 }
@@ -114,6 +120,10 @@ function clean(input: RequirementInput) {
     module: input.module.trim(),
     stakeholders: input.stakeholders.map((s) => s.trim()).filter(Boolean),
     notes: input.notes?.trim() || null,
+    source: input.source?.trim() || null,
+    assignee: input.assignee?.trim() || null,
+    // الإصدار رقم بسيط يتحكم فيه المستخدم — لا يقل عن 1.
+    version: Math.max(1, Math.round(Number(input.version)) || 1),
   };
 }
 

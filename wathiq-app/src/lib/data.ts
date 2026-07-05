@@ -47,6 +47,9 @@ export interface Requirement {
   module: string;
   stakeholders: string[];
   notes?: string | null;
+  source?: string | null; // مصدر المتطلب (عميل/اجتماع/وثيقة/بريد/ورشة عمل/أخرى)
+  assignee?: string | null; // المسؤول عن المتطلب
+  version?: number; // إصدار المتطلب (افتراضي 1)
   projectId?: string | null;
   analysis?: RequirementAnalysis | null;
 }

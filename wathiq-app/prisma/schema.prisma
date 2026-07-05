@@ -84,6 +84,9 @@ model Requirement {
   module        String
   stakeholders  String[]
   notes         String?
+  source        String? // مصدر المتطلب: عميل | اجتماع | وثيقة | بريد | ورشة عمل | أخرى
+  assignee      String? // مالك المتطلب / المسؤول عنه
+  version       Int      @default(1) // إصدار المتطلب — يرفعه المستخدم يدويًا عند تغيير جوهري
   analysis      Json?
   order         Int      @default(0)
 

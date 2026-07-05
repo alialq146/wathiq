@@ -7,6 +7,8 @@ import { authEnabled, verifySessionToken, SESSION_COOKIE } from "@/lib/auth";
  * set). Otherwise every request passes through untouched, so the app keeps
  * working out of the box.
  */
+// الطبقة الأولى من الحماية: أي مسار غير عام يتطلب كوكي جلسة مُوقَّعًا.
+// التحقق من الأدوار (كالأدمن) يتم لاحقًا في الخادم لأن الـ Edge لا يصل للقاعدة.
 export async function middleware(req: NextRequest) {
   if (!authEnabled()) return NextResponse.next();
 

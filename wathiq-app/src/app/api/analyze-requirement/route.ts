@@ -15,7 +15,8 @@ export async function POST(req: Request) {
   if (!hasAnthropicKey()) return NextResponse.json({ ok: false, error: "no-key" });
   if (!hasDatabase()) return NextResponse.json({ ok: false, error: "no-db" });
 
-  // Auth + plan quota + model routing.
+  // فحوصات مسبقة في الخادم: الجلسة، حد الخطة، النموذج، ثم ملكية المتطلب
+  // (findFirst مع ownerId) — لا يستطيع مستخدم تحليل متطلب لا يملكه.
   let userId: string | null = null;
   let model = DEFAULT_MODEL;
   if (authEnabled()) {

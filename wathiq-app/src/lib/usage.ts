@@ -17,6 +17,8 @@ const DEFAULT_MODELS: Record<PlanId, string> = {
   ENTERPRISE: "claude-opus-4-8",
 };
 
+// اختيار نموذج الذكاء الاصطناعي حسب خطة المستخدم — في الخادم فقط،
+// فالعميل لا يمرر اسم النموذج أبدًا ولا يستطيع التلاعب به.
 export function modelForPlan(plan: string | null | undefined): string {
   const id = getPlan(plan).id;
   const envKey = `AI_MODEL_${id}`;

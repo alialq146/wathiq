@@ -116,7 +116,11 @@ export function RequirementDetail({ req, onBack }: RequirementDetailProps) {
           {req.id}
         </span>
         <StatusBadge status={req.status} />
-        <Tag color="slate">{req.module}</Tag>
+        {req.module && <Tag color="slate">{req.module}</Tag>}
+        {req.type && <Tag color="blue">{req.type}</Tag>}
+        <span style={{ font: "var(--weight-medium) 11px var(--font-mono)", color: "var(--text-subtle)", direction: "ltr" }}>
+          V{req.version ?? 1}
+        </span>
       </div>
 
       <h1 style={{ font: "var(--weight-semibold) var(--text-h1)/1.3 var(--font-sans)", color: "var(--text-strong)", margin: "0 0 12px" }}>
@@ -125,6 +129,23 @@ export function RequirementDetail({ req, onBack }: RequirementDetailProps) {
       <p style={{ font: "15px/1.7 var(--font-sans)", color: "var(--text-body)", margin: "0 0 20px", maxWidth: 680 }}>
         {req.description}
       </p>
+
+      {req.notes && (
+        <div
+          style={{
+            display: "flex", gap: 9, alignItems: "flex-start", maxWidth: 680,
+            padding: "10px 13px", margin: "0 0 20px",
+            borderRadius: "var(--radius-md)", background: "var(--slate-50)",
+            border: "1px solid var(--border-subtle)",
+          }}
+        >
+          <Icon name="sticky-note" size={15} color="var(--text-subtle)" style={{ marginTop: 2 }} />
+          <div>
+            <div style={{ font: "var(--weight-medium) 11px/1 var(--font-sans)", color: "var(--text-subtle)", marginBottom: 5 }}>ملاحظات</div>
+            <div style={{ font: "13px/1.7 var(--font-sans)", color: "var(--text-body)", whiteSpace: "pre-wrap" }}>{req.notes}</div>
+          </div>
+        </div>
+      )}
 
       {/* meta strip */}
       <div
@@ -143,11 +164,23 @@ export function RequirementDetail({ req, onBack }: RequirementDetailProps) {
           <PriorityLabel level={req.priority} />
         </div>
         <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          <span style={{ font: "var(--weight-medium) 11px/1 var(--font-sans)", color: "var(--text-subtle)" }}>المصدر</span>
+          <span style={{ font: "13px var(--font-sans)", color: req.source ? "var(--text-body)" : "var(--text-subtle)" }}>
+            {req.source ?? "غير محدد"}
+          </span>
+        </div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          <span style={{ font: "var(--weight-medium) 11px/1 var(--font-sans)", color: "var(--text-subtle)" }}>المسؤول</span>
+          <span style={{ font: "13px var(--font-sans)", color: req.assignee ? "var(--text-body)" : "var(--text-subtle)" }}>
+            {req.assignee ?? "غير محدد"}
+          </span>
+        </div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
           <span style={{ font: "var(--weight-medium) 11px/1 var(--font-sans)", color: "var(--text-subtle)" }}>أصحاب المصلحة</span>
           <StakeholderGroup people={req.stakeholders} size={26} />
         </div>
         <div style={{ display: "flex", flexDirection: "column", gap: 6, minWidth: 150 }}>
-          <span style={{ font: "var(--weight-medium) 11px/1 var(--font-sans)", color: "var(--text-subtle)" }}>ثقة الذكاء الاصطناعي</span>
+          <span style={{ font: "var(--weight-medium) 11px/1 var(--font-sans)", color: "var(--text-subtle)" }}>مؤشر الجودة</span>
           {req.confidence != null ? (
             <ConfidenceMeter value={req.confidence} variant="pill" />
           ) : (
@@ -774,7 +807,7 @@ function RequirementAnalysisPanel({ req, connected }: { req: Requirement; connec
   const header = (score: number | null, statusMeta?: { label: string; fg: string; bg: string }) => (
     <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "12px 14px", background: "var(--teal-50)", borderBottom: "1px solid var(--teal-100)" }}>
       <Icon name="sparkles" size={17} color="var(--teal-600)" />
-      <span style={{ font: "var(--weight-semibold) 14px/1 var(--font-sans)", color: "var(--teal-700)", flex: 1 }}>تحليل الجودة</span>
+      <span style={{ font: "var(--weight-semibold) 14px/1 var(--font-sans)", color: "var(--teal-700)", flex: 1 }}>مساعد وثّق</span>
       {score != null && (
         <span style={{ font: "var(--weight-bold) 16px/1 var(--font-sans)", color: score >= 75 ? "var(--green-600)" : score >= 45 ? "var(--amber-600)" : "var(--red-600)", direction: "ltr" }}>
           {score}%
@@ -788,26 +821,52 @@ function RequirementAnalysisPanel({ req, connected }: { req: Requirement; connec
     </div>
   );
 
-  // Not analyzed yet.
+  // Not analyzed yet — the assistant is optional; the requirement is fully
+  // manageable without it. One run produces all four outputs below.
   if (!a) {
+    const ASSIST_ACTIONS: { icon: string; label: string }[] = [
+      { icon: "gauge", label: "تحليل جودة المتطلب" },
+      { icon: "wand-sparkles", label: "تحسين الصياغة" },
+      { icon: "clipboard-list", label: "إنشاء معايير قبول" },
+      { icon: "message-circle-question", label: "اقتراح أسئلة للعميل" },
+    ];
     return (
       <div style={cardStyle}>
         {header(null)}
-        <div style={{ padding: 16, display: "flex", flexDirection: "column", gap: 12, alignItems: "center", textAlign: "center" }}>
-          <p style={{ font: "13px/1.7 var(--font-sans)", color: "var(--text-muted)", margin: 0 }}>
-            لم يُحلَّل هذا المتطلب بعد. حلّله بالذكاء الاصطناعي للحصول على درجة الجودة، الغموض، المخاطر، الأسئلة، ومعايير القبول.
+        <div style={{ padding: 16, display: "flex", flexDirection: "column", gap: 12 }}>
+          <p style={{ font: "12.5px/1.7 var(--font-sans)", color: "var(--text-muted)", margin: 0 }}>
+            مساعد اختياري — متطلبك يعمل بالكامل بدونه. عند تشغيله يحصل على:
           </p>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+            {ASSIST_ACTIONS.map((act) => (
+              <button
+                key={act.label}
+                onClick={runAnalysis}
+                disabled={loading || !connected}
+                title={connected ? undefined : "غير متصل بقاعدة البيانات"}
+                style={{
+                  display: "flex", alignItems: "center", gap: 8, padding: "9px 10px",
+                  borderRadius: "var(--radius-md)", border: "1px solid var(--teal-100)",
+                  background: "var(--teal-50)", cursor: loading || !connected ? "not-allowed" : "pointer",
+                  font: "var(--weight-medium) 12px/1.4 var(--font-sans)", color: "var(--teal-700)",
+                  textAlign: "start", opacity: loading ? 0.6 : 1,
+                }}
+              >
+                <Icon name={act.icon} size={15} color="var(--teal-600)" />
+                {act.label}
+              </button>
+            ))}
+          </div>
           <Button
             variant="brand"
             fullWidth
             disabled={loading || !connected}
-            title={connected ? undefined : "غير متصل بقاعدة البيانات"}
             iconStart={<Icon name={loading ? "loader-circle" : "sparkles"} size={16} style={loading ? { animation: "wq-spin 0.7s linear infinite" } : undefined} />}
             onClick={runAnalysis}
           >
-            {loading ? "جارٍ التحليل…" : "تحليل المتطلب بالذكاء الاصطناعي"}
+            {loading ? "جارٍ التحليل…" : "تشغيل مساعد وثّق"}
           </Button>
-          {error && <span style={{ font: "12px/1.5 var(--font-sans)", color: "var(--status-danger-fg)" }}>{error}</span>}
+          {error && <span style={{ font: "12px/1.5 var(--font-sans)", color: "var(--status-danger-fg)", textAlign: "center" }}>{error}</span>}
         </div>
       </div>
     );

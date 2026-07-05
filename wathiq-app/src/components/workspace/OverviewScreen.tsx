@@ -139,6 +139,13 @@ function GettingStartedStrip({
   );
 }
 
+const PRIORITY_META = [
+  { id: "critical", label: "حرجة", c: "var(--red-500)" },
+  { id: "high", label: "عالية", c: "var(--amber-500)" },
+  { id: "medium", label: "متوسطة", c: "var(--blue-500)" },
+  { id: "low", label: "منخفضة", c: "var(--slate-400)" },
+];
+
 const STATUS_META = [
   { id: "approved", label: "معتمد", c: "var(--green-500)" },
   { id: "review", label: "قيد المراجعة", c: "var(--amber-500)" },
@@ -368,14 +375,41 @@ export function OverviewScreen({ onOpen, onNewAnalysis }: OverviewScreenProps) {
           </div>
         </Card>
         <Card padding="lg" style={{ display: "flex", flexDirection: "column", justifyContent: "center" }}>
-          <span style={{ font: "12px var(--font-sans)", color: "var(--text-muted)", marginBottom: 8 }}>متوسط ثقة الذكاء الاصطناعي</span>
-          <div style={{ font: "var(--weight-bold) 32px/1 var(--font-sans)", color: "var(--teal-600)" }}>
-            {avgConf}<span style={{ fontSize: 18, color: "var(--text-muted)" }}>٪</span>
-          </div>
-          <div style={{ marginTop: 10, font: "12px/1.5 var(--font-sans)", color: "var(--text-muted)" }}>
-            {lowConf.length > 0
-              ? `${lowConf.length} متطلب بثقة منخفضة يحتاج مراجعة بشرية.`
-              : "لا توجد متطلبات بثقة منخفضة."}
+          {/* مؤشر اختياري — يظهر فقط إذا استُخدم مساعد وثّق؛ الملخصات الأخرى لا تعتمد على AI. */}
+          <span style={{ font: "12px var(--font-sans)", color: "var(--text-muted)", marginBottom: 8 }}>متوسط مؤشر الجودة</span>
+          {confs.length === 0 ? (
+            <div style={{ font: "13px/1.7 var(--font-sans)", color: "var(--text-subtle)" }}>
+              لم يُستخدم مساعد وثّق بعد — المؤشر اختياري ويُحسب عند تحليل المتطلبات.
+            </div>
+          ) : (
+            <>
+              <div style={{ font: "var(--weight-bold) 32px/1 var(--font-sans)", color: "var(--teal-600)" }}>
+                {avgConf}<span style={{ fontSize: 18, color: "var(--text-muted)" }}>٪</span>
+              </div>
+              <div style={{ marginTop: 10, font: "12px/1.5 var(--font-sans)", color: "var(--text-muted)" }}>
+                {lowConf.length > 0
+                  ? `${lowConf.length} متطلب بمؤشر منخفض يحتاج مراجعة بشرية.`
+                  : "لا توجد متطلبات بمؤشر منخفض."}
+              </div>
+            </>
+          )}
+        </Card>
+        <Card padding="lg">
+          {/* توزيع الأولويات — محسوب من الحقول مباشرة، بلا ذكاء اصطناعي. */}
+          <span style={{ font: "12px var(--font-sans)", color: "var(--text-muted)", marginBottom: 12, display: "block" }}>حسب الأولوية</span>
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {PRIORITY_META.map((p) => {
+              const n = requirements.filter((r) => r.priority === p.id).length;
+              return (
+                <div key={p.id} style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <span style={{ font: "12px var(--font-sans)", color: "var(--text-muted)", width: 52, flexShrink: 0 }}>{p.label}</span>
+                  <div style={{ flex: 1, height: 7, borderRadius: 999, background: "var(--slate-150)", overflow: "hidden" }}>
+                    <div style={{ width: `${total ? (n / total) * 100 : 0}%`, height: "100%", background: p.c, borderRadius: 999 }} />
+                  </div>
+                  <span style={{ font: "11px var(--font-mono)", color: "var(--text-subtle)", width: 20, textAlign: "end" }}>{n}</span>
+                </div>
+              );
+            })}
           </div>
         </Card>
       </div>
