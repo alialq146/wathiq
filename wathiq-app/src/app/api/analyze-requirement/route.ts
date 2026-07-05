@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { randomUUID } from "node:crypto";
-import { analyzeRequirement, hasAnthropicKey } from "@/lib/ai";
+import { analyzeRequirement, runAssistantTask, hasAnthropicKey, type AssistantTask } from "@/lib/ai";
 import { prisma, hasDatabase } from "@/lib/db";
 import { getSessionUser } from "@/lib/session";
 import { authEnabled } from "@/lib/auth";
@@ -35,7 +35,7 @@ export async function POST(req: Request) {
     }
   }
 
-  let body: { id?: unknown };
+  let body: { id?: unknown; task?: unknown };
   try {
     body = await req.json();
   } catch {
@@ -43,26 +43,66 @@ export async function POST(req: Request) {
   }
   const id = typeof body.id === "string" ? body.id : "";
   if (!id) return NextResponse.json({ ok: false, error: "missing-id" });
+  // مهمة المساعد: "full" (افتراضي) = تحليل شامل يُحفظ؛ غيرها مهام خفيفة
+  // مركزة ترجع نتيجتها للمستخدم ليقرر تطبيقها — أوفر في الرموز والتكلفة.
+  const LIGHT_TASKS = ["improve", "criteria", "questions", "ambiguity", "risks"] as const;
+  const task =
+    typeof body.task === "string" && (LIGHT_TASKS as readonly string[]).includes(body.task)
+      ? (body.task as AssistantTask)
+      : "full";
 
   // Load the requirement (scoped to the user in accounts mode).
   const where = userId ? { id, ownerId: userId } : { id };
   const reqRow = await prisma.requirement.findFirst({ where });
   if (!reqRow) return NextResponse.json({ ok: false, error: "not-found" });
 
+  const reqInput = {
+    id: reqRow.id,
+    title: reqRow.title,
+    description: reqRow.description,
+    module: reqRow.module,
+    priority: reqRow.priority,
+    type: reqRow.type,
+    stakeholders: reqRow.stakeholders,
+    notes: reqRow.notes,
+  };
+
+  // مسار المهام الخفيفة: نفس الفحوصات والتسجيل، لكن بدون حفظ في المتطلب —
+  // النتيجة ترجع للواجهة والمستخدم يقرر اعتمادها.
+  if (task !== "full") {
+    try {
+      const { result, meta } = await runAssistantTask(reqInput, task, model);
+      if (userId) {
+        await consumeQuota(userId);
+        await logAiUsage({
+          userId,
+          projectId: reqRow.projectId,
+          requirementId: id,
+          modelUsed: meta.model,
+          inputTokens: meta.inputTokens,
+          outputTokens: meta.outputTokens,
+          status: "SUCCESS",
+        });
+      }
+      return NextResponse.json({ ok: true, task, result });
+    } catch (err) {
+      console.error("[/api/analyze-requirement task]", err);
+      if (userId) {
+        await logAiUsage({
+          userId,
+          projectId: reqRow.projectId,
+          requirementId: id,
+          modelUsed: model,
+          status: "FAILED",
+          errorMessage: String(err).slice(0, 300),
+        });
+      }
+      return NextResponse.json({ ok: false, error: "failed" });
+    }
+  }
+
   try {
-    const { result: analysis, meta } = await analyzeRequirement(
-      {
-        id: reqRow.id,
-        title: reqRow.title,
-        description: reqRow.description,
-        module: reqRow.module,
-        priority: reqRow.priority,
-        type: reqRow.type,
-        stakeholders: reqRow.stakeholders,
-        notes: reqRow.notes,
-      },
-      model
-    );
+    const { result: analysis, meta } = await analyzeRequirement(reqInput, model);
 
     // Persist: store the rich analysis, set confidence, and regenerate the
     // AI-authored criteria + questions (preserving any manual ones).

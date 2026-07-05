@@ -245,6 +245,121 @@ export interface RequirementForAnalysis {
   notes?: string | null;
 }
 
+/* ------------------------------------------------------------
+   مهام المساعد الخفيفة: كل مهمة ترسل prompt مركزًا وترجع الجزء
+   المطلوب فقط — أرخص وأسرع من التحليل الشامل، وبنفس توجيه النماذج.
+   ------------------------------------------------------------ */
+
+export type AssistantTask = "improve" | "criteria" | "questions" | "ambiguity" | "risks";
+
+export interface AssistantTaskResult {
+  improvedVersion?: string;
+  acceptanceCriteria?: string[];
+  stakeholderQuestions?: string[];
+  vagueWords?: string[];
+  missingInfo?: string[];
+  risks?: string[];
+}
+
+const STR_ARR = { type: "array", items: { type: "string" } } as const;
+
+const TASK_CONFIG: Record<
+  AssistantTask,
+  { schema: object; instruction: string; maxTokens: number }
+> = {
+  improve: {
+    schema: {
+      type: "object",
+      additionalProperties: false,
+      properties: { improvedVersion: { type: "string" } },
+      required: ["improvedVersion"],
+    },
+    instruction:
+      "أعد صياغة المتطلب بنسخة محسنة أوضح وأكثر قابلية للاختبار مع الحفاظ على القصد الأصلي. أعد improvedVersion فقط.",
+    maxTokens: 1200,
+  },
+  criteria: {
+    schema: {
+      type: "object",
+      additionalProperties: false,
+      properties: { acceptanceCriteria: STR_ARR },
+      required: ["acceptanceCriteria"],
+    },
+    instruction:
+      "اكتب ٣–٦ معايير قبول قابلة للاختبار لهذا المتطلب (صيغة واضحة يمكن التحقق منها). أعد acceptanceCriteria فقط.",
+    maxTokens: 1200,
+  },
+  questions: {
+    schema: {
+      type: "object",
+      additionalProperties: false,
+      properties: { stakeholderQuestions: STR_ARR },
+      required: ["stakeholderQuestions"],
+    },
+    instruction:
+      "اكتب ٢–٥ أسئلة دقيقة يجب الرجوع بها إلى العميل أو أصحاب المصلحة لسد نواقص هذا المتطلب. أعد stakeholderQuestions فقط.",
+    maxTokens: 1000,
+  },
+  ambiguity: {
+    schema: {
+      type: "object",
+      additionalProperties: false,
+      properties: { vagueWords: STR_ARR, missingInfo: STR_ARR },
+      required: ["vagueWords", "missingInfo"],
+    },
+    instruction:
+      "حلل غموض المتطلب: vagueWords (كلمات غامضة كـ«سريع»، «سهل») وmissingInfo (معلومات ناقصة تمنع التنفيذ). القوائم قد تكون فارغة.",
+    maxTokens: 1200,
+  },
+  risks: {
+    schema: {
+      type: "object",
+      additionalProperties: false,
+      properties: { risks: STR_ARR },
+      required: ["risks"],
+    },
+    instruction:
+      "استخرج المخاطر المحتملة في هذا المتطلب (تقنية، تنظيمية، أو تنفيذية) بصيغة مختصرة عملية. أعد risks فقط.",
+    maxTokens: 1000,
+  },
+};
+
+/** Run one focused assistant task on a requirement (cheaper than a full analysis). */
+export async function runAssistantTask(
+  req: RequirementForAnalysis,
+  task: AssistantTask,
+  model: string = DEFAULT_MODEL
+): Promise<Analyzed<AssistantTaskResult>> {
+  const cfg = TASK_CONFIG[task];
+  const client = new Anthropic();
+  const userText = `المتطلب:
+الرقم: ${req.id}
+العنوان: ${req.title}
+الوصف: ${req.description}
+${req.type ? `النوع: ${req.type}\n` : ""}${req.notes ? `ملاحظات: ${req.notes}\n` : ""}
+المهمة: ${cfg.instruction}`;
+
+  const response = await client.messages.create({
+    model,
+    max_tokens: cfg.maxTokens,
+    system:
+      "أنت «وثّق»، محلل أعمال خبير. نفذ المهمة المطلوبة فقط بدقة وبالعربية الفصحى، دون اختراع تفاصيل غير مذكورة.",
+    output_config: { format: { type: "json_schema", schema: cfg.schema } },
+    messages: [{ role: "user", content: userText }],
+  } as Anthropic.MessageCreateParamsNonStreaming);
+
+  const textBlock = response.content.find((b) => b.type === "text");
+  if (!textBlock || textBlock.type !== "text") throw new Error("No text content returned from model");
+  return {
+    result: JSON.parse(textBlock.text) as AssistantTaskResult,
+    meta: {
+      model,
+      inputTokens: response.usage?.input_tokens ?? null,
+      outputTokens: response.usage?.output_tokens ?? null,
+    },
+  };
+}
+
 /** Analyze a single requirement's quality and return a structured evaluation. */
 export async function analyzeRequirement(
   req: RequirementForAnalysis,

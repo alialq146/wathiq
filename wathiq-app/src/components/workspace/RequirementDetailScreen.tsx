@@ -20,6 +20,7 @@ import {
   type AcceptanceCriterion,
   type BusinessRule,
   type OpenQuestion,
+  type AuditEvent,
 } from "@/lib/data";
 import {
   updateRequirementStatus,
@@ -27,12 +28,34 @@ import {
   toggleAcceptanceCriterion,
   answerOpenQuestion,
   applyImprovedRequirement,
+  addOpenQuestion,
+  appendRequirementNote,
 } from "@/app/actions";
 import type { ReqAnalysisStatus } from "@/lib/data";
 import { useWorkspaceData } from "./WorkspaceDataContext";
 
 const NO_DB_MSG = "قاعدة البيانات غير متصلة، لذا تعذّر حفظ التغيير.";
 const GENERIC_ERR = "تعذّر تنفيذ العملية. يرجى المحاولة مرة أخرى.";
+
+/* نتيجة مهمة مساعد وثّق الخفيفة — الجزء المطلوب فقط. */
+interface TaskPayload {
+  improvedVersion?: string;
+  acceptanceCriteria?: string[];
+  stakeholderQuestions?: string[];
+  vagueWords?: string[];
+  missingInfo?: string[];
+  risks?: string[];
+}
+
+/* مهام المساعد: quality = تحليل شامل يُحفظ؛ البقية خفيفة بنتيجة قابلة للتطبيق. */
+const ASSISTANT_TASKS: { id: string; icon: string; label: string }[] = [
+  { id: "quality", icon: "gauge", label: "تقييم الجودة" },
+  { id: "improve", icon: "wand-sparkles", label: "تحسين الصياغة" },
+  { id: "criteria", icon: "clipboard-list", label: "إنشاء معايير قبول" },
+  { id: "questions", icon: "message-circle-question", label: "اقتراح أسئلة" },
+  { id: "ambiguity", icon: "scan-search", label: "كشف الغموض" },
+  { id: "risks", icon: "alert-triangle", label: "اكتشاف المخاطر" },
+];
 
 /* Small shared empty-state block for the tabs. */
 function EmptyState({ icon, text }: { icon: string; text: string }) {
@@ -66,6 +89,7 @@ export function RequirementDetail({ req, onBack }: RequirementDetailProps) {
     acceptanceCriteria,
     businessRules,
     openQuestions,
+    auditEvents,
     source,
   } = useWorkspaceData();
   const connected = source === "database";
@@ -74,12 +98,15 @@ export function RequirementDetail({ req, onBack }: RequirementDetailProps) {
   const criteria = acceptanceCriteria.filter((c) => c.requirementId === req.id);
   const rules = businessRules.filter((b) => b.requirementId === req.id);
   const questions = openQuestions.filter((q) => q.requirementId === req.id);
+  // سجل التغييرات: أحداث هذا المتطلب فقط — البيانات مُرشَّحة أصلًا لمالكها في الخادم.
+  const history = auditEvents.filter((e) => e.requirementId === req.id);
 
   const [tab, setTab] = React.useState("criteria");
   const tabs = [
     { id: "criteria", label: "معايير القبول", count: criteria.length },
     { id: "rules", label: "قواعد العمل", count: rules.length },
     { id: "questions", label: "أسئلة مفتوحة", count: questions.length },
+    { id: "history", label: "سجل التغييرات", count: history.length },
   ];
 
   return (
@@ -198,6 +225,7 @@ export function RequirementDetail({ req, onBack }: RequirementDetailProps) {
       {tab === "questions" && (
         <QuestionsTab items={questions} connected={connected} />
       )}
+      {tab === "history" && <HistoryTab items={history} />}
     </div>
   );
 }
@@ -730,6 +758,71 @@ function AmbiguityGroup({ icon, title, items, color }: { icon: string; title: st
 }
 
 /* Per-requirement AI quality analysis (axis 2). */
+/* ---------------- Change history tab (timeline) ---------------- */
+
+const HISTORY_ICON: Record<string, string> = {
+  requirement_created: "plus",
+  requirement_updated: "pencil",
+  requirement_improved: "wand-sparkles",
+  requirement_analyzed: "sparkles",
+  criterion_added: "clipboard-list",
+  criterion_toggled: "check",
+  question_answered: "message-circle",
+  status_changed: "refresh-cw",
+};
+
+function HistoryTab({ items }: { items: AuditEvent[] }) {
+  // نعرض أحدث 30 حدثًا فقط حفاظًا على خفة الصفحة.
+  const [expanded, setExpanded] = React.useState(false);
+  const shown = expanded ? items.slice(0, 100) : items.slice(0, 10);
+  if (items.length === 0) {
+    return <EmptyState icon="history" text="لا توجد تغييرات مسجّلة بعد — ستظهر هنا كل التعديلات على هذا المتطلب." />;
+  }
+  const fmt = (iso: string) => {
+    const d = new Date(iso);
+    return (
+      d.toLocaleDateString("ar-SA", { month: "long", day: "numeric" }) +
+      " · " +
+      d.toLocaleTimeString("ar-SA", { hour: "2-digit", minute: "2-digit" })
+    );
+  };
+  return (
+    <div style={{ position: "relative", paddingInlineStart: 18 }}>
+      {/* خط الزمن */}
+      <span style={{ position: "absolute", insetInlineStart: 8, top: 6, bottom: 6, width: 2, background: "var(--border-subtle)", borderRadius: 2 }} />
+      <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+        {shown.map((e) => (
+          <div key={e.id} style={{ position: "relative", padding: "9px 0 9px 0" }}>
+            <span
+              style={{
+                position: "absolute", insetInlineStart: -18, top: 12, width: 18, height: 18,
+                borderRadius: "50%", background: "var(--surface-card)", border: "2px solid var(--teal-300)",
+                display: "inline-flex", alignItems: "center", justifyContent: "center",
+              }}
+            >
+              <Icon name={HISTORY_ICON[e.action] ?? "pencil"} size={9} color="var(--teal-600)" />
+            </span>
+            <div style={{ paddingInlineStart: 10 }}>
+              <div style={{ font: "13px/1.6 var(--font-sans)", color: "var(--text-body)" }}>{e.detail}</div>
+              <div style={{ font: "11.5px var(--font-sans)", color: "var(--text-subtle)", marginTop: 2 }}>
+                {fmt(e.createdAt)} · بواسطة {e.actor}
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+      {items.length > 10 && !expanded && (
+        <button
+          onClick={() => setExpanded(true)}
+          style={{ marginTop: 10, border: "none", background: "transparent", cursor: "pointer", color: "var(--text-link)", font: "var(--weight-medium) 12.5px var(--font-sans)" }}
+        >
+          عرض كل التغييرات ({items.length})
+        </button>
+      )}
+    </div>
+  );
+}
+
 function RequirementAnalysisPanel({ req, connected }: { req: Requirement; connected: boolean }) {
   const router = useRouter();
   const [loading, setLoading] = React.useState(false);
@@ -738,19 +831,25 @@ function RequirementAnalysisPanel({ req, connected }: { req: Requirement; connec
   const [applying, startApply] = React.useTransition();
   const a = req.analysis ?? null;
 
-  const runAnalysis = async () => {
+  // نتيجة مهمة خفيفة بانتظار قرار المستخدم (اعتماد / إضافة / حفظ / تجاهل).
+  const [taskResult, setTaskResult] = React.useState<{ task: string; result: TaskPayload } | null>(null);
+
+  const runAnalysis = async (task?: string) => {
     if (loading) return;
     setLoading(true);
     setError(null);
     setLimited(false);
+    setTaskResult(null);
     try {
       const res = await fetch("/api/analyze-requirement", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: req.id }),
+        body: JSON.stringify(task ? { id: req.id, task } : { id: req.id }),
       });
       const data = await res.json();
-      if (data.ok) {
+      if (data.ok && data.task) {
+        setTaskResult({ task: data.task, result: data.result });
+      } else if (data.ok) {
         router.refresh();
       } else if (data.error === "limit") {
         setLimited(true);
@@ -821,51 +920,64 @@ function RequirementAnalysisPanel({ req, connected }: { req: Requirement; connec
     </div>
   );
 
+  // شريط مهام المساعد: «تقييم الجودة» = تحليل شامل يُحفظ؛ البقية مهام خفيفة
+  // تعرض نتيجتها أولًا والمستخدم يقرر تطبيقها. لا يعمل أي شيء تلقائيًا.
+  const taskChips = (
+    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+      {ASSISTANT_TASKS.map((act) => (
+        <button
+          key={act.id}
+          onClick={() => runAnalysis(act.id === "quality" ? undefined : act.id)}
+          disabled={loading || !connected}
+          title={connected ? undefined : "غير متصل بقاعدة البيانات"}
+          style={{
+            display: "flex", alignItems: "center", gap: 8, padding: "9px 10px",
+            borderRadius: "var(--radius-md)", border: "1px solid var(--teal-100)",
+            background: "var(--teal-50)", cursor: loading || !connected ? "not-allowed" : "pointer",
+            font: "var(--weight-medium) 12px/1.4 var(--font-sans)", color: "var(--teal-700)",
+            textAlign: "start", opacity: loading ? 0.6 : 1,
+          }}
+        >
+          <Icon name={act.icon} size={15} color="var(--teal-600)" />
+          {act.label}
+        </button>
+      ))}
+    </div>
+  );
+
+  const loadingRow = loading && (
+    <div style={{ display: "flex", alignItems: "center", gap: 9, padding: "10px 12px", borderRadius: "var(--radius-md)", background: "var(--teal-50)", border: "1px solid var(--teal-100)", font: "12.5px var(--font-sans)", color: "var(--teal-700)" }}>
+      <Icon name="loader-circle" size={15} color="var(--teal-600)" style={{ animation: "wq-spin 0.7s linear infinite" }} />
+      يعمل مساعد وثّق على مراجعة المتطلب...
+    </div>
+  );
+
+  const resultCard = taskResult && (
+    <AssistantResultCard
+      req={req}
+      task={taskResult.task}
+      result={taskResult.result}
+      onDone={() => {
+        setTaskResult(null);
+        router.refresh();
+      }}
+      onDismiss={() => setTaskResult(null)}
+    />
+  );
+
   // Not analyzed yet — the assistant is optional; the requirement is fully
-  // manageable without it. One run produces all four outputs below.
+  // manageable without it.
   if (!a) {
-    const ASSIST_ACTIONS: { icon: string; label: string }[] = [
-      { icon: "gauge", label: "تحليل جودة المتطلب" },
-      { icon: "wand-sparkles", label: "تحسين الصياغة" },
-      { icon: "clipboard-list", label: "إنشاء معايير قبول" },
-      { icon: "message-circle-question", label: "اقتراح أسئلة للعميل" },
-    ];
     return (
       <div style={cardStyle}>
         {header(null)}
         <div style={{ padding: 16, display: "flex", flexDirection: "column", gap: 12 }}>
           <p style={{ font: "12.5px/1.7 var(--font-sans)", color: "var(--text-muted)", margin: 0 }}>
-            مساعد اختياري — متطلبك يعمل بالكامل بدونه. عند تشغيله يحصل على:
+            استخدم المساعد عند الحاجة لتحسين المتطلب أو مراجعته. يمكنك إدارة المتطلب بالكامل بدون تشغيل الذكاء الاصطناعي.
           </p>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-            {ASSIST_ACTIONS.map((act) => (
-              <button
-                key={act.label}
-                onClick={runAnalysis}
-                disabled={loading || !connected}
-                title={connected ? undefined : "غير متصل بقاعدة البيانات"}
-                style={{
-                  display: "flex", alignItems: "center", gap: 8, padding: "9px 10px",
-                  borderRadius: "var(--radius-md)", border: "1px solid var(--teal-100)",
-                  background: "var(--teal-50)", cursor: loading || !connected ? "not-allowed" : "pointer",
-                  font: "var(--weight-medium) 12px/1.4 var(--font-sans)", color: "var(--teal-700)",
-                  textAlign: "start", opacity: loading ? 0.6 : 1,
-                }}
-              >
-                <Icon name={act.icon} size={15} color="var(--teal-600)" />
-                {act.label}
-              </button>
-            ))}
-          </div>
-          <Button
-            variant="brand"
-            fullWidth
-            disabled={loading || !connected}
-            iconStart={<Icon name={loading ? "loader-circle" : "sparkles"} size={16} style={loading ? { animation: "wq-spin 0.7s linear infinite" } : undefined} />}
-            onClick={runAnalysis}
-          >
-            {loading ? "جارٍ التحليل…" : "تشغيل مساعد وثّق"}
-          </Button>
+          {taskChips}
+          {loadingRow}
+          {resultCard}
           {error && <span style={{ font: "12px/1.5 var(--font-sans)", color: "var(--status-danger-fg)", textAlign: "center" }}>{error}</span>}
         </div>
       </div>
@@ -945,12 +1057,132 @@ function RequirementAnalysisPanel({ req, connected }: { req: Requirement; connec
           fullWidth
           disabled={loading || !connected}
           iconStart={<Icon name={loading ? "loader-circle" : "rotate-ccw"} size={15} style={loading ? { animation: "wq-spin 0.7s linear infinite" } : undefined} />}
-          onClick={runAnalysis}
+          onClick={() => runAnalysis()}
         >
           {loading ? "جارٍ التحليل…" : "إعادة التحليل"}
         </Button>
+        {taskChips}
+        {loadingRow}
+        {resultCard}
         {error && <span style={{ font: "12px/1.5 var(--font-sans)", color: "var(--status-danger-fg)" }}>{error}</span>}
       </div>
+    </div>
+  );
+}
+
+/* بطاقة نتيجة مهمة المساعد الخفيفة — تعرض المقترح وأزرار التطبيق/التجاهل. */
+function AssistantResultCard({
+  req,
+  task,
+  result,
+  onDone,
+  onDismiss,
+}: {
+  req: Requirement;
+  task: string;
+  result: TaskPayload;
+  onDone: () => void;
+  onDismiss: () => void;
+}) {
+  const [busy, setBusy] = React.useState(false);
+  const [msg, setMsg] = React.useState<string | null>(null);
+
+  const apply = async (fn: () => Promise<void>, successMsg: string) => {
+    setBusy(true);
+    setMsg(null);
+    try {
+      await fn();
+      setMsg(successMsg);
+      setTimeout(onDone, 900);
+    } catch {
+      setMsg(GENERIC_ERR);
+      setBusy(false);
+    }
+  };
+
+  const saveAsNote = (title: string, lines: string[]) =>
+    apply(async () => {
+      const res = await appendRequirementNote(req.id, `${title}:\n- ${lines.join("\n- ")}`);
+      if (!res.ok) throw new Error(res.error);
+    }, "حُفظت كملاحظة في المتطلب.");
+
+  const listBlock = (items?: string[]) =>
+    items && items.length ? (
+      <ul style={{ margin: "6px 0 0", paddingInlineStart: 18, font: "12.5px/1.8 var(--font-sans)", color: "var(--text-body)" }}>
+        {items.map((t) => <li key={t}>{t}</li>)}
+      </ul>
+    ) : null;
+
+  let body: React.ReactNode = null;
+  let actions: React.ReactNode = null;
+
+  if (task === "improve" && result.improvedVersion) {
+    body = <div style={{ font: "13px/1.8 var(--font-sans)", color: "var(--text-body)", background: "var(--slate-50)", border: "1px solid var(--border-subtle)", borderRadius: "var(--radius-md)", padding: "9px 12px", marginTop: 6 }}>{result.improvedVersion}</div>;
+    actions = (
+      <>
+        <Button size="sm" variant="brand" disabled={busy} onClick={() => apply(async () => {
+          const res = await applyImprovedRequirement(req.id, result.improvedVersion!);
+          if (!res.ok) throw new Error(res.error);
+        }, "اعتُمدت الصياغة الجديدة.")}>اعتماد الصياغة</Button>
+        <Button size="sm" variant="secondary" disabled={busy} onClick={() => saveAsNote("صياغة مقترحة من مساعد وثّق", [result.improvedVersion!])}>حفظ كملاحظة</Button>
+      </>
+    );
+  } else if (task === "criteria" && result.acceptanceCriteria?.length) {
+    body = listBlock(result.acceptanceCriteria);
+    actions = (
+      <Button size="sm" variant="brand" disabled={busy} onClick={() => apply(async () => {
+        for (const t of result.acceptanceCriteria!) {
+          const res = await addAcceptanceCriterion(req.id, t);
+          if (!res.ok) throw new Error("failed");
+        }
+      }, `أُضيفت ${result.acceptanceCriteria!.length} معايير قبول.`)}>إضافة معايير القبول</Button>
+    );
+  } else if (task === "questions" && result.stakeholderQuestions?.length) {
+    body = listBlock(result.stakeholderQuestions);
+    actions = (
+      <Button size="sm" variant="brand" disabled={busy} onClick={() => apply(async () => {
+        for (const t of result.stakeholderQuestions!) {
+          const res = await addOpenQuestion(req.id, t);
+          if (!res.ok) throw new Error("failed");
+        }
+      }, `أُضيفت ${result.stakeholderQuestions!.length} أسئلة مفتوحة.`)}>إضافة الأسئلة</Button>
+    );
+  } else if (task === "ambiguity") {
+    const lines = [
+      ...(result.vagueWords?.length ? [`كلمات غامضة: ${result.vagueWords.join("، ")}`] : []),
+      ...(result.missingInfo ?? []).map((m) => `معلومة ناقصة: ${m}`),
+    ];
+    body = lines.length ? listBlock(lines) : <p style={{ font: "12.5px var(--font-sans)", color: "var(--text-muted)", margin: "6px 0 0" }}>لم يجد المساعد غموضًا واضحًا — المتطلب سليم الصياغة.</p>;
+    actions = lines.length ? (
+      <Button size="sm" variant="secondary" disabled={busy} onClick={() => saveAsNote("نقاط غموض رصدها مساعد وثّق", lines)}>حفظ كملاحظة</Button>
+    ) : null;
+  } else if (task === "risks") {
+    body = result.risks?.length ? listBlock(result.risks) : <p style={{ font: "12.5px var(--font-sans)", color: "var(--text-muted)", margin: "6px 0 0" }}>لم يرصد المساعد مخاطر جوهرية.</p>;
+    actions = result.risks?.length ? (
+      <Button size="sm" variant="secondary" disabled={busy} onClick={() => saveAsNote("مخاطر رصدها مساعد وثّق", result.risks!)}>حفظ كملاحظة</Button>
+    ) : null;
+  }
+
+  const TASK_TITLES: Record<string, string> = {
+    improve: "الصياغة المقترحة",
+    criteria: "معايير القبول المقترحة",
+    questions: "أسئلة مقترحة للعميل",
+    ambiguity: "نقاط الغموض",
+    risks: "المخاطر المحتملة",
+  };
+
+  return (
+    <div style={{ border: "1px solid var(--teal-200)", borderRadius: "var(--radius-md)", padding: "10px 12px", background: "var(--surface-card)" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
+        <Icon name="sparkles" size={14} color="var(--teal-600)" />
+        <span style={{ font: "var(--weight-semibold) 12.5px var(--font-sans)", color: "var(--teal-700)" }}>{TASK_TITLES[task] ?? "نتيجة المساعد"}</span>
+      </div>
+      {body}
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 10 }}>
+        {actions}
+        <Button size="sm" variant="ghost" disabled={busy} onClick={onDismiss}>تجاهل</Button>
+      </div>
+      {msg && <div style={{ font: "12px var(--font-sans)", color: "var(--teal-700)", marginTop: 6 }}>{msg}</div>}
     </div>
   );
 }

@@ -1,190 +1,237 @@
 "use client";
 
 import React from "react";
-import { Icon } from "@/components/ds";
+import { Button, Icon } from "@/components/ds";
 import { useWorkspaceData } from "./WorkspaceDataContext";
-import { exportPDF, exportWord, exportCSV, type ExportData } from "@/lib/export";
+import {
+  exportPDF,
+  exportWord,
+  exportCSV,
+  DEFAULT_SECTIONS,
+  type ReportContext,
+  type ReportOptions,
+  type ReportSections,
+} from "@/lib/export";
 
 export interface ExportDialogProps {
   open: boolean;
   onClose: () => void;
+  /** Ids currently visible after search/filters — enables «النتائج الحالية فقط». */
+  filteredIds?: string[] | null;
 }
 
-interface Format {
-  id: "pdf" | "word" | "csv";
-  icon: string;
-  color: string;
-  title: string;
-  desc: string;
-  run: (data: ExportData) => void;
-  closes: boolean; // whether to close the dialog after running
-}
+type Fmt = "pdf" | "word" | "csv";
+type Scope = "all" | "filtered";
 
-const FORMATS: Format[] = [
-  {
-    id: "pdf",
-    icon: "file-text",
-    color: "var(--red-500)",
-    title: "PDF (للطباعة والمشاركة)",
-    desc: "وثيقة منسّقة كاملة. تُفتح نافذة الطباعة — اختر «حفظ كـ PDF».",
-    run: exportPDF,
-    closes: true,
-  },
-  {
-    id: "word",
-    icon: "file-type",
-    color: "var(--blue-600)",
-    title: "Word (‏.doc قابل للتحرير)",
-    desc: "المستند نفسه بصيغة يفتحها Word للتعديل قبل التسليم.",
-    run: exportWord,
-    closes: true,
-  },
-  {
-    id: "csv",
-    icon: "table",
-    color: "var(--green-600)",
-    title: "Excel (‏.csv جدول)",
-    desc: "جدول المتطلبات (الحالة، الأولوية، الأعداد) يفتحه Excel.",
-    run: exportCSV,
-    closes: true,
-  },
+const SECTION_LABELS: Array<{ k: keyof ReportSections; l: string }> = [
+  { k: "summary", l: "الملخص التنفيذي" },
+  { k: "table", l: "جدول المتطلبات" },
+  { k: "details", l: "تفاصيل المتطلبات" },
+  { k: "criteria", l: "معايير القبول" },
+  { k: "questions", l: "الأسئلة المفتوحة" },
+  { k: "ambiguity", l: "نقاط الغموض" },
+  { k: "assistant", l: "توصيات مساعد وثّق" },
 ];
 
-export function ExportDialog({ open, onClose }: ExportDialogProps) {
-  const { requirements, acceptanceCriteria, businessRules, openQuestions } = useWorkspaceData();
+const opt: React.CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  gap: 8,
+  padding: "8px 11px",
+  borderRadius: "var(--radius-md)",
+  border: "1px solid var(--border-default)",
+  background: "var(--surface-card)",
+  cursor: "pointer",
+  font: "var(--weight-medium) 13px var(--font-sans)",
+  color: "var(--text-strong)",
+};
+const optActive: React.CSSProperties = {
+  ...opt,
+  borderColor: "var(--blue-400)",
+  background: "var(--blue-50)",
+  color: "var(--blue-700)",
+};
+const groupLabel: React.CSSProperties = {
+  font: "var(--weight-semibold) 12px/1 var(--font-sans)",
+  color: "var(--text-muted)",
+  margin: "4px 0 8px",
+};
+
+export function ExportDialog({ open, onClose, filteredIds }: ExportDialogProps) {
+  const { requirements, acceptanceCriteria, businessRules, openQuestions, activeProject, user } =
+    useWorkspaceData();
+
+  const [detailed, setDetailed] = React.useState(true);
+  const [fmt, setFmt] = React.useState<Fmt>("pdf");
+  const [scope, setScope] = React.useState<Scope>("all");
+  const [sections, setSections] = React.useState<ReportSections>({ ...DEFAULT_SECTIONS });
+
+  // «النتائج الحالية» تظهر فقط عندما تكون هناك فلترة فعلية تُنقص القائمة.
+  const filterActive =
+    filteredIds != null && filteredIds.length > 0 && filteredIds.length < requirements.length;
 
   React.useEffect(() => {
     if (!open) return;
+    setScope(filterActive ? "filtered" : "all");
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [open, onClose]);
+  }, [open, onClose, filterActive]);
 
   if (!open) return null;
 
-  const data: ExportData = { requirements, acceptanceCriteria, businessRules, openQuestions };
-  const criteriaCount = acceptanceCriteria.length;
-  const questionCount = openQuestions.length;
+  const scopedReqs =
+    scope === "filtered" && filteredIds
+      ? requirements.filter((r) => filteredIds.includes(r.id))
+      : requirements;
+  const scopedIds = new Set(scopedReqs.map((r) => r.id));
 
-  const pick = (f: Format) => {
-    f.run(data);
-    if (f.closes) onClose();
+  const run = () => {
+    // البيانات مصدرها سياق مساحة العمل المُرشَّح في الخادم لمالكها —
+    // لا يمكن أن يصل التقرير لبيانات مستخدم أو مشروع آخر.
+    const ctx: ReportContext = {
+      project: activeProject,
+      userName: user?.name ?? null,
+      requirements: scopedReqs,
+      acceptanceCriteria: acceptanceCriteria.filter((c) => c.requirementId && scopedIds.has(c.requirementId)),
+      businessRules: businessRules.filter((b) => b.requirementId && scopedIds.has(b.requirementId)),
+      openQuestions: openQuestions.filter((q) => q.requirementId && scopedIds.has(q.requirementId)),
+    };
+    const opts: ReportOptions = {
+      detailed,
+      sections,
+      scopeLabel:
+        scope === "filtered" ? `النتائج المفلترة (${scopedReqs.length} من ${requirements.length})` : null,
+    };
+    if (fmt === "pdf") exportPDF(ctx, opts);
+    else if (fmt === "word") exportWord(ctx, opts);
+    else exportCSV(ctx);
+    onClose();
   };
+
+  const toggleSection = (k: keyof ReportSections) =>
+    setSections((s) => ({ ...s, [k]: !s[k] }));
 
   return (
     <div
       onClick={onClose}
       style={{
-        position: "fixed",
-        inset: 0,
-        background: "var(--surface-overlay)",
-        backdropFilter: "blur(2px)",
-        display: "flex",
-        alignItems: "flex-start",
-        justifyContent: "center",
-        padding: "56px 20px",
-        zIndex: 50,
-        overflowY: "auto",
+        position: "fixed", inset: 0, background: "var(--surface-overlay)", backdropFilter: "blur(2px)",
+        display: "flex", alignItems: "flex-start", justifyContent: "center", padding: "48px 20px",
+        zIndex: 50, overflowY: "auto",
       }}
     >
       <div
         onClick={(e) => e.stopPropagation()}
         style={{
-          width: "100%",
-          maxWidth: 480,
-          background: "var(--surface-card)",
-          borderRadius: "var(--radius-lg)",
-          boxShadow: "var(--shadow-xl)",
-          border: "1px solid var(--border-default)",
-          overflow: "hidden",
+          width: "100%", maxWidth: 520, background: "var(--surface-card)",
+          borderRadius: "var(--radius-lg)", boxShadow: "var(--shadow-xl)",
+          border: "1px solid var(--border-default)", overflow: "hidden",
         }}
       >
         {/* Header */}
         <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "16px 20px", borderBottom: "1px solid var(--border-subtle)" }}>
-          <span
-            style={{
-              width: 30,
-              height: 30,
-              borderRadius: "var(--radius-sm)",
-              background: "var(--blue-50)",
-              display: "inline-flex",
-              alignItems: "center",
-              justifyContent: "center",
-              flex: "0 0 30px",
-            }}
-          >
+          <span style={{ width: 30, height: 30, borderRadius: "var(--radius-sm)", background: "var(--blue-50)", display: "inline-flex", alignItems: "center", justifyContent: "center", flex: "0 0 30px" }}>
             <Icon name="download" size={16} color="var(--blue-600)" />
           </span>
           <span style={{ font: "var(--weight-semibold) 16px var(--font-sans)", color: "var(--text-strong)" }}>
-            تصدير المتطلبات
+            تصدير التقرير
           </span>
-          <button
-            onClick={onClose}
-            aria-label="إغلاق"
-            style={{ marginInlineStart: "auto", border: "none", background: "transparent", cursor: "pointer", color: "var(--text-subtle)", display: "inline-flex" }}
-          >
+          <button onClick={onClose} aria-label="إغلاق" style={{ marginInlineStart: "auto", border: "none", background: "transparent", cursor: "pointer", color: "var(--text-subtle)", display: "inline-flex" }}>
             <Icon name="x" size={18} />
           </button>
         </div>
 
         {/* Body */}
-        <div style={{ padding: 20, display: "flex", flexDirection: "column", gap: 12 }}>
-          <p style={{ margin: 0, font: "13px/1.6 var(--font-sans)", color: "var(--text-muted)" }}>
-            سيشمل التصدير <b style={{ color: "var(--text-body)" }}>{requirements.length}</b> متطلبًا
-            مع <b style={{ color: "var(--text-body)" }}>{criteriaCount}</b> معيار قبول
-            و<b style={{ color: "var(--text-body)" }}>{questionCount}</b> سؤالًا مفتوحًا. اختر الصيغة:
-          </p>
+        <div style={{ padding: 20, display: "flex", flexDirection: "column", gap: 16 }}>
+          {/* النطاق */}
+          {filterActive && (
+            <div>
+              <div style={groupLabel}>نطاق التقرير</div>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                <button style={scope === "filtered" ? optActive : opt} onClick={() => setScope("filtered")}>
+                  <Icon name="filter" size={14} /> النتائج الحالية فقط ({filteredIds!.length})
+                </button>
+                <button style={scope === "all" ? optActive : opt} onClick={() => setScope("all")}>
+                  كل المتطلبات ({requirements.length})
+                </button>
+              </div>
+            </div>
+          )}
 
-          {FORMATS.map((f) => (
-            <button
-              key={f.id}
-              onClick={() => pick(f)}
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 12,
-                textAlign: "start",
-                padding: "12px 14px",
-                border: "1px solid var(--border-default)",
-                borderRadius: "var(--radius-md)",
-                background: "var(--surface-card)",
-                cursor: "pointer",
-                transition: "background var(--dur-fast), border-color var(--dur-fast)",
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.background = "var(--slate-50)";
-                e.currentTarget.style.borderColor = "var(--border-strong)";
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.background = "var(--surface-card)";
-                e.currentTarget.style.borderColor = "var(--border-default)";
-              }}
-            >
-              <span
-                style={{
-                  width: 38,
-                  height: 38,
-                  flex: "0 0 38px",
-                  borderRadius: "var(--radius-md)",
-                  background: "var(--slate-100)",
-                  display: "inline-flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                }}
-              >
-                <Icon name={f.icon} size={19} color={f.color} />
-              </span>
-              <span style={{ flex: 1 }}>
-                <span style={{ display: "block", font: "var(--weight-semibold) 14px/1.3 var(--font-sans)", color: "var(--text-strong)" }}>
-                  {f.title}
-                </span>
-                <span style={{ display: "block", font: "12px/1.5 var(--font-sans)", color: "var(--text-muted)", marginTop: 2 }}>
-                  {f.desc}
-                </span>
-              </span>
-              <Icon name="chevron-left" size={16} color="var(--text-subtle)" />
-            </button>
-          ))}
+          {/* نوع التقرير */}
+          <div>
+            <div style={groupLabel}>نوع التقرير</div>
+            <div style={{ display: "flex", gap: 8 }}>
+              <button style={detailed ? optActive : opt} onClick={() => setDetailed(true)}>
+                <Icon name="file-text" size={14} /> تفصيلي
+              </button>
+              <button style={!detailed ? optActive : opt} onClick={() => setDetailed(false)}>
+                <Icon name="file" size={14} /> مختصر
+              </button>
+            </div>
+          </div>
+
+          {/* الصيغة */}
+          <div>
+            <div style={groupLabel}>الصيغة</div>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              <button style={fmt === "pdf" ? optActive : opt} onClick={() => setFmt("pdf")}>PDF</button>
+              <button style={fmt === "word" ? optActive : opt} onClick={() => setFmt("word")}>Word (قابل للتعديل)</button>
+              <button style={fmt === "csv" ? optActive : opt} onClick={() => setFmt("csv")}>Excel (CSV)</button>
+            </div>
+            {fmt === "pdf" && (
+              <div style={{ font: "11.5px/1.6 var(--font-sans)", color: "var(--text-subtle)", marginTop: 6 }}>
+                تُفتح نافذة الطباعة — اختر «حفظ كـ PDF».
+              </div>
+            )}
+          </div>
+
+          {/* المحتويات */}
+          {fmt !== "csv" && (
+            <div>
+              <div style={groupLabel}>محتويات التقرير</div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
+                {SECTION_LABELS.map(({ k, l }) => {
+                  const sub = k !== "summary" && k !== "table" && k !== "details";
+                  const disabled = (sub && !sections.details) || (!detailed && (k === "details" || sub));
+                  const on = sections[k] && !disabled;
+                  return (
+                    <label
+                      key={k}
+                      style={{
+                        display: "flex", alignItems: "center", gap: 7,
+                        font: "13px var(--font-sans)",
+                        color: disabled ? "var(--text-subtle)" : "var(--text-body)",
+                        cursor: disabled ? "not-allowed" : "pointer",
+                        paddingInlineStart: sub ? 14 : 0,
+                      }}
+                    >
+                      <input type="checkbox" checked={on} disabled={disabled} onChange={() => toggleSection(k)} />
+                      {l}
+                    </label>
+                  );
+                })}
+              </div>
+              {!detailed && (
+                <div style={{ font: "11.5px/1.6 var(--font-sans)", color: "var(--text-subtle)", marginTop: 6 }}>
+                  التقرير المختصر يشمل الغلاف والملخص والجدول والتوصيات.
+                </div>
+              )}
+            </div>
+          )}
+
+          <div style={{ font: "12px/1.6 var(--font-sans)", color: "var(--text-muted)", padding: "8px 12px", background: "var(--slate-50)", borderRadius: "var(--radius-md)", border: "1px solid var(--border-subtle)" }}>
+            سيشمل التقرير <b style={{ color: "var(--text-body)" }}>{scopedReqs.length}</b> متطلبًا من مشروع «{activeProject?.name ?? "مساحة العمل"}».
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, padding: "14px 20px", borderTop: "1px solid var(--border-subtle)", background: "var(--slate-25)" }}>
+          <Button variant="secondary" onClick={onClose}>إلغاء</Button>
+          <Button variant="primary" onClick={run} disabled={scopedReqs.length === 0} iconStart={<Icon name="download" size={15} />}>
+            تصدير التقرير
+          </Button>
         </div>
       </div>
     </div>

@@ -25,6 +25,34 @@ const PRIORITIES = [
 
 const P_ORDER: Record<string, number> = { critical: 0, high: 1, medium: 2, low: 3 };
 
+const selStyle: React.CSSProperties = {
+  padding: "7px 10px",
+  borderRadius: "var(--radius-md)",
+  border: "1px solid var(--border-default)",
+  background: "var(--surface-card)",
+  font: "12.5px var(--font-sans)",
+  color: "var(--text-strong)",
+  outline: "none",
+};
+
+function FilterChip({ label, onClear }: { label: string; onClear: () => void }) {
+  return (
+    <span
+      style={{
+        display: "inline-flex", alignItems: "center", gap: 6, padding: "5px 10px",
+        borderRadius: "var(--radius-pill)", background: "var(--blue-50)",
+        border: "1px solid var(--blue-100)", color: "var(--blue-700)",
+        font: "var(--weight-medium) 12px/1 var(--font-sans)",
+      }}
+    >
+      {label}
+      <button onClick={onClear} aria-label="إزالة الفلتر" style={{ border: "none", background: "transparent", cursor: "pointer", display: "inline-flex", padding: 0, color: "var(--blue-600)" }}>
+        <Icon name="x" size={12} strokeWidth={3} />
+      </button>
+    </span>
+  );
+}
+
 type SortBy = "default" | "priority" | "confidence" | "id";
 const SORTS: { v: SortBy; l: string }[] = [
   { v: "default", l: "الافتراضي" },
@@ -37,7 +65,7 @@ const SORTS: { v: SortBy; l: string }[] = [
    plus add / edit / delete backed by the database. */
 export function RequirementsScreen({ onOpen, onViewAnalysis, search = "", onClearSearch }: RequirementsScreenProps) {
   const router = useRouter();
-  const { requirements: REQUIREMENTS } = useWorkspaceData();
+  const { requirements: REQUIREMENTS, acceptanceCriteria } = useWorkspaceData();
   // Data-driven header/banner facts (no hardcoded demo copy).
   const analyzedList = REQUIREMENTS.filter((r) => r.confidence != null || r.analysis != null);
   const analyzedCount = analyzedList.length;
@@ -50,6 +78,12 @@ export function RequirementsScreen({ onOpen, onViewAnalysis, search = "", onClea
   const [filter, setFilter] = React.useState<string>("all");
   const [priorities, setPriorities] = React.useState<Set<string>>(new Set());
   const [sortBy, setSortBy] = React.useState<SortBy>("default");
+  // فلاتر متقدمة — كلها client-side لأن القائمة مشروعية الصغر ومُرشَّحة سلفًا في الخادم.
+  const [typeF, setTypeF] = React.useState("");
+  const [sourceF, setSourceF] = React.useState("");
+  const [assigneeF, setAssigneeF] = React.useState("");
+  const [analyzedF, setAnalyzedF] = React.useState<"any" | "yes" | "no">("any");
+  const [criteriaF, setCriteriaF] = React.useState<"any" | "yes" | "no">("any");
   const [showFilter, setShowFilter] = React.useState(false);
   const [showSort, setShowSort] = React.useState(false);
   const [dialogOpen, setDialogOpen] = React.useState(false);
@@ -57,6 +91,11 @@ export function RequirementsScreen({ onOpen, onViewAnalysis, search = "", onClea
   const [dialogMode, setDialogMode] = React.useState<"create" | "edit">("create");
   const [editing, setEditing] = React.useState<Requirement | null>(null);
   const [busyId, setBusyId] = React.useState<string | null>(null);
+
+  // قيم القوائم مشتقة من بيانات المشروع نفسها (لا قوائم ثابتة قد لا تطابق).
+  const typeOptions = [...new Set(REQUIREMENTS.map((r) => r.type).filter(Boolean))] as string[];
+  const sourceOptions = [...new Set(REQUIREMENTS.map((r) => r.source).filter(Boolean))] as string[];
+  const assigneeOptions = [...new Set(REQUIREMENTS.map((r) => r.assignee).filter(Boolean))] as string[];
 
   const filters = [
     { id: "all", label: "الكل", n: REQUIREMENTS.length },
@@ -77,6 +116,17 @@ export function RequirementsScreen({ onOpen, onViewAnalysis, search = "", onClea
   if (priorities.size > 0) {
     list = list.filter((r) => priorities.has(r.priority));
   }
+  if (typeF) list = list.filter((r) => r.type === typeF);
+  if (sourceF) list = list.filter((r) => r.source === sourceF);
+  if (assigneeF) list = list.filter((r) => r.assignee === assigneeF);
+  if (analyzedF !== "any") {
+    const done = (r: Requirement) => r.confidence != null || r.analysis != null;
+    list = list.filter((r) => (analyzedF === "yes" ? done(r) : !done(r)));
+  }
+  if (criteriaF !== "any") {
+    const withCrit = new Set(acceptanceCriteria.map((c) => c.requirementId));
+    list = list.filter((r) => (criteriaF === "yes" ? withCrit.has(r.id) : !withCrit.has(r.id)));
+  }
   if (sortBy !== "default") {
     list = [...list].sort((a, b) => {
       if (sortBy === "priority") return P_ORDER[a.priority] - P_ORDER[b.priority];
@@ -85,7 +135,8 @@ export function RequirementsScreen({ onOpen, onViewAnalysis, search = "", onClea
     });
   }
 
-  const filterActive = priorities.size > 0;
+  const advActive = Boolean(typeF || sourceF || assigneeF) || analyzedF !== "any" || criteriaF !== "any";
+  const filterActive = priorities.size > 0 || advActive;
   const sortActive = sortBy !== "default";
   const anyRefinement = filterActive || sortActive || q.length > 0;
 
@@ -101,6 +152,8 @@ export function RequirementsScreen({ onOpen, onViewAnalysis, search = "", onClea
     setFilter("all");
     setPriorities(new Set());
     setSortBy("default");
+    setTypeF(""); setSourceF(""); setAssigneeF("");
+    setAnalyzedF("any"); setCriteriaF("any");
     onClearSearch && onClearSearch();
   };
 
@@ -196,7 +249,7 @@ export function RequirementsScreen({ onOpen, onViewAnalysis, search = "", onClea
         </div>
       </div>
 
-      <ExportDialog open={exportOpen} onClose={() => setExportOpen(false)} />
+      <ExportDialog open={exportOpen} onClose={() => setExportOpen(false)} filteredIds={anyRefinement ? list.map((r) => r.id) : null} />
 
       {/* Filter panel */}
       {showFilter && (
@@ -247,6 +300,61 @@ export function RequirementsScreen({ onOpen, onViewAnalysis, search = "", onClea
               );
             })}
           </div>
+
+          {/* فلاتر متقدمة */}
+          <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 14, paddingTop: 12, borderTop: "1px solid var(--border-subtle)" }}>
+            {typeOptions.length > 0 && (
+              <select value={typeF} onChange={(e) => setTypeF(e.target.value)} style={selStyle}>
+                <option value="">النوع: الكل</option>
+                {typeOptions.map((t) => <option key={t} value={t}>{t}</option>)}
+              </select>
+            )}
+            {sourceOptions.length > 0 && (
+              <select value={sourceF} onChange={(e) => setSourceF(e.target.value)} style={selStyle}>
+                <option value="">المصدر: الكل</option>
+                {sourceOptions.map((t) => <option key={t} value={t}>{t}</option>)}
+              </select>
+            )}
+            {assigneeOptions.length > 0 && (
+              <select value={assigneeF} onChange={(e) => setAssigneeF(e.target.value)} style={selStyle}>
+                <option value="">المسؤول: الكل</option>
+                {assigneeOptions.map((t) => <option key={t} value={t}>{t}</option>)}
+              </select>
+            )}
+            <select value={analyzedF} onChange={(e) => setAnalyzedF(e.target.value as "any" | "yes" | "no")} style={selStyle}>
+              <option value="any">مساعد وثّق: الكل</option>
+              <option value="yes">تم تحليلها</option>
+              <option value="no">لم تُحلَّل بعد</option>
+            </select>
+            <select value={criteriaF} onChange={(e) => setCriteriaF(e.target.value as "any" | "yes" | "no")} style={selStyle}>
+              <option value="any">معايير القبول: الكل</option>
+              <option value="yes">لديها معايير</option>
+              <option value="no">بلا معايير</option>
+            </select>
+          </div>
+        </div>
+      )}
+
+      {/* شريط الفلاتر النشطة — chips قابلة للإزالة */}
+      {(filterActive || filter !== "all") && (
+        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 14 }}>
+          {filter !== "all" && (
+            <FilterChip label={`الحالة: ${filters.find((f) => f.id === filter)?.label ?? filter}`} onClear={() => setFilter("all")} />
+          )}
+          {[...priorities].map((pv) => (
+            <FilterChip key={pv} label={`الأولوية: ${PRIORITIES.find((x) => x.v === pv)?.l ?? pv}`} onClear={() => togglePriority(pv)} />
+          ))}
+          {typeF && <FilterChip label={`النوع: ${typeF}`} onClear={() => setTypeF("")} />}
+          {sourceF && <FilterChip label={`المصدر: ${sourceF}`} onClear={() => setSourceF("")} />}
+          {assigneeF && <FilterChip label={`المسؤول: ${assigneeF}`} onClear={() => setAssigneeF("")} />}
+          {analyzedF !== "any" && <FilterChip label={analyzedF === "yes" ? "تم تحليلها" : "لم تُحلَّل بعد"} onClear={() => setAnalyzedF("any")} />}
+          {criteriaF !== "any" && <FilterChip label={criteriaF === "yes" ? "لديها معايير قبول" : "بلا معايير قبول"} onClear={() => setCriteriaF("any")} />}
+          <button
+            onClick={clearAll}
+            style={{ border: "none", background: "transparent", cursor: "pointer", color: "var(--text-link)", font: "var(--weight-medium) 12.5px var(--font-sans)" }}
+          >
+            مسح الفلاتر
+          </button>
         </div>
       )}
 

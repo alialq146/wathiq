@@ -39,6 +39,13 @@ const STATUS_AR: Record<string, string> = {
   blocked: "محظور",
 };
 
+const PRIORITY_AR: Record<string, string> = {
+  critical: "حرجة",
+  high: "عالية",
+  medium: "متوسطة",
+  low: "منخفضة",
+};
+
 /* ---------------- session helpers ---------------- */
 
 interface Actor {
@@ -171,8 +178,34 @@ export async function saveRequirement(
         where: { id: originalId, ...ownedBy(actor.uid) },
       });
       if (!target) return { ok: false, error: "not-found" };
+
+      // سجل التغييرات: نقارن الحقول المهمة ونكتب وصفًا مفهومًا لكل تغيير،
+      // مع رفع الإصدار تلقائيًا عند تغيّر المحتوى إن لم يرفعه المستخدم بنفسه.
+      const changes: string[] = [];
+      if (target.status !== data.status)
+        changes.push(`تم تغيير الحالة من «${STATUS_AR[target.status] ?? target.status}» إلى «${STATUS_AR[data.status] ?? data.status}»`);
+      if (target.priority !== data.priority)
+        changes.push(`تم تغيير الأولوية من «${PRIORITY_AR[target.priority] ?? target.priority}» إلى «${PRIORITY_AR[data.priority] ?? data.priority}»`);
+      if (target.title !== data.title) changes.push("تم تعديل العنوان");
+      if (target.description !== data.description) changes.push("تم تعديل الوصف");
+      if ((target.notes ?? null) !== data.notes) changes.push("تم تعديل الملاحظات");
+      if ((target.type ?? null) !== data.type) changes.push(`تم تغيير النوع إلى «${data.type ?? "غير محدد"}»`);
+      if ((target.source ?? null) !== data.source) changes.push(`تم تغيير المصدر إلى «${data.source ?? "غير محدد"}»`);
+      if ((target.assignee ?? null) !== data.assignee)
+        changes.push(data.assignee ? `تم تعيين المسؤول: ${data.assignee}` : "تمت إزالة المسؤول");
+
+      const contentChanged =
+        target.title !== data.title || target.description !== data.description || (target.notes ?? null) !== data.notes;
+      if (contentChanged && data.version === target.version) data.version = target.version + 1;
+      if (data.version !== target.version) changes.push(`الإصدار: V${target.version} ← V${data.version}`);
+
       await prisma.requirement.update({ where: { id: originalId }, data });
-      await logAudit(actor, originalId, "requirement_updated", `تعديل المتطلب «${data.title}».`);
+      await logAudit(
+        actor,
+        originalId,
+        "requirement_updated",
+        changes.length ? changes.join("؛ ") + "." : `تعديل المتطلب «${data.title}».`
+      );
     } else {
       const exists = await prisma.requirement.findUnique({ where: { id } });
       if (exists) return { ok: false, error: "duplicate-id" };
@@ -435,6 +468,70 @@ export interface ProjectInput {
 }
 
 /** Create a project — plan-gated (FREE = one project). */
+/** إضافة سؤال مفتوح (يدويًا أو باعتماد اقتراح من مساعد وثّق). */
+export async function addOpenQuestion(
+  requirementId: string,
+  text: string,
+  to?: string
+): Promise<ActionResult> {
+  if (!hasDatabase()) return { ok: false, error: "no-db" };
+  const rid = requirementId.trim();
+  const body = text.trim();
+  if (!rid || body.length < 3) return { ok: false, error: "too-short" };
+  try {
+    const actor = await requireActor();
+    if (!actor) return { ok: false, error: "unauthorized" };
+    // شرط الملكية: لا يضاف سؤال إلا لمتطلب يملكه المستخدم.
+    const target = await prisma.requirement.findFirst({ where: { id: rid, ...ownedBy(actor.uid) } });
+    if (!target) return { ok: false, error: "not-found" };
+    const max = await prisma.openQuestion.aggregate({ _max: { order: true }, where: { requirementId: rid } });
+    await prisma.openQuestion.create({
+      data: {
+        id: `Q-${randomUUID().slice(0, 8)}`,
+        ownerId: target.ownerId,
+        projectId: target.projectId,
+        requirementId: rid,
+        text: body,
+        to: to?.trim() || target.stakeholders[0] || "أصحاب المصلحة",
+        ai: true,
+        answer: null,
+        order: (max._max.order ?? -1) + 1,
+      },
+    });
+    await prisma.requirement.update({
+      where: { id: rid },
+      data: { openQuestions: await prisma.openQuestion.count({ where: { requirementId: rid } }) },
+    });
+    await logAudit(actor, rid, "question_added", `إضافة سؤال مفتوح: «${body.slice(0, 80)}».`);
+    revalidatePath("/");
+    return { ok: true };
+  } catch (err) {
+    console.error("[addOpenQuestion]", err);
+    return { ok: false, error: "server" };
+  }
+}
+
+/** إلحاق نص بملاحظات المتطلب (يستخدمه المساعد لحفظ نتيجة كملاحظة). */
+export async function appendRequirementNote(id: string, text: string): Promise<ActionResult> {
+  if (!hasDatabase()) return { ok: false, error: "no-db" };
+  const body = text.trim();
+  if (!id.trim() || body.length < 3) return { ok: false, error: "too-short" };
+  try {
+    const actor = await requireActor();
+    if (!actor) return { ok: false, error: "unauthorized" };
+    const target = await prisma.requirement.findFirst({ where: { id, ...ownedBy(actor.uid) } });
+    if (!target) return { ok: false, error: "not-found" };
+    const notes = target.notes ? `${target.notes}\n\n${body}` : body;
+    await prisma.requirement.update({ where: { id }, data: { notes } });
+    await logAudit(actor, id, "requirement_updated", "تمت إضافة ملاحظة من مساعد وثّق.");
+    revalidatePath("/");
+    return { ok: true };
+  } catch (err) {
+    console.error("[appendRequirementNote]", err);
+    return { ok: false, error: "server" };
+  }
+}
+
 export async function createProject(input: ProjectInput): Promise<ActionResult> {
   if (!hasDatabase()) return { ok: false, error: "no-db" };
   const actor = await requireActor();
