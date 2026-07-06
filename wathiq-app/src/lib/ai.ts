@@ -88,6 +88,32 @@ const SYSTEM_PROMPT = `أنت "وثّق"، محلّل أعمال خبير ومس
 // lib/usage.ts and is passed in by the API routes).
 const DEFAULT_MODEL = "claude-opus-4-8";
 
+
+/**
+ * يستخرج JSON المنظم من رد النموذج مع أخطاء مصنّفة تظهر كما هي في AiUsage
+ * ولوحة الأدمن (السبب الحقيقي بدل SyntaxError غامضة):
+ * - ai_response_truncated  → الرد انقطع عند حد الرموز (max_tokens).
+ * - ai_response_parse_error → رد مكتمل لكنه ليس JSON صالحًا.
+ * - ai_empty_response       → لا يوجد محتوى نصي في الرد.
+ */
+export function extractStructured<T>(
+  response: Anthropic.Message,
+  label: string
+): T {
+  const textBlock = response.content.find((b) => b.type === "text");
+  if (!textBlock || textBlock.type !== "text") {
+    throw new Error(`ai_empty_response [${label}]`);
+  }
+  if (response.stop_reason === "max_tokens") {
+    throw new Error(`ai_response_truncated: reached max_tokens before completing [${label}]`);
+  }
+  try {
+    return JSON.parse(textBlock.text) as T;
+  } catch (e) {
+    throw new Error(`ai_response_parse_error: ${String(e).slice(0, 140)} [${label}]`);
+  }
+}
+
 type UserContent = Anthropic.MessageParam["content"];
 
 /** Token usage returned alongside every analysis, for cost tracking. */
@@ -116,13 +142,8 @@ async function runAnalysis(content: UserContent, model: string): Promise<Analyze
     messages: [{ role: "user", content }],
   } as Anthropic.MessageCreateParamsNonStreaming);
 
-  const textBlock = response.content.find((b) => b.type === "text");
-  if (!textBlock || textBlock.type !== "text") {
-    throw new Error("No text content returned from model");
-  }
-
   return {
-    result: JSON.parse(textBlock.text) as AnalysisResult,
+    result: extractStructured<AnalysisResult>(response, "document-analysis"),
     meta: {
       model,
       inputTokens: response.usage?.input_tokens ?? null,
@@ -276,7 +297,7 @@ const TASK_CONFIG: Record<
     },
     instruction:
       "أعد صياغة المتطلب بنسخة محسنة أوضح وأكثر قابلية للاختبار مع الحفاظ على القصد الأصلي. أعد improvedVersion فقط.",
-    maxTokens: 1200,
+    maxTokens: 2000,
   },
   criteria: {
     schema: {
@@ -287,7 +308,7 @@ const TASK_CONFIG: Record<
     },
     instruction:
       "اكتب ٣–٦ معايير قبول قابلة للاختبار لهذا المتطلب (صيغة واضحة يمكن التحقق منها). أعد acceptanceCriteria فقط.",
-    maxTokens: 1200,
+    maxTokens: 2000,
   },
   questions: {
     schema: {
@@ -298,7 +319,7 @@ const TASK_CONFIG: Record<
     },
     instruction:
       "اكتب ٢–٥ أسئلة دقيقة يجب الرجوع بها إلى العميل أو أصحاب المصلحة لسد نواقص هذا المتطلب. أعد stakeholderQuestions فقط.",
-    maxTokens: 1000,
+    maxTokens: 2000,
   },
   ambiguity: {
     schema: {
@@ -309,7 +330,7 @@ const TASK_CONFIG: Record<
     },
     instruction:
       "حلل غموض المتطلب: vagueWords (كلمات غامضة كـ«سريع»، «سهل») وmissingInfo (معلومات ناقصة تمنع التنفيذ). القوائم قد تكون فارغة.",
-    maxTokens: 1200,
+    maxTokens: 2000,
   },
   risks: {
     schema: {
@@ -320,7 +341,7 @@ const TASK_CONFIG: Record<
     },
     instruction:
       "استخرج المخاطر المحتملة في هذا المتطلب (تقنية، تنظيمية، أو تنفيذية) بصيغة مختصرة عملية. أعد risks فقط.",
-    maxTokens: 1000,
+    maxTokens: 2000,
   },
 };
 
@@ -348,10 +369,8 @@ ${req.type ? `النوع: ${req.type}\n` : ""}${req.notes ? `ملاحظات: ${r
     messages: [{ role: "user", content: userText }],
   } as Anthropic.MessageCreateParamsNonStreaming);
 
-  const textBlock = response.content.find((b) => b.type === "text");
-  if (!textBlock || textBlock.type !== "text") throw new Error("No text content returned from model");
   return {
-    result: JSON.parse(textBlock.text) as AssistantTaskResult,
+    result: extractStructured<AssistantTaskResult>(response, `task-${task}`),
     meta: {
       model,
       inputTokens: response.usage?.input_tokens ?? null,
@@ -377,7 +396,7 @@ ${req.type ? `النوع: ${req.type}\n` : ""}الوحدة: ${req.module ?? "—
 
   const response = await client.messages.create({
     model,
-    max_tokens: 4000,
+    max_tokens: 8000,
     system: REQ_SYSTEM_PROMPT,
     output_config: {
       format: { type: "json_schema", schema: REQ_ANALYSIS_SCHEMA },
@@ -385,12 +404,8 @@ ${req.type ? `النوع: ${req.type}\n` : ""}الوحدة: ${req.module ?? "—
     messages: [{ role: "user", content: userText }],
   } as Anthropic.MessageCreateParamsNonStreaming);
 
-  const textBlock = response.content.find((b) => b.type === "text");
-  if (!textBlock || textBlock.type !== "text") {
-    throw new Error("No text content returned from model");
-  }
   return {
-    result: JSON.parse(textBlock.text) as RequirementAnalysis,
+    result: extractStructured<RequirementAnalysis>(response, "requirement-quality"),
     meta: {
       model,
       inputTokens: response.usage?.input_tokens ?? null,
