@@ -102,10 +102,35 @@ export function RequirementDetail({ req, onBack }: RequirementDetailProps) {
   const history = auditEvents.filter((e) => e.requirementId === req.id);
 
   const [tab, setTab] = React.useState("criteria");
+
+  // حفظ/استعادة التبويب النشط لكل متطلب — يبقى مكانه بعد router.refresh
+  // أو أي إعادة بناء، ويستقبل حدث «افتح تبويب التقييم» من لوحة المساعد.
+  React.useEffect(() => {
+    try {
+      const saved = sessionStorage.getItem(`wq-tab-${req.id}`);
+      if (saved) setTab(saved);
+    } catch {}
+    const onOpenTab = (e: Event) => {
+      const d = (e as CustomEvent<{ reqId: string; tab: string }>).detail;
+      if (d?.reqId === req.id && d.tab) changeTab(d.tab);
+    };
+    window.addEventListener("wq-open-tab", onOpenTab);
+    return () => window.removeEventListener("wq-open-tab", onOpenTab);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [req.id]);
+
+  const changeTab = (t: string) => {
+    setTab(t);
+    try {
+      sessionStorage.setItem(`wq-tab-${req.id}`, t);
+    } catch {}
+  };
+
   const tabs = [
     { id: "criteria", label: "معايير القبول", count: criteria.length },
     { id: "rules", label: "قواعد العمل", count: rules.length },
     { id: "questions", label: "أسئلة مفتوحة", count: questions.length },
+    { id: "quality", label: "تقييم الجودة", count: req.analysis ? 1 : 0 },
     { id: "history", label: "سجل التغييرات", count: history.length },
   ];
 
@@ -216,7 +241,7 @@ export function RequirementDetail({ req, onBack }: RequirementDetailProps) {
         </div>
       </div>
 
-      <Tabs items={tabs} value={tab} onChange={setTab} style={{ marginBottom: 18 }} />
+      <Tabs items={tabs} value={tab} onChange={changeTab} style={{ marginBottom: 18 }} />
 
       {tab === "criteria" && (
         <CriteriaTab requirementId={req.id} items={criteria} connected={connected} />
@@ -225,6 +250,7 @@ export function RequirementDetail({ req, onBack }: RequirementDetailProps) {
       {tab === "questions" && (
         <QuestionsTab items={questions} connected={connected} />
       )}
+      {tab === "quality" && <QualityTab req={req} connected={connected} />}
       {tab === "history" && <HistoryTab items={history} />}
     </div>
   );
@@ -758,6 +784,118 @@ function AmbiguityGroup({ icon, title, items, color }: { icon: string; title: st
 }
 
 /* Per-requirement AI quality analysis (axis 2). */
+/* ---------------- Quality assessment tab (تقييم الجودة) ---------------- */
+/* النتائج التفصيلية لمساعد وثّق تُعرض هنا في المحتوى الرئيسي —
+   العمود الجانبي يبقى للتشغيل والملخص السريع فقط. */
+
+function QualityTab({ req, connected }: { req: Requirement; connected: boolean }) {
+  const router = useRouter();
+  const [applying, startApply] = React.useTransition();
+  const [applied, setApplied] = React.useState(false);
+  const a = req.analysis ?? null;
+
+  if (!a) {
+    return (
+      <EmptyState
+        icon="gauge"
+        text="لم يُشغَّل مساعد وثّق على هذا المتطلب بعد — شغّل «تقييم الجودة» من اللوحة الجانبية لعرض النتائج التفصيلية هنا."
+      />
+    );
+  }
+
+  const sm = REQ_STATUS_META[a.status] ?? REQ_STATUS_META.needs_improvement;
+  const hasAmbiguity =
+    a.ambiguity.vagueWords.length + a.ambiguity.missingInfo.length + a.ambiguity.assumptions.length + a.ambiguity.risks.length > 0;
+
+  const applyImproved = () => {
+    startApply(async () => {
+      const res = await applyImprovedRequirement(req.id, a.improvedVersion);
+      if (res.ok) {
+        setApplied(true);
+        router.refresh();
+      }
+    });
+  };
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 18, maxWidth: 720 }}>
+      {/* score header */}
+      <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 16px", borderRadius: "var(--radius-lg)", background: "var(--teal-50)", border: "1px solid var(--teal-100)" }}>
+        <Icon name="gauge" size={20} color="var(--teal-600)" />
+        <span style={{ font: "var(--weight-bold) 24px/1 var(--font-sans)", color: a.qualityScore >= 75 ? "var(--green-600)" : a.qualityScore >= 45 ? "var(--amber-600)" : "var(--red-600)", direction: "ltr" }}>
+          {a.qualityScore}%
+        </span>
+        <span style={{ font: "var(--weight-medium) 12px/1 var(--font-sans)", color: sm.fg, background: sm.bg, padding: "4px 10px", borderRadius: "var(--radius-pill)" }}>
+          {sm.label}
+        </span>
+        {a.summary && (
+          <span style={{ font: "13px/1.6 var(--font-sans)", color: "var(--text-body)", flex: 1, minWidth: 200 }}>{a.summary}</span>
+        )}
+      </div>
+
+      {/* SMART */}
+      <div>
+        <div style={{ font: "var(--weight-semibold) 12px/1 var(--font-sans)", letterSpacing: ".04em", color: "var(--text-subtle)", marginBottom: 10, textTransform: "uppercase" }}>تقييم SMART</div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          {SMART_LABELS.map(([k, label]) => {
+            const item = (a.smart as unknown as Record<string, { rating?: string; reason?: string }>)[k] || {};
+            const m = SMART_RATING[item.rating ?? "fail"] ?? SMART_RATING.fail;
+            return (
+              <div key={k} style={{ display: "flex", alignItems: "flex-start", gap: 9 }}>
+                <span style={{ width: 20, height: 20, flex: "0 0 20px", borderRadius: "50%", background: m.bg, display: "inline-flex", alignItems: "center", justifyContent: "center", marginTop: 1 }}>
+                  <Icon name={m.icon} size={12} color={m.fg} strokeWidth={2.5} />
+                </span>
+                <div style={{ flex: 1 }}>
+                  <span style={{ font: "var(--weight-semibold) 13.5px/1.4 var(--font-sans)", color: "var(--text-strong)" }}>{label}</span>
+                  <span style={{ font: "12px var(--font-sans)", color: m.fg, marginInlineStart: 8 }}>· {m.label}</span>
+                  {item.reason && <div style={{ font: "12.5px/1.6 var(--font-sans)", color: "var(--text-muted)", marginTop: 2 }}>{item.reason}</div>}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Ambiguity */}
+      {hasAmbiguity && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+          <div style={{ font: "var(--weight-semibold) 12px/1 var(--font-sans)", letterSpacing: ".04em", color: "var(--text-subtle)", textTransform: "uppercase" }}>تحليل الغموض والمخاطر</div>
+          <AmbiguityGroup icon="type" title="كلمات غامضة" items={a.ambiguity.vagueWords} color="var(--amber-600)" />
+          <AmbiguityGroup icon="help-circle" title="معلومات ناقصة" items={a.ambiguity.missingInfo} color="var(--teal-600)" />
+          <AmbiguityGroup icon="git-branch" title="افتراضات غير مؤكدة" items={a.ambiguity.assumptions} color="var(--blue-600)" />
+          <AmbiguityGroup icon="alert-triangle" title="مخاطر محتملة" items={a.ambiguity.risks} color="var(--red-500)" />
+        </div>
+      )}
+
+      {/* Improved version */}
+      {a.improvedVersion && (
+        <div>
+          <div style={{ font: "var(--weight-semibold) 12px/1 var(--font-sans)", letterSpacing: ".04em", color: "var(--text-subtle)", marginBottom: 8, textTransform: "uppercase" }}>صياغة محسّنة مقترحة</div>
+          <div style={{ padding: "12px 14px", background: "var(--slate-50)", border: "1px solid var(--border-subtle)", borderRadius: "var(--radius-md)", font: "13.5px/1.8 var(--font-sans)", color: "var(--text-body)" }}>
+            {a.improvedVersion}
+          </div>
+          {applied ? (
+            <div style={{ display: "flex", alignItems: "center", gap: 7, marginTop: 8, font: "12.5px var(--font-sans)", color: "var(--green-600)" }}>
+              <Icon name="check-circle" size={15} color="var(--green-600)" /> اعتُمدت الصياغة الجديدة.
+            </div>
+          ) : (
+            <Button
+              variant="secondary"
+              size="sm"
+              disabled={applying || !connected}
+              style={{ marginTop: 10 }}
+              iconStart={<Icon name={applying ? "loader-circle" : "wand-sparkles"} size={15} style={applying ? { animation: "wq-spin 0.7s linear infinite" } : undefined} />}
+              onClick={applyImproved}
+            >
+              {applying ? "جارٍ الاعتماد…" : "اعتماد الصياغة المحسّنة"}
+            </Button>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 /* ---------------- Change history tab (timeline) ---------------- */
 
 const HISTORY_ICON: Record<string, string> = {
@@ -828,17 +966,23 @@ function RequirementAnalysisPanel({ req, connected }: { req: Requirement; connec
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [limited, setLimited] = React.useState(false);
-  const [applying, startApply] = React.useTransition();
+  const [successMsg, setSuccessMsg] = React.useState<string | null>(null);
   const a = req.analysis ?? null;
 
   // نتيجة مهمة خفيفة بانتظار قرار المستخدم (اعتماد / إضافة / حفظ / تجاهل).
   const [taskResult, setTaskResult] = React.useState<{ task: string; result: TaskPayload } | null>(null);
+
+  // فتح تبويب «تقييم الجودة» في صفحة المتطلب لعرض النتائج التفصيلية.
+  const openQualityTab = () => {
+    window.dispatchEvent(new CustomEvent("wq-open-tab", { detail: { reqId: req.id, tab: "quality" } }));
+  };
 
   const runAnalysis = async (task?: string) => {
     if (loading) return;
     setLoading(true);
     setError(null);
     setLimited(false);
+    setSuccessMsg(null);
     setTaskResult(null);
     try {
       const res = await fetch("/api/analyze-requirement", {
@@ -850,6 +994,10 @@ function RequirementAnalysisPanel({ req, connected }: { req: Requirement; connec
       if (data.ok && data.task) {
         setTaskResult({ task: data.task, result: data.result });
       } else if (data.ok) {
+        // نجاح التحليل الشامل: رسالة واضحة، فتح تبويب النتائج، وتحديث
+        // البيانات في مكانها — المستخدم يبقى داخل نفس صفحة المتطلب.
+        setSuccessMsg("تم تحديث نتائج مساعد وثّق بنجاح.");
+        openQualityTab();
         router.refresh();
       } else if (data.error === "limit") {
         setLimited(true);
@@ -859,7 +1007,7 @@ function RequirementAnalysisPanel({ req, connected }: { req: Requirement; connec
             ? "التحليل يتطلب ربط مفتاح Anthropic API في إعدادات الموقع."
             : data.error === "no-db"
             ? "التحليل يتطلب قاعدة بيانات — يعمل على الموقع المنشور فقط."
-            : "تعذّر التحليل. حاول مرة أخرى."
+            : "تعذر تشغيل مساعد وثّق. حاول مرة أخرى."
         );
       }
     } catch {
@@ -868,14 +1016,6 @@ function RequirementAnalysisPanel({ req, connected }: { req: Requirement; connec
     } finally {
       setLoading(false);
     }
-  };
-
-  const applyImproved = () => {
-    if (!a) return;
-    startApply(async () => {
-      const res = await applyImprovedRequirement(req.id, a.improvedVersion);
-      if (res.ok) router.refresh();
-    });
   };
 
   const cardStyle: React.CSSProperties = {
@@ -960,10 +1100,18 @@ function RequirementAnalysisPanel({ req, connected }: { req: Requirement; connec
       result={taskResult.result}
       onDone={() => {
         setTaskResult(null);
+        setSuccessMsg("تم تحديث نتائج مساعد وثّق بنجاح.");
         router.refresh();
       }}
       onDismiss={() => setTaskResult(null)}
     />
+  );
+
+  const successRow = successMsg && (
+    <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "9px 12px", borderRadius: "var(--radius-md)", background: "var(--status-success-bg)", border: "1px solid var(--green-100)", font: "var(--weight-medium) 12.5px/1.5 var(--font-sans)", color: "var(--status-success-fg)" }}>
+      <Icon name="check-circle" size={15} color="var(--status-success-fg)" />
+      {successMsg}
+    </div>
   );
 
   // Not analyzed yet — the assistant is optional; the requirement is fully
@@ -978,6 +1126,7 @@ function RequirementAnalysisPanel({ req, connected }: { req: Requirement; connec
           </p>
           {taskChips}
           {loadingRow}
+          {successRow}
           {resultCard}
           {error && <span style={{ font: "12px/1.5 var(--font-sans)", color: "var(--status-danger-fg)", textAlign: "center" }}>{error}</span>}
         </div>
@@ -985,71 +1134,28 @@ function RequirementAnalysisPanel({ req, connected }: { req: Requirement; connec
     );
   }
 
-  // Analyzed — full panel.
+  // Analyzed — compact panel: quick summary + task launcher only. The
+  // detailed assessment lives in the «تقييم الجودة» tab so long results
+  // don't cram the side rail.
   const sm = REQ_STATUS_META[a.status] ?? REQ_STATUS_META.needs_improvement;
-  const hasAmbiguity =
-    a.ambiguity.vagueWords.length + a.ambiguity.missingInfo.length + a.ambiguity.assumptions.length + a.ambiguity.risks.length > 0;
 
   return (
     <div style={cardStyle}>
       {header(a.qualityScore, sm)}
-      <div style={{ padding: 16, display: "flex", flexDirection: "column", gap: 16 }}>
-        {a.summary && <p style={{ margin: 0, font: "13.5px/1.7 var(--font-sans)", color: "var(--text-body)" }}>{a.summary}</p>}
+      <div style={{ padding: 16, display: "flex", flexDirection: "column", gap: 12 }}>
+        {successRow}
+        {a.summary && <p style={{ margin: 0, font: "13px/1.7 var(--font-sans)", color: "var(--text-body)" }}>{a.summary}</p>}
 
-        {/* SMART */}
-        <div>
-          <div style={{ font: "var(--weight-semibold) 11px/1 var(--font-sans)", letterSpacing: ".04em", color: "var(--text-subtle)", marginBottom: 8, textTransform: "uppercase" }}>تقييم SMART</div>
-          <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
-            {SMART_LABELS.map(([k, label]) => {
-              const item = (a.smart as unknown as Record<string, { rating?: string; reason?: string }>)[k] || {};
-              const m = SMART_RATING[item.rating ?? "fail"] ?? SMART_RATING.fail;
-              return (
-                <div key={k} style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
-                  <span style={{ width: 18, height: 18, flex: "0 0 18px", borderRadius: "50%", background: m.bg, display: "inline-flex", alignItems: "center", justifyContent: "center", marginTop: 1 }}>
-                    <Icon name={m.icon} size={11} color={m.fg} strokeWidth={2.5} />
-                  </span>
-                  <div style={{ flex: 1 }}>
-                    <span style={{ font: "var(--weight-semibold) 12.5px/1.4 var(--font-sans)", color: "var(--text-strong)" }}>{label}</span>
-                    <span style={{ font: "11px var(--font-sans)", color: m.fg, marginInlineStart: 6 }}>· {m.label}</span>
-                    {item.reason && <div style={{ font: "11.5px/1.55 var(--font-sans)", color: "var(--text-muted)", marginTop: 1 }}>{item.reason}</div>}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-
-        {/* Ambiguity */}
-        {hasAmbiguity && (
-          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-            <div style={{ font: "var(--weight-semibold) 11px/1 var(--font-sans)", letterSpacing: ".04em", color: "var(--text-subtle)", textTransform: "uppercase" }}>تحليل الغموض والمخاطر</div>
-            <AmbiguityGroup icon="type" title="كلمات غامضة" items={a.ambiguity.vagueWords} color="var(--amber-600)" />
-            <AmbiguityGroup icon="help-circle" title="معلومات ناقصة" items={a.ambiguity.missingInfo} color="var(--teal-600)" />
-            <AmbiguityGroup icon="git-branch" title="افتراضات غير مؤكدة" items={a.ambiguity.assumptions} color="var(--blue-600)" />
-            <AmbiguityGroup icon="alert-triangle" title="مخاطر محتملة" items={a.ambiguity.risks} color="var(--red-500)" />
-          </div>
-        )}
-
-        {/* Improved version */}
-        {a.improvedVersion && (
-          <div>
-            <div style={{ font: "var(--weight-semibold) 11px/1 var(--font-sans)", letterSpacing: ".04em", color: "var(--text-subtle)", marginBottom: 8, textTransform: "uppercase" }}>صياغة محسّنة مقترحة</div>
-            <div style={{ padding: "10px 12px", background: "var(--slate-50)", border: "1px solid var(--border-subtle)", borderRadius: "var(--radius-md)", font: "13px/1.7 var(--font-sans)", color: "var(--text-body)" }}>
-              {a.improvedVersion}
-            </div>
-            <Button
-              variant="secondary"
-              size="sm"
-              fullWidth
-              disabled={applying || !connected}
-              style={{ marginTop: 8 }}
-              iconStart={<Icon name={applying ? "loader-circle" : "wand-sparkles"} size={15} style={applying ? { animation: "wq-spin 0.7s linear infinite" } : undefined} />}
-              onClick={applyImproved}
-            >
-              {applying ? "جارٍ الاعتماد…" : "اعتماد الصياغة المحسّنة"}
-            </Button>
-          </div>
-        )}
+        {/* التفاصيل الكاملة (SMART، الغموض، الصياغة المحسّنة) في تبويب تقييم الجودة */}
+        <Button
+          variant="secondary"
+          size="sm"
+          fullWidth
+          iconStart={<Icon name="gauge" size={15} />}
+          onClick={openQualityTab}
+        >
+          عرض النتائج التفصيلية
+        </Button>
 
         {/* Re-analyze */}
         <Button
