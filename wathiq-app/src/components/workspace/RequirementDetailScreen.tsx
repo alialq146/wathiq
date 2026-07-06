@@ -863,7 +863,8 @@ function RequirementAnalysisPanel({ req, connected }: { req: Requirement; connec
         );
       }
     } catch {
-      setError("تعذّر الاتصال بالخادم. حاول مرة أخرى.");
+      // انقطاع الشبكة أو تجاوز مهلة الخادم (التحليلات الطويلة) — أعد المحاولة.
+      setError("انقطع الاتصال قبل اكتمال التحليل — قد يكون المتطلب طويلًا. أعد المحاولة.");
     } finally {
       setLoading(false);
     }

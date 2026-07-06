@@ -7,7 +7,8 @@ import { authEnabled } from "@/lib/auth";
 import { resolveQuota, consumeQuota, logAiUsage } from "@/lib/usage";
 
 export const dynamic = "force-dynamic";
-export const maxDuration = 60;
+// مهلة أطول لاستدعاءات الذكاء الاصطناعي — Fluid Compute يدعم حتى 300 ثانية.
+export const maxDuration = 300;
 
 const DEFAULT_MODEL = "claude-opus-4-8";
 

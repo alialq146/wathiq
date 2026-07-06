@@ -6,7 +6,8 @@ import { authEnabled } from "@/lib/auth";
 import { resolveQuota, consumeQuota, logAiUsage } from "@/lib/usage";
 
 export const dynamic = "force-dynamic";
-export const maxDuration = 60;
+// مهلة أطول لاستدعاءات الذكاء الاصطناعي — Fluid Compute يدعم حتى 300 ثانية.
+export const maxDuration = 300;
 
 // Base64 cap (~4.4MB of base64 ≈ a ~3.3MB PDF) — stays under Vercel's request limit.
 const MAX_PDF_BASE64 = 4_400_000;
