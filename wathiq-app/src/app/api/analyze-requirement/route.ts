@@ -107,67 +107,66 @@ export async function POST(req: Request) {
 
     // Persist: store the rich analysis, set confidence, and regenerate the
     // AI-authored criteria + questions (preserving any manual ones).
-    await prisma.$transaction(async (tx) => {
-      await tx.acceptanceCriterion.deleteMany({ where: { requirementId: id, ai: true } });
-      await tx.openQuestion.deleteMany({ where: { requirementId: id, ai: true } });
+    // ملاحظة أداء مهمة: على قاعدة سحابية (Neon) كل استعلام يمر عبر الشبكة،
+    // ومهلة معاملة Prisma الافتراضية ٥ ثوانٍ فقط — لذلك نستخدم createMany
+    // (استعلامين بدل حلقة إنشاء لكل صف) ونرفع مهلة المعاملة صراحة.
+    const to = reqRow.stakeholders[0] ?? "أصحاب المصلحة";
+    const criteriaRows = analysis.acceptanceCriteria.map((text, i) => ({
+      id: `AC-${randomUUID().slice(0, 8)}`,
+      ownerId: reqRow.ownerId,
+      projectId: reqRow.projectId,
+      requirementId: id,
+      text,
+      done: false,
+      ai: true,
+      order: i,
+    }));
+    const questionRows = analysis.stakeholderQuestions.map((text, i) => ({
+      id: `Q-${randomUUID().slice(0, 8)}`,
+      ownerId: reqRow.ownerId,
+      projectId: reqRow.projectId,
+      requirementId: id,
+      text,
+      to,
+      ai: true,
+      answer: null,
+      order: i,
+    }));
 
-      let order = 0;
-      for (const text of analysis.acceptanceCriteria) {
-        await tx.acceptanceCriterion.create({
+    await prisma.$transaction(
+      async (tx) => {
+        await tx.acceptanceCriterion.deleteMany({ where: { requirementId: id, ai: true } });
+        await tx.openQuestion.deleteMany({ where: { requirementId: id, ai: true } });
+        if (criteriaRows.length) await tx.acceptanceCriterion.createMany({ data: criteriaRows });
+        if (questionRows.length) await tx.openQuestion.createMany({ data: questionRows });
+
+        const criteriaCount = await tx.acceptanceCriterion.count({ where: { requirementId: id } });
+        const questionCount = await tx.openQuestion.count({ where: { requirementId: id } });
+
+        await tx.requirement.update({
+          where: { id },
           data: {
-            id: `AC-${randomUUID().slice(0, 8)}`,
+            analysis: analysis as object,
+            confidence: Math.max(0, Math.min(100, Math.round(analysis.qualityScore))),
+            criteria: criteriaCount,
+            openQuestions: questionCount,
+          },
+        });
+
+        await tx.auditEvent.create({
+          data: {
             ownerId: reqRow.ownerId,
             projectId: reqRow.projectId,
             requirementId: id,
-            text,
-            done: false,
-            ai: true,
-            order: order++,
+            action: "requirement_analyzed",
+            detail: `تحليل جودة المتطلب «${reqRow.title}» — الدرجة ${analysis.qualityScore}٪.`,
+            actor: "وثّق",
           },
         });
-      }
-      order = 0;
-      const to = reqRow.stakeholders[0] ?? "أصحاب المصلحة";
-      for (const text of analysis.stakeholderQuestions) {
-        await tx.openQuestion.create({
-          data: {
-            id: `Q-${randomUUID().slice(0, 8)}`,
-            ownerId: reqRow.ownerId,
-            projectId: reqRow.projectId,
-            requirementId: id,
-            text,
-            to,
-            ai: true,
-            answer: null,
-            order: order++,
-          },
-        });
-      }
-
-      const criteriaCount = await tx.acceptanceCriterion.count({ where: { requirementId: id } });
-      const questionCount = await tx.openQuestion.count({ where: { requirementId: id } });
-
-      await tx.requirement.update({
-        where: { id },
-        data: {
-          analysis: analysis as object,
-          confidence: Math.max(0, Math.min(100, Math.round(analysis.qualityScore))),
-          criteria: criteriaCount,
-          openQuestions: questionCount,
-        },
-      });
-
-      await tx.auditEvent.create({
-        data: {
-          ownerId: reqRow.ownerId,
-          projectId: reqRow.projectId,
-          requirementId: id,
-          action: "requirement_analyzed",
-          detail: `تحليل جودة المتطلب «${reqRow.title}» — الدرجة ${analysis.qualityScore}٪.`,
-          actor: "وثّق",
-        },
-      });
-    });
+      },
+      // maxWait: انتظار الحصول على اتصال؛ timeout: عمر المعاملة نفسها.
+      { maxWait: 10_000, timeout: 30_000 }
+    );
 
     // Count against the user's quota + log usage.
     if (userId) {
