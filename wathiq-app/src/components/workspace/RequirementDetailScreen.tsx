@@ -38,6 +38,28 @@ import { RequirementFormDialog } from "./RequirementFormDialog";
 const NO_DB_MSG = "قاعدة البيانات غير متصلة، لذا تعذّر حفظ التغيير.";
 const GENERIC_ERR = "تعذّر تنفيذ العملية. يرجى المحاولة مرة أخرى.";
 
+/* خطر مُهيكل من مهمة «اكتشاف المخاطر» (v1.9.8). */
+interface RiskPayload {
+  title: string;
+  category: string;
+  severity: string;
+  impact: string;
+  mitigation: string;
+}
+
+const RISK_CATEGORY_AR: Record<string, string> = {
+  technical: "تقني",
+  operational: "تشغيلي",
+  regulatory: "تنظيمي",
+  security: "أمني",
+  data: "بيانات",
+};
+const RISK_SEVERITY_AR: Record<string, { label: string; fg: string; bg: string }> = {
+  high: { label: "مرتفعة", fg: "var(--red-600)", bg: "var(--red-50)" },
+  medium: { label: "متوسطة", fg: "var(--amber-600)", bg: "var(--amber-50)" },
+  low: { label: "منخفضة", fg: "var(--green-600)", bg: "var(--green-50)" },
+};
+
 /* نتيجة مهمة مساعد وثّق الخفيفة — الجزء المطلوب فقط. */
 interface TaskPayload {
   improvedVersion?: string;
@@ -45,7 +67,7 @@ interface TaskPayload {
   stakeholderQuestions?: string[];
   vagueWords?: string[];
   missingInfo?: string[];
-  risks?: string[];
+  risks?: RiskPayload[];
 }
 
 /* مهام المساعد: quality = تحليل شامل يُحفظ؛ البقية خفيفة بنتيجة قابلة للتطبيق. */
@@ -895,6 +917,29 @@ function QualityTab({ req, connected }: { req: Requirement; connected: boolean }
         )}
       </div>
 
+      {/* نقاط القوة / المشكلات / التوصيات — من تحليلات v1.9.8 فصاعدًا */}
+      {(a.strengths?.length || a.issues?.length || a.recommendations?.length) ? (
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 12 }}>
+          {([
+            ["نقاط القوة", a.strengths, "check-circle", "var(--green-600)"],
+            ["المشكلات", a.issues, "alert-circle", "var(--red-500)"],
+            ["التوصيات", a.recommendations, "lightbulb", "var(--amber-600)"],
+          ] as const).map(([title, items, icon, color]) =>
+            items?.length ? (
+              <div key={title} style={{ border: "1px solid var(--border-subtle)", borderRadius: "var(--radius-md)", padding: "11px 13px", background: "var(--surface-card)" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 7 }}>
+                  <Icon name={icon} size={14} color={color} />
+                  <span style={{ font: "var(--weight-semibold) 12px/1 var(--font-sans)", color: "var(--text-strong)" }}>{title}</span>
+                </div>
+                <ul style={{ margin: 0, paddingInlineStart: 16, font: "12px/1.8 var(--font-sans)", color: "var(--text-body)" }}>
+                  {items.map((s) => <li key={s}>{s}</li>)}
+                </ul>
+              </div>
+            ) : null
+          )}
+        </div>
+      ) : null}
+
       {/* SMART */}
       <div>
         <div style={{ font: "var(--weight-semibold) 12px/1 var(--font-sans)", letterSpacing: ".04em", color: "var(--text-subtle)", marginBottom: 10, textTransform: "uppercase" }}>تقييم SMART</div>
@@ -1329,9 +1374,39 @@ function AssistantResultCard({
       <Button size="sm" variant="secondary" disabled={busy} onClick={() => saveAsNote("نقاط غموض رصدها مساعد وثّق", lines)}>حفظ كملاحظة</Button>
     ) : null;
   } else if (task === "risks") {
-    body = result.risks?.length ? listBlock(result.risks) : <p style={{ font: "12.5px var(--font-sans)", color: "var(--text-muted)", margin: "6px 0 0" }}>لم يرصد المساعد مخاطر جوهرية.</p>;
+    // مخاطر مُهيكلة (v1.9.8): تصنيف + خطورة + أثر + معالجة لكل خطر.
+    const riskLines = (result.risks ?? []).map(
+      (k) =>
+        `[${RISK_CATEGORY_AR[k.category] ?? k.category} · ${RISK_SEVERITY_AR[k.severity]?.label ?? k.severity}] ${k.title} — الأثر: ${k.impact} | المعالجة: ${k.mitigation}`
+    );
+    body = result.risks?.length ? (
+      <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 6 }}>
+        {result.risks.map((k, i) => {
+          const sev = RISK_SEVERITY_AR[k.severity] ?? RISK_SEVERITY_AR.medium;
+          return (
+            <div key={i} style={{ border: "1px solid var(--border-subtle)", borderRadius: "var(--radius-md)", padding: "9px 11px", background: "var(--slate-50)" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 7, flexWrap: "wrap" }}>
+                <span style={{ font: "var(--weight-semibold) 12.5px var(--font-sans)", color: "var(--text-strong)" }}>{k.title}</span>
+                <span style={{ font: "var(--weight-medium) 10.5px/1 var(--font-sans)", color: sev.fg, background: sev.bg, padding: "3px 8px", borderRadius: "var(--radius-pill)" }}>{sev.label}</span>
+                <span style={{ font: "10.5px/1 var(--font-sans)", color: "var(--text-subtle)", border: "1px solid var(--border-subtle)", padding: "3px 8px", borderRadius: "var(--radius-pill)" }}>
+                  {RISK_CATEGORY_AR[k.category] ?? k.category}
+                </span>
+              </div>
+              <div style={{ font: "12px/1.7 var(--font-sans)", color: "var(--text-body)", marginTop: 5 }}>
+                <b>الأثر:</b> {k.impact}
+              </div>
+              <div style={{ font: "12px/1.7 var(--font-sans)", color: "var(--text-muted)", marginTop: 2 }}>
+                <b>المعالجة:</b> {k.mitigation}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    ) : (
+      <p style={{ font: "12.5px var(--font-sans)", color: "var(--text-muted)", margin: "6px 0 0" }}>لم يرصد المساعد مخاطر جوهرية.</p>
+    );
     actions = result.risks?.length ? (
-      <Button size="sm" variant="secondary" disabled={busy} onClick={() => saveAsNote("مخاطر رصدها مساعد وثّق", result.risks!)}>حفظ كملاحظة</Button>
+      <Button size="sm" variant="secondary" disabled={busy} onClick={() => saveAsNote("مخاطر رصدها مساعد وثّق", riskLines)}>حفظ كملاحظة</Button>
     ) : null;
   }
 

@@ -116,6 +116,36 @@ export function extractStructured<T>(
 
 type UserContent = Anthropic.MessageParam["content"];
 
+/* ------------------------------------------------------------------
+   قاعدة النظام الموحدة لكل مهام مساعد وثّق — منع الهلوسة والإسهاب
+   من المصدر: العمل على النص المعطى فقط، والقوائم الفارغة صحيحة.
+   ------------------------------------------------------------------ */
+const BASE_RULES = `أنت «وثّق»، محلل أعمال محترف. قواعد ملزمة:
+- اعمل على النص المعطى فقط؛ لا تفترض ولا تخترع تفاصيل غير مذكورة.
+- إن لم يكفِ النص، أعد قوائم فارغة أو صِغ النقص كسؤال أو معلومة ناقصة.
+- عربية فصحى موجزة؛ كل عنصر سطر واحد لا يتجاوز 120 حرفًا.
+- لا مقدمات ولا اعتذارات ولا ذكر لهويتك التقنية.
+- أعد JSON مطابقًا للمخطط فقط.`;
+
+/* ------------------------------------------------------------------
+   حراس ما بعد الاستجابة (validation آمن): نقصّ الفائض بدل رفض الرد —
+   القيود تعيش هنا لا في مخطط الإرسال حتى لا نراهن على دعم مفاتيح
+   maxItems/maxLength في واجهة المخططات، مع بقاء أخطاء
+   ai_response_truncated / parse_error / empty_response كما هي.
+   ------------------------------------------------------------------ */
+const clip = (s: string | undefined | null, max: number): string => {
+  const v = (s ?? "").trim();
+  return v.length <= max ? v : v.slice(0, max - 1).trimEnd() + "…";
+};
+const clipArr = (a: string[] | undefined | null, maxItems: number, maxLen: number): string[] =>
+  (Array.isArray(a) ? a : []).slice(0, maxItems).map((s) => clip(String(s), maxLen));
+
+/** قصّ وصف المدخلات الطويل عند حد آمن — يوفر رموز الإدخال ويحد الإسهاب. */
+const clipInput = (s: string | null | undefined, max: number): string => {
+  const v = (s ?? "").trim();
+  return v.length <= max ? v : v.slice(0, max) + "\n…[اقتُطع النص لطوله]";
+};
+
 /** Token usage returned alongside every analysis, for cost tracking. */
 export interface AiMeta {
   model: string;
@@ -203,6 +233,9 @@ const REQ_ANALYSIS_SCHEMA = {
       enum: ["ready", "needs_info", "needs_improvement", "high_risk"],
     },
     summary: { type: "string" },
+    strengths: { type: "array", items: { type: "string" } },
+    issues: { type: "array", items: { type: "string" } },
+    recommendations: { type: "array", items: { type: "string" } },
     ambiguity: {
       type: "object",
       additionalProperties: false,
@@ -234,6 +267,9 @@ const REQ_ANALYSIS_SCHEMA = {
     "qualityScore",
     "status",
     "summary",
+    "strengths",
+    "issues",
+    "recommendations",
     "ambiguity",
     "stakeholderQuestions",
     "acceptanceCriteria",
@@ -242,19 +278,20 @@ const REQ_ANALYSIS_SCHEMA = {
   ],
 } as const;
 
-const REQ_SYSTEM_PROMPT = `أنت "وثّق"، محلّل أعمال خبير. مهمتك تقييم جودة متطلب واحد بدقة وشفافية، وليس استخراج متطلبات.
+const REQ_SYSTEM_PROMPT = `${BASE_RULES}
 
-أعد النتائج بالعربية الفصحى الواضحة، والتزم بالتالي:
-- qualityScore: درجة جودة المتطلب من ٠ إلى ١٠٠ بناءً على الوضوح والاكتمال وقابلية الاختبار وغياب الغموض.
-- status: اختر واحدة — "ready" (جاهز)، "needs_info" (بحاجة لمعلومات)، "needs_improvement" (بحاجة لتحسين)، "high_risk" (مخاطر عالية).
-- summary: جملة أو جملتان تلخّصان تقييمك.
-- ambiguity: حلّل الغموض — vagueWords (كلمات غامضة كـ«سريع»، «سهل»)، missingInfo (معلومات ناقصة)، assumptions (افتراضات غير مؤكدة)، risks (مخاطر محتملة). كل حقل قائمة قد تكون فارغة.
-- stakeholderQuestions: ٣ إلى ٥ أسئلة دقيقة يجب الرجوع بها لأصحاب المصلحة لسد النواقص.
-- acceptanceCriteria: ٣ إلى ٦ معايير قبول قابلة للاختبار (صيغة واضحة قابلة للتحقق).
-- smart: قيّم المتطلب وفق SMART. لكل عنصر (specific/measurable/achievable/relevant/testable) أعطِ rating من ["pass" مستوفٍ، "partial" جزئي، "fail" غير مستوفٍ] مع reason بجملة واحدة.
-- improvedVersion: أعد صياغة المتطلب بنسخة محسّنة أوضح وأكثر قابلية للاختبار (فقرة واحدة)، مع الحفاظ على القصد الأصلي.
-- الإيجاز مهم: اجعل كل عنصر في القوائم سطرًا واحدًا، ولا تتجاوز ٥ عناصر في أي قائمة غموض.
-- كن صادقًا: إذا كان المتطلب غامضًا اخفض الدرجة واذكر السبب. لا تخترع تفاصيل غير مذكورة، بل اطرحها كأسئلة أو معلومات ناقصة.`;
+مهمتك: تقييم جودة متطلب واحد بدقة واتساق (وليس استخراج متطلبات). التزم بالتالي:
+- qualityScore (0–100) بمعايير مرجحة ثابتة: الوضوح 30 + الاكتمال 30 + قابلية الاختبار 25 + خلو الصياغة من الالتباس 15.
+- status حسب العتبات: "ready" إذا كانت الدرجة 80+ ولا معلومات ناقصة جوهرية · "needs_info" إذا يمنع نقصُ معلوماتٍ التنفيذَ · "needs_improvement" إذا الصياغة ضعيفة لكنها مفهومة · "high_risk" عند تعارض أو أثر أمني/تنظيمي/تشغيلي واضح.
+- summary: جملتان كحد أقصى (سبب الدرجة الرئيسي + أهم إجراء).
+- strengths: حتى 4 نقاط قوة فعلية في المتطلب (قائمة فارغة إن لم توجد).
+- issues: حتى 4 مشكلات جوهرية مرتبة بالأثر.
+- recommendations: حتى 4 توصيات عملية مباشرة.
+- ambiguity: vagueWords حتى 5 كلمات/عبارات وردت حرفيًا في النص · missingInfo حتى 5 معلومات يمنع غيابها التنفيذ · assumptions افتراضات مبنية على النص · risks حتى 4 مخاطر (تقنية/تنظيمية/تشغيلية).
+- stakeholderQuestions: 3–5 أسئلة مغلقة قابلة للإجابة المباشرة، مرتبة بالأهمية، ولا تسأل عن مذكورٍ صراحة.
+- acceptanceCriteria: 3–6 معايير بصيغة «يتحقق عندما …» قابلة للقياس.
+- smart: لكل بعد rating من [pass, partial, fail] وreason بجملة واحدة تستشهد بالنص.
+- improvedVersion: فقرة واحدة بنفس القصد؛ لا تضف نطاقًا جديدًا؛ ضع [يُحدد لاحقًا] مكان أي قيمة ناقصة بدل اختراعها.`;
 
 export interface RequirementForAnalysis {
   id: string;
@@ -274,16 +311,48 @@ export interface RequirementForAnalysis {
 
 export type AssistantTask = "improve" | "criteria" | "questions" | "ambiguity" | "risks";
 
+/** خطر مُهيكل — أوضح للقارئ وأسهل للحفظ كملاحظة من سطر نصي حر. */
+export interface RiskItem {
+  title: string;
+  category: "technical" | "operational" | "regulatory" | "security" | "data";
+  severity: "low" | "medium" | "high";
+  impact: string;
+  mitigation: string;
+}
+
 export interface AssistantTaskResult {
   improvedVersion?: string;
   acceptanceCriteria?: string[];
   stakeholderQuestions?: string[];
   vagueWords?: string[];
   missingInfo?: string[];
-  risks?: string[];
+  risks?: RiskItem[];
 }
 
 const STR_ARR = { type: "array", items: { type: "string" } } as const;
+
+const RISK_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  properties: {
+    risks: {
+      type: "array",
+      items: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          title: { type: "string" },
+          category: { type: "string", enum: ["technical", "operational", "regulatory", "security", "data"] },
+          severity: { type: "string", enum: ["low", "medium", "high"] },
+          impact: { type: "string" },
+          mitigation: { type: "string" },
+        },
+        required: ["title", "category", "severity", "impact", "mitigation"],
+      },
+    },
+  },
+  required: ["risks"],
+} as const;
 
 const TASK_CONFIG: Record<
   AssistantTask,
@@ -297,8 +366,8 @@ const TASK_CONFIG: Record<
       required: ["improvedVersion"],
     },
     instruction:
-      "أعد صياغة المتطلب بنسخة محسنة أوضح وأكثر قابلية للاختبار مع الحفاظ على القصد الأصلي. أعد improvedVersion فقط.",
-    maxTokens: 2000,
+      "أعد صياغة واحدة فقط للمتطلب لا تتجاوز 80 كلمة، بصيغة «يجب أن يتيح النظام…» أو «يجب أن يقوم النظام بـ…». حافظ على القصد حرفيًا ولا تضف وظائف جديدة، وضع [يُحدد لاحقًا] مكان أي قيمة ناقصة.",
+    maxTokens: 500,
   },
   criteria: {
     schema: {
@@ -308,8 +377,8 @@ const TASK_CONFIG: Record<
       required: ["acceptanceCriteria"],
     },
     instruction:
-      "اكتب ٣–٦ معايير قبول قابلة للاختبار لهذا المتطلب (صيغة واضحة يمكن التحقق منها). أعد acceptanceCriteria فقط.",
-    maxTokens: 2000,
+      "اكتب 3–6 معايير قبول لهذا المتطلب حصرًا، كل معيار يبدأ بـ«يتحقق عندما…» وقابل للاختبار. غطِّ المسار الأساسي وحالة خطأ واحدة على الأقل وحدًّا قابلًا للقياس إن ذُكر في النص. لا تخترع أرقامًا أو قنوات أو مددًا غير مذكورة — استخدم [يُحدد لاحقًا].",
+    maxTokens: 700,
   },
   questions: {
     schema: {
@@ -319,8 +388,8 @@ const TASK_CONFIG: Record<
       required: ["stakeholderQuestions"],
     },
     instruction:
-      "اكتب ٢–٥ أسئلة دقيقة يجب الرجوع بها إلى العميل أو أصحاب المصلحة لسد نواقص هذا المتطلب. أعد stakeholderQuestions فقط.",
-    maxTokens: 2000,
+      "اكتب 3–5 أسئلة لصاحب المصلحة تسد أكبر نواقص هذا المتطلب. كل سؤال: مغلق قدر الإمكان (نعم/لا أو اختيار أو قيمة محددة)، يعالج نقصًا واحدًا، ويذكر سبب أهميته باختصار بين قوسين. رتبها من الأكثر حجبًا للتنفيذ، ولا تسأل عن مذكورٍ صراحة.",
+    maxTokens: 600,
   },
   ambiguity: {
     schema: {
@@ -330,21 +399,40 @@ const TASK_CONFIG: Record<
       required: ["vagueWords", "missingInfo"],
     },
     instruction:
-      "حلل غموض المتطلب: vagueWords (كلمات غامضة كـ«سريع»، «سهل») وmissingInfo (معلومات ناقصة تمنع التنفيذ). القوائم قد تكون فارغة.",
-    maxTokens: 2000,
+      "افحص نص المتطلب فقط: vagueWords كلمات/عبارات وردت حرفيًا في النص وتحتاج تعريفًا قابلًا للقياس، وmissingInfo معلومات يمنع غيابها البدء بالتنفيذ. حتى 5 لكل قائمة، والقوائم الفارغة صحيحة إذا كان المتطلب واضحًا — لا تتكلف إيجاد غموض.",
+    maxTokens: 600,
   },
   risks: {
-    schema: {
-      type: "object",
-      additionalProperties: false,
-      properties: { risks: STR_ARR },
-      required: ["risks"],
-    },
+    schema: RISK_SCHEMA,
     instruction:
-      "استخرج المخاطر المحتملة في هذا المتطلب (تقنية، تنظيمية، أو تنفيذية) بصيغة مختصرة عملية. أعد risks فقط.",
-    maxTokens: 2000,
+      "استخرج حتى 5 مخاطر واقعية مرتبطة بنص هذا المتطلب تحديدًا (لا مخاطر مشاريع عامة). لكل خطر: title موجز، category من [technical, operational, regulatory, security, data]، severity من [low, medium, high]، impact الأثر المحتمل بجملة، mitigation إجراء تخفيف عملي بجملة. إن لم توجد مخاطر جوهرية أعد قائمة فارغة.",
+    maxTokens: 700,
   },
 };
+
+/* حدود ما بعد الاستجابة لكل مهمة — تُطبق قصًا آمنًا لا رفضًا. */
+export function clampTaskResult(task: AssistantTask, r: AssistantTaskResult): AssistantTaskResult {
+  switch (task) {
+    case "improve":
+      return { improvedVersion: clip(r.improvedVersion, 600) };
+    case "criteria":
+      return { acceptanceCriteria: clipArr(r.acceptanceCriteria, 6, 160) };
+    case "questions":
+      return { stakeholderQuestions: clipArr(r.stakeholderQuestions, 5, 180) };
+    case "ambiguity":
+      return { vagueWords: clipArr(r.vagueWords, 5, 140), missingInfo: clipArr(r.missingInfo, 5, 140) };
+    case "risks":
+      return {
+        risks: (Array.isArray(r.risks) ? r.risks : []).slice(0, 5).map((k) => ({
+          title: clip(k.title, 120),
+          category: k.category,
+          severity: k.severity,
+          impact: clip(k.impact, 180),
+          mitigation: clip(k.mitigation, 180),
+        })),
+      };
+  }
+}
 
 /** Run one focused assistant task on a requirement (cheaper than a full analysis). */
 export async function runAssistantTask(
@@ -354,29 +442,49 @@ export async function runAssistantTask(
 ): Promise<Analyzed<AssistantTaskResult>> {
   const cfg = TASK_CONFIG[task];
   const client = new Anthropic();
+  // مدخلات المهام الخفيفة مقلصة عمدًا: العنوان والوصف والنوع والملاحظات فقط
+  // (لا رقم ولا وحدة ولا أولوية ولا أصحاب مصلحة) — توفير رموز وحدّ من الإسهاب.
   const userText = `المتطلب:
-الرقم: ${req.id}
 العنوان: ${req.title}
-الوصف: ${req.description}
-${req.type ? `النوع: ${req.type}\n` : ""}${req.notes ? `ملاحظات: ${req.notes}\n` : ""}
+الوصف: ${clipInput(req.description, 4000)}
+${req.type ? `النوع: ${req.type}\n` : ""}${req.notes ? `ملاحظات: ${clipInput(req.notes, 800)}\n` : ""}
 المهمة: ${cfg.instruction}`;
 
   const response = await client.messages.create({
     model,
     max_tokens: cfg.maxTokens,
-    system:
-      "أنت «وثّق»، محلل أعمال خبير. نفذ المهمة المطلوبة فقط بدقة وبالعربية الفصحى، دون اختراع تفاصيل غير مذكورة.",
+    system: BASE_RULES,
     output_config: { format: { type: "json_schema", schema: cfg.schema } },
     messages: [{ role: "user", content: userText }],
   } as Anthropic.MessageCreateParamsNonStreaming);
 
   return {
-    result: extractStructured<AssistantTaskResult>(response, `task-${task}`),
+    result: clampTaskResult(task, extractStructured<AssistantTaskResult>(response, `task-${task}`)),
     meta: {
       model,
       inputTokens: response.usage?.input_tokens ?? null,
       outputTokens: response.usage?.output_tokens ?? null,
     },
+  };
+}
+
+/* حدود ما بعد الاستجابة للتحليل الشامل — قص آمن يحفظ البنية. */
+export function clampAnalysis(a: RequirementAnalysis): RequirementAnalysis {
+  return {
+    ...a,
+    summary: clip(a.summary, 300),
+    strengths: clipArr(a.strengths, 4, 140),
+    issues: clipArr(a.issues, 4, 140),
+    recommendations: clipArr(a.recommendations, 4, 140),
+    ambiguity: {
+      vagueWords: clipArr(a.ambiguity?.vagueWords, 5, 60),
+      missingInfo: clipArr(a.ambiguity?.missingInfo, 5, 140),
+      assumptions: clipArr(a.ambiguity?.assumptions, 5, 140),
+      risks: clipArr(a.ambiguity?.risks, 4, 140),
+    },
+    stakeholderQuestions: clipArr(a.stakeholderQuestions, 5, 180),
+    acceptanceCriteria: clipArr(a.acceptanceCriteria, 6, 160),
+    improvedVersion: clip(a.improvedVersion, 700),
   };
 }
 
@@ -390,14 +498,15 @@ export async function analyzeRequirement(
 
 الرقم: ${req.id}
 العنوان: ${req.title}
-الوصف: ${req.description}
+الوصف: ${clipInput(req.description, 6000)}
 ${req.type ? `النوع: ${req.type}\n` : ""}الوحدة: ${req.module ?? "—"}
 الأولوية: ${req.priority ?? "—"}
-أصحاب المصلحة: ${(req.stakeholders ?? []).join("، ") || "—"}${req.notes ? `\nملاحظات: ${req.notes}` : ""}`;
+أصحاب المصلحة: ${(req.stakeholders ?? []).join("، ") || "—"}${req.notes ? `\nملاحظات: ${clipInput(req.notes, 1200)}` : ""}`;
 
   const response = await client.messages.create({
     model,
-    max_tokens: 8000,
+    // المخرجات صارت مقيدة بأعداد وأطوال صريحة — 3500 سقف مريح بدل 8000.
+    max_tokens: 3500,
     system: REQ_SYSTEM_PROMPT,
     output_config: {
       format: { type: "json_schema", schema: REQ_ANALYSIS_SCHEMA },
@@ -406,7 +515,7 @@ ${req.type ? `النوع: ${req.type}\n` : ""}الوحدة: ${req.module ?? "—
   } as Anthropic.MessageCreateParamsNonStreaming);
 
   return {
-    result: extractStructured<RequirementAnalysis>(response, "requirement-quality"),
+    result: clampAnalysis(extractStructured<RequirementAnalysis>(response, "requirement-quality")),
     meta: {
       model,
       inputTokens: response.usage?.input_tokens ?? null,

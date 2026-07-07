@@ -16,6 +16,10 @@ export interface RequirementAnalysis {
   qualityScore: number;
   status: ReqAnalysisStatus;
   summary: string;
+  /** اختيارية للتوافق مع التحليلات المحفوظة قبل v1.9.8. */
+  strengths?: string[];
+  issues?: string[];
+  recommendations?: string[];
   ambiguity: {
     vagueWords: string[];
     missingInfo: string[];

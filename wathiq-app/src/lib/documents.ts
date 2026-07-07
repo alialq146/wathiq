@@ -42,7 +42,8 @@ function coverHTML(docType: DocType, ctx: ReportContext, opts: DocOptions): stri
   const rows = [
     ["المشروع", p?.name ?? "مساحة العمل"],
     p?.code ? ["كود المشروع", p.code] : null,
-    ["الجهة / العميل", p?.client || NEEDS_INPUT],
+    ["الجهة / العميل", p?.client || NOT_DEFINED],
+    ["تصنيف الوثيقة", "داخلي"],
     ["تاريخ الإنشاء", today()],
     ["معد الوثيقة", ctx.userName || NEEDS_INPUT],
     ["رقم إصدار الوثيقة", "V1"],
@@ -79,6 +80,15 @@ function approvalsHTML(): string {
       <thead><tr><th>الاسم</th><th>الدور</th><th>التوقيع</th><th>التاريخ</th></tr></thead>
       <tbody><tr>${empty}</tr><tr>${empty}</tr><tr>${empty}</tr></tbody>
     </table>
+  </section>`;
+}
+
+/** ضبط التغييرات — نص إجرائي ثابت يسبق الموافقات (BRD وSRS). */
+function changeControlHTML(sectionNo: string): string {
+  return `
+  <section class="block">
+    <h2>${sectionNo}. ضبط التغييرات</h2>
+    <p class="desc">تخضع هذه الوثيقة لإجراء ضبط التغييرات: أي تعديل بعد الاعتماد يتطلب طلب تغيير موثق يُقيَّم أثره على النطاق والجدول والتكلفة، ولا يُعتمد إلا بموافقة أصحاب الصلاحية، مع تحديث سجل النسخ ورفع رقم الإصدار.</p>
   </section>`;
 }
 
@@ -139,10 +149,18 @@ export function buildBRDBody(ctx: ReportContext, opts: DocOptions): string {
     ${needs(NEEDS_INPUT)}
   </section>`;
 
+
+  /* التعريفات والمصطلحات — بعد الملخص التنفيذي */
+  const definitions = `
+  <section class="block">
+    <h2>٢. التعريفات والمصطلحات</h2>
+    <p class="todo">تُدرج في هذا القسم المصطلحات والاختصارات المستخدمة في الوثيقة وتعريفاتها المعتمدة. لم تُوثَّق مصطلحات بعد — يحتاج استكمال من صاحب المصلحة.</p>
+  </section>`;
+
   /* 4) خلفية المشروع */
   const background = `
   <section class="block">
-    <h2>٢. خلفية المشروع</h2>
+    <h2>٣. خلفية المشروع</h2>
     <table class="cover-meta">
       ${p?.domain ? `<tr><td class="k">المجال</td><td>${esc(p.domain)}</td></tr>` : ""}
       ${p?.client ? `<tr><td class="k">الجهة المستفيدة</td><td>${esc(p.client)}</td></tr>` : ""}
@@ -158,7 +176,7 @@ export function buildBRDBody(ctx: ReportContext, opts: DocOptions): string {
   const modules = [...new Set(ctx.requirements.map((r) => r.module).filter(Boolean))];
   const objectives = `
   <section class="block">
-    <h2>٣. أهداف العمل</h2>
+    <h2>٤. أهداف العمل</h2>
     ${
       modules.length
         ? `<p class="desc">بناءً على المتطلبات الموثقة، يغطي المشروع المجالات الوظيفية التالية:</p>
@@ -172,7 +190,7 @@ export function buildBRDBody(ctx: ReportContext, opts: DocOptions): string {
   /* 6) النطاق */
   const scope = `
   <section class="block">
-    <h2>٤. نطاق المشروع</h2>
+    <h2>٥. نطاق المشروع</h2>
     <h4>داخل النطاق</h4>
     ${
       ctx.requirements.length
@@ -180,14 +198,14 @@ export function buildBRDBody(ctx: ReportContext, opts: DocOptions): string {
         : needs(NOT_AVAILABLE)
     }
     <h4>خارج النطاق</h4>
-    ${needs(NOT_DEFINED)}
+    ${needs("لم تُحدَّد عناصر خارج النطاق بعد — يوصى بتوثيقها صراحة لتجنب توسع النطاق.")}
   </section>`;
 
   /* 7) أصحاب المصلحة */
   const people = collectStakeholders(ctx);
   const stakeholders = `
   <section class="block">
-    <h2>٥. أصحاب المصلحة</h2>
+    <h2>٦. أصحاب المصلحة</h2>
     ${
       people.length
         ? `<table class="req-table"><thead><tr><th>الاسم</th><th>الدور</th></tr></thead>
@@ -200,7 +218,7 @@ export function buildBRDBody(ctx: ReportContext, opts: DocOptions): string {
   /* 8) المتطلبات التجارية */
   const bizReqs = `
   <section class="block">
-    <h2>٦. المتطلبات التجارية</h2>
+    <h2>٧. المتطلبات التجارية</h2>
     ${ctx.requirements
       .map(
         (r) => `
@@ -220,7 +238,7 @@ export function buildBRDBody(ctx: ReportContext, opts: DocOptions): string {
   const assumptions = collectFromAnalyses(ctx, "assumptions");
   const assumptionsHTML = `
   <section class="block">
-    <h2>٧. الافتراضات</h2>
+    <h2>٨. الافتراضات</h2>
     ${
       assumptions.length
         ? `<ul>${assumptions.map((a) => `<li>${esc(a)}</li>`).join("")}</ul>`
@@ -232,7 +250,7 @@ export function buildBRDBody(ctx: ReportContext, opts: DocOptions): string {
   const constraints = ctx.requirements.filter((r) => r.type === "قيد");
   const constraintsHTML = `
   <section class="block">
-    <h2>٨. القيود</h2>
+    <h2>٩. القيود</h2>
     ${
       constraints.length
         ? `<ul>${constraints.map((r) => `<li><span class="mono">${esc(r.id)}</span> ${esc(r.title)} — ${esc(r.description)}</li>`).join("")}</ul>`
@@ -248,14 +266,14 @@ export function buildBRDBody(ctx: ReportContext, opts: DocOptions): string {
     riskItems.push("غياب معايير قبول لبعض المتطلبات قد يؤثر على الاختبار والاعتماد.");
   const risksHTML = `
   <section class="block">
-    <h2>٩. المخاطر</h2>
+    <h2>١٠. المخاطر</h2>
     ${riskItems.length ? `<ul>${riskItems.map((x) => `<li>${esc(x)}</li>`).join("")}</ul>` : `<p class="todo">${esc(NOT_AVAILABLE)}</p>`}
   </section>`;
 
   /* 12) معايير النجاح — مقترحة من البيانات وموسومة كذلك */
   const success = `
   <section class="block">
-    <h2>١٠. معايير النجاح</h2>
+    <h2>١١. معايير النجاح</h2>
     <p class="muted">المعايير التالية مقترحة من بيانات المتطلبات وتحتاج اعتماد صاحب المصلحة:</p>
     <ul>
       <li>اعتماد ١٠٠٪ من المتطلبات الموثقة (${s.approved} من ${s.total} معتمدة حاليًا).</li>
@@ -268,7 +286,7 @@ export function buildBRDBody(ctx: ReportContext, opts: DocOptions): string {
   const openQs = ctx.openQuestions.filter((q) => !q.answer);
   const questionsHTML = `
   <section class="block">
-    <h2>١١. الأسئلة المفتوحة</h2>
+    <h2>١٢. الأسئلة المفتوحة</h2>
     ${
       openQs.length
         ? `<ul>${openQs.map((q) => `<li>${esc(q.text)} <span class="muted">(${esc(q.requirementId ?? "عام")} — موجه إلى ${esc(q.to)})</span></li>`).join("")}</ul>`
@@ -280,6 +298,7 @@ export function buildBRDBody(ctx: ReportContext, opts: DocOptions): string {
     coverHTML("brd", ctx, opts),
     versionLogHTML("brd"),
     execSummary,
+    definitions,
     background,
     objectives,
     scope,
@@ -290,6 +309,7 @@ export function buildBRDBody(ctx: ReportContext, opts: DocOptions): string {
     risksHTML,
     success,
     questionsHTML,
+    changeControlHTML("١٣"),
     approvalsHTML(),
     closingHTML("brd", hasAI),
   ].join("");
@@ -298,6 +318,14 @@ export function buildBRDBody(ctx: ReportContext, opts: DocOptions): string {
 /* ============================================================
    SRS — وثيقة مواصفات متطلبات النظام
    ============================================================ */
+
+/** أولوية الاختبار في RTM — مشتقة من أولوية المتطلب، بلا اختراع. */
+const TEST_PRIORITY: Record<string, string> = {
+  critical: "مرتفعة",
+  high: "مرتفعة",
+  medium: "متوسطة",
+  low: "منخفضة",
+};
 
 const NFR_TYPES = new Set(["غير وظيفي"]);
 const isNonFunctional = (r: Requirement) => NFR_TYPES.has(r.type ?? "") || r.id.toUpperCase().startsWith("NFR");
@@ -375,17 +403,47 @@ export function buildSRSBody(ctx: ReportContext, opts: DocOptions): string {
     ${needs(NEEDS_INPUT)}
   </section>`;
 
+
+  /* بيئة التشغيل + قيود التصميم + الافتراضات التقنية — عبارات نقص صريحة */
+  const environment = `
+  <section class="block">
+    <h2>٣. بيئة التشغيل</h2>
+    <p class="todo">لم تُحدَّد بيئة التشغيل المستهدفة مثل المتصفحات، الأجهزة، أنظمة التشغيل، أو بيئات النشر بعد — يحتاج استكمال من صاحب المصلحة.</p>
+  </section>`;
+
+  const designConstraints = ctx.requirements.filter((r) => r.type === "قيد");
+  const designConstraintsHTML = `
+  <section class="block">
+    <h2>٤. قيود التصميم والتنفيذ</h2>
+    ${
+      designConstraints.length
+        ? `<ul>${designConstraints.map((r) => `<li><span class="mono">${esc(r.id)}</span> ${esc(r.title)} — ${esc(r.description)}</li>`).join("")}</ul>`
+        : `<p class="todo">القيود التقنية الملزمة لفريق التطوير مثل التقنيات الإلزامية أو الأنظمة القائمة أو السياسات الأمنية غير متوفرة في بيانات المشروع الحالية.</p>`
+    }
+  </section>`;
+
+  const techAssumptions = collectFromAnalyses(ctx, "assumptions");
+  const techAssumptionsHTML = `
+  <section class="block">
+    <h2>٥. الافتراضات والاعتماديات التقنية</h2>
+    ${
+      techAssumptions.length
+        ? `<ul>${techAssumptions.map((a) => `<li>${esc(a)}</li>`).join("")}</ul>`
+        : `<p class="todo">لم يتم تحديد افتراضات أو اعتماديات تقنية بعد.</p>`
+    }
+  </section>`;
+
   /* 5) FRs */
   const frsHTML = `
   <section class="block">
-    <h2>٣. المتطلبات الوظيفية (Functional Requirements)</h2>
+    <h2>٦. المتطلبات الوظيفية (Functional Requirements)</h2>
     ${frs.length ? frs.map((r) => srsRequirementSection(r, ctx, opts.detailed)).join("") : needs(NOT_AVAILABLE)}
   </section>`;
 
   /* 6) NFRs */
   const nfrsHTML = `
   <section class="block">
-    <h2>٤. المتطلبات غير الوظيفية (Non-Functional Requirements)</h2>
+    <h2>٧. المتطلبات غير الوظيفية (Non-Functional Requirements)</h2>
     ${
       nfrs.length
         ? nfrs.map((r) => srsRequirementSection(r, ctx, opts.detailed)).join("")
@@ -396,7 +454,7 @@ export function buildSRSBody(ctx: ReportContext, opts: DocOptions): string {
   /* 7) قواعد العمل */
   const rulesHTML = `
   <section class="block">
-    <h2>٥. قواعد العمل (Business Rules)</h2>
+    <h2>٨. قواعد العمل (Business Rules)</h2>
     ${
       ctx.businessRules.length
         ? `<ul>${ctx.businessRules.map((b) => `<li><span class="mono">${esc(b.id)}</span> ${esc(b.text)} <span class="muted">— المصدر: ${esc(b.source)}</span></li>`).join("")}</ul>`
@@ -407,7 +465,7 @@ export function buildSRSBody(ctx: ReportContext, opts: DocOptions): string {
   /* 8) حالات الاستخدام — مستنتجة من المتطلبات وموسومة «مقترحة تحتاج مراجعة» */
   const useCases = `
   <section class="block">
-    <h2>٦. حالات الاستخدام (Use Cases)</h2>
+    <h2>٩. حالات الاستخدام (Use Cases)</h2>
     <p class="muted">حالات استخدام مقترحة مشتقة من المتطلبات الموثقة — تحتاج مراجعة واعتماد:</p>
     ${frs.length === 0 ? `<p class="todo">${esc(NOT_AVAILABLE)}</p>` : ""}
     ${frs
@@ -432,11 +490,11 @@ export function buildSRSBody(ctx: ReportContext, opts: DocOptions): string {
   /* 9-11) بيانات/تكامل/صلاحيات — عبارات نقص صريحة */
   const gaps = `
   <section class="block">
-    <h2>٧. متطلبات البيانات</h2>
+    <h2>١٠. متطلبات البيانات</h2>
     <p class="todo">تحتاج إلى استكمال أثناء التحليل التفصيلي.</p>
-    <h2>٨. متطلبات التكامل</h2>
+    <h2>١١. متطلبات التكامل</h2>
     <p class="todo">لم يتم تحديد تكاملات خارجية في البيانات الحالية.</p>
-    <h2>٩. متطلبات الصلاحيات والأدوار</h2>
+    <h2>١٢. متطلبات الصلاحيات والأدوار</h2>
     ${
       actors.length
         ? `<p class="desc">الأدوار المرشحة من البيانات: ${esc(actors.map((a) => a.name).join("، "))}.</p><p class="todo">تحتاج إلى تحديد الأدوار والصلاحيات المطلوبة لكل دور.</p>`
@@ -447,7 +505,7 @@ export function buildSRSBody(ctx: ReportContext, opts: DocOptions): string {
   /* 12) معايير القبول مجمعة */
   const criteriaHTML = `
   <section class="block">
-    <h2>١٠. معايير القبول</h2>
+    <h2>١٣. معايير القبول</h2>
     ${
       ctx.acceptanceCriteria.length
         ? ctx.requirements
@@ -468,9 +526,9 @@ export function buildSRSBody(ctx: ReportContext, opts: DocOptions): string {
   const critIds = new Set(ctx.acceptanceCriteria.map((c) => c.requirementId));
   const rtm = `
   <section class="block">
-    <h2>١١. مصفوفة تتبع المتطلبات (RTM)</h2>
+    <h2>١٤. مصفوفة تتبع المتطلبات (RTM)</h2>
     <table class="req-table">
-      <thead><tr><th>الرقم</th><th>النوع</th><th>الأولوية</th><th>الحالة</th><th>المصدر</th><th>معيار قبول</th><th>تم تحليلها</th></tr></thead>
+      <thead><tr><th>الرقم</th><th>النوع</th><th>الأولوية</th><th>الحالة</th><th>المصدر</th><th>معيار قبول</th><th>تم تحليلها</th><th>أولوية الاختبار</th></tr></thead>
       <tbody>
         ${ctx.requirements
           .map(
@@ -482,6 +540,7 @@ export function buildSRSBody(ctx: ReportContext, opts: DocOptions): string {
           <td>${r.source ? esc(r.source) : "—"}</td>
           <td>${critIds.has(r.id) ? "نعم" : "لا"}</td>
           <td>${r.analysis != null || r.confidence != null ? "نعم" : "لا"}</td>
+          <td>${TEST_PRIORITY[r.priority] ?? NOT_DEFINED}</td>
         </tr>`
           )
           .join("")}
@@ -496,7 +555,7 @@ export function buildSRSBody(ctx: ReportContext, opts: DocOptions): string {
   if (s.notAnalyzed.length > 0) riskItems.push(`${s.notAnalyzed.length} متطلبًا لم يُراجَع بعد لاكتشاف الغموض.`);
   const risksHTML = `
   <section class="block">
-    <h2>١٢. المخاطر والملاحظات</h2>
+    <h2>١٥. المخاطر والملاحظات</h2>
     ${riskItems.length ? `<ul>${riskItems.map((x) => `<li>${esc(x)}</li>`).join("")}</ul>` : `<p class="desc">لا توجد مخاطر جوهرية مرصودة في البيانات الحالية.</p>`}
   </section>`;
 
@@ -505,6 +564,9 @@ export function buildSRSBody(ctx: ReportContext, opts: DocOptions): string {
     versionLogHTML("srs"),
     intro,
     overview,
+    environment,
+    designConstraintsHTML,
+    techAssumptionsHTML,
     frsHTML,
     nfrsHTML,
     rulesHTML,
@@ -513,6 +575,8 @@ export function buildSRSBody(ctx: ReportContext, opts: DocOptions): string {
     criteriaHTML,
     rtm,
     risksHTML,
+    changeControlHTML("١٦"),
+    approvalsHTML(),
     closingHTML("srs", hasAI),
   ].join("");
 }
