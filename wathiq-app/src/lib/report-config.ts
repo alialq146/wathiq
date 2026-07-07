@@ -50,7 +50,6 @@ export const DOC_TYPES: Record<
   },
 };
 
-export const EXPORT_DEFAULTS = { docType: "report" as DocType, detailed: true, format: "pdf" as const };
 
 /**
  * خيار «تحسين صياغة الوثيقة بمساعد وثّق» (بنية جاهزة لـ v2.0):

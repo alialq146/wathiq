@@ -7,6 +7,7 @@
  */
 
 import type { Requirement } from "./data";
+import { arCount, arReqCount } from "./arabic";
 import {
   type ReportContext,
   esc,
@@ -155,7 +156,7 @@ export function buildBRDBody(ctx: ReportContext, opts: DocOptions): string {
     <h4>وصف المشروع</h4>
     ${p?.description ? `<p class="desc">${esc(p.description)}</p>` : needs(NEEDS_INPUT)}
     <h4>الهدف العام</h4>
-    ${needs(`${NEEDS_INPUT} (يوصى بصياغته مع راعي المشروع.)`)}
+    ${p?.projectGoal ? `<p class="desc">${esc(p.projectGoal)}</p>` : needs(`${NEEDS_INPUT} (يوصى بصياغته مع راعي المشروع.)`)}
     <h4>المشكلة أو الفرصة</h4>
     ${needs(NOT_AVAILABLE)}
     <h4>القيمة المتوقعة</h4>
@@ -299,7 +300,7 @@ export function buildBRDBody(ctx: ReportContext, opts: DocOptions): string {
     <ul>
       <li>اعتماد ١٠٠٪ من المتطلبات الموثقة (${s.approved} من ${s.total} معتمدة حاليًا).</li>
       <li>تغطية كل متطلب بمعايير قبول قابلة للاختبار (${s.total - s.withoutCriteria.length} من ${s.total} مغطاة حاليًا).</li>
-      <li>إغلاق جميع الأسئلة المفتوحة مع أصحاب المصلحة قبل بدء التنفيذ (${ctx.openQuestions.filter((q) => !q.answer).length} سؤالًا مفتوحًا حاليًا).</li>
+      <li>إغلاق جميع الأسئلة المفتوحة مع أصحاب المصلحة قبل بدء التنفيذ (${arCount(ctx.openQuestions.filter((q) => !q.answer).length, { one: "سؤال واحد مفتوح", two: "سؤالان مفتوحان", few: "أسئلة مفتوحة", many: "سؤالًا مفتوحًا" })} حاليًا).</li>
     </ul>
   </section>`;
 
@@ -388,7 +389,9 @@ export function buildSRSBody(ctx: ReportContext, opts: DocOptions): string {
   const s = computeStats(ctx);
   const hasAI = ctx.requirements.some((r) => r.analysis != null || r.confidence != null);
   const p = ctx.project;
-  const frs = ctx.requirements.filter((r) => !isNonFunctional(r));
+  // القيود (نوع «قيد») ليست وظائف: تُعرض في «قيود التصميم والتنفيذ» وRTM فقط،
+  // ولا تدخل في المتطلبات الوظيفية ولا حالات الاستخدام ولا «أهم الوظائف».
+  const frs = ctx.requirements.filter((r) => !isNonFunctional(r) && r.type !== "قيد");
   const nfrs = ctx.requirements.filter(isNonFunctional);
   const actors = collectStakeholders(ctx);
 
@@ -413,10 +416,11 @@ export function buildSRSBody(ctx: ReportContext, opts: DocOptions): string {
     <h4>وصف النظام</h4>
     ${p?.description ? `<p class="desc">${esc(p.description)}</p>` : needs(NEEDS_INPUT)}
     <h4>المستخدمون المستهدفون</h4>
+    ${p?.targetUsers ? `<p class="desc">${esc(p.targetUsers)}</p>` : ""}
     ${
       actors.length
         ? `<ul>${actors.map((a) => `<li>${esc(a.name)} — ${esc(a.role)}</li>`).join("")}</ul>`
-        : needs(NEEDS_INPUT)
+        : p?.targetUsers ? "" : needs(NEEDS_INPUT)
     }
     <h4>أهم الوظائف</h4>
     ${frs.length ? `<ul>${frs.slice(0, 10).map((r) => `<li>${esc(r.title)}</li>`).join("")}</ul>` : needs(NOT_AVAILABLE)}
@@ -545,7 +549,12 @@ export function buildSRSBody(ctx: ReportContext, opts: DocOptions): string {
     <h2>١٢. متطلبات الصلاحيات والأدوار</h2>
     ${
       actors.length
-        ? `<p class="desc">الأدوار المرشحة من البيانات: ${esc(actors.map((a) => a.name).join("، "))}.</p><p class="todo">تحتاج إلى تحديد الأدوار والصلاحيات المطلوبة لكل دور.</p>`
+        ? `<p class="desc">الأدوار المرشحة من البيانات: ${esc(
+            (actors.filter((a) => a.role !== "مسؤول عن متطلبات").length
+              ? actors.filter((a) => a.role !== "مسؤول عن متطلبات")
+              : actors
+            ).map((a) => a.name).join("، ")
+          )}.</p><p class="todo">تحتاج إلى تحديد الأدوار والصلاحيات المطلوبة لكل دور.</p>`
         : `<p class="todo">تحتاج إلى تحديد الأدوار والصلاحيات المطلوبة.</p>`
     }
   </section>`;
@@ -598,9 +607,9 @@ export function buildSRSBody(ctx: ReportContext, opts: DocOptions): string {
 
   /* 14) المخاطر والملاحظات */
   const riskItems = collectFromAnalyses(ctx, "risks");
-  if (s.needsInfo > 0) riskItems.push(`${s.needsInfo} متطلبًا بحاجة لمعلومات إضافية قد تؤخر التصميم.`);
-  if (s.withoutCriteria.length > 0) riskItems.push(`${s.withoutCriteria.length} متطلبًا بلا معايير قبول — خطر على مرحلة الاختبار.`);
-  if (s.notAnalyzed.length > 0) riskItems.push(`${s.notAnalyzed.length} متطلبًا لم يُراجَع بعد لاكتشاف الغموض.`);
+  if (s.needsInfo > 0) riskItems.push(`${arReqCount(s.needsInfo)} بحاجة لمعلومات إضافية قد تؤخر التصميم.`);
+  if (s.withoutCriteria.length > 0) riskItems.push(`${arReqCount(s.withoutCriteria.length)} بلا معايير قبول — خطر على مرحلة الاختبار.`);
+  if (s.notAnalyzed.length > 0) riskItems.push(`${arReqCount(s.notAnalyzed.length)} لم يُراجَع بعد لاكتشاف الغموض.`);
   const risksHTML = `
   <section class="block">
     <h2>١٥. المخاطر والملاحظات</h2>

@@ -889,11 +889,11 @@ function UsageTab({ d }: { d: AdminOverviewData }) {
 const DIAG_HINTS: Array<{ match: (r: LogRow) => boolean; title: string; checks: string[] }> = [
   {
     match: (r) => r.status === "FAILED",
-    title: "أخطاء Claude API — ماذا أفحص؟",
+    title: "أخطاء مزود الذكاء الاصطناعي — ماذا أفحص؟",
     checks: [
       "تحقق من ANTHROPIC_API_KEY في Vercel.",
       "تحقق من أسماء AI_MODEL_FREE / PRO / ENTERPRISE (اسم نموذج خاطئ يفشل فورًا).",
-      "تحقق من رصيد حساب Claude وحدود المعدل (rate limits).",
+      "تحقق من رصيد حساب المزود وحدود المعدل (rate limits).",
       "تحقق من حجم الملف/النص المُرسل.",
     ],
   },

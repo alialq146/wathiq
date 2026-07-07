@@ -7,6 +7,7 @@ import { getPlan } from "@/lib/plans";
 import { useWorkspaceData } from "./WorkspaceDataContext";
 import { ProjectContextSection } from "./ProjectContextSection";
 import type { UsageInfo } from "@/lib/workspace-data";
+import { arCount, arReqCount } from "@/lib/arabic";
 
 export interface OverviewScreenProps {
   onOpen?: (req: Requirement | null) => void;
@@ -272,6 +273,12 @@ export function OverviewScreen({ onOpen, onNewAnalysis }: OverviewScreenProps) {
             </Button>
           </div>
         </div>
+
+        {/* سياق المشروع ووحداته متاحان من أول لحظة — قبل إضافة أي متطلب — لأن الرحلة
+            الطبيعية للمحلل: سياق ← وحدات ← متطلبات. اختياري دائمًا ولا يعيق البدء. */}
+        <div style={{ marginTop: 20 }}>
+          <ProjectContextSection />
+        </div>
       </div>
     );
   }
@@ -336,9 +343,9 @@ export function OverviewScreen({ onOpen, onNewAnalysis }: OverviewScreenProps) {
         >
           <span style={{ font: "12px var(--font-mono)", color: "var(--text-subtle)", direction: "ltr" }}>{projectCode}</span>
           <span>·</span>
-          <span>{total} متطلب</span>
+          <span>{arReqCount(total)}</span>
           <span>·</span>
-          <span>{stakeholders.size} أصحاب مصلحة</span>
+          <span>{arCount(stakeholders.size, { one: "صاحب مصلحة واحد", two: "صاحبا مصلحة", few: "أصحاب مصلحة", many: "صاحب مصلحة" })}</span>
         </p>
       </div>
 

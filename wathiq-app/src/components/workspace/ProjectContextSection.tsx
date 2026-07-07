@@ -18,6 +18,7 @@ import {
   type ProjectContextInput,
 } from "@/app/actions";
 import type { ProjectModule } from "@/lib/data";
+import { arReqCount } from "@/lib/arabic";
 
 const GENERIC_ERR = "تعذّر الحفظ. حاول مرة أخرى.";
 
@@ -349,7 +350,7 @@ export function ProjectContextSection() {
                   <div style={{ display: "flex", alignItems: "center", gap: 7, flexWrap: "wrap" }}>
                     <span style={{ font: "var(--weight-semibold) 13px var(--font-sans)", color: "var(--text-strong)" }}>{m.name}</span>
                     <span style={{ font: "10.5px/1 var(--font-sans)", color: "var(--teal-700)", background: "var(--teal-50)", border: "1px solid var(--teal-100)", padding: "3px 8px", borderRadius: "var(--radius-pill)" }}>
-                      {countFor(m.id)} متطلب
+                      {arReqCount(countFor(m.id))}
                     </span>
                   </div>
                   {m.description && (

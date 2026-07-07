@@ -11,6 +11,7 @@
  * nothing here can reach another user's data.
  */
 
+import { arReqCount } from "./arabic";
 import type {
   Requirement,
   AcceptanceCriterion,
@@ -229,9 +230,9 @@ function overviewHTML(ctx: ReportContext, s: Stats): string {
   const p = ctx.project;
   if (!p) return "";
   const notes: string[] = [];
-  if (s.needsInfo > 0) notes.push(`${s.needsInfo} متطلبًا بحاجة لمعلومات إضافية قبل الاعتماد.`);
-  if (s.withoutCriteria.length > 0) notes.push(`${s.withoutCriteria.length} متطلبًا بلا معايير قبول بعد.`);
-  if (s.notAnalyzed.length > 0) notes.push(`${s.notAnalyzed.length} متطلبًا لم يُراجَع بمساعد وثّق بعد.`);
+  if (s.needsInfo > 0) notes.push(`${arReqCount(s.needsInfo)} بحاجة لمعلومات إضافية قبل الاعتماد.`);
+  if (s.withoutCriteria.length > 0) notes.push(`${arReqCount(s.withoutCriteria.length)} بلا معايير قبول بعد.`);
+  if (s.notAnalyzed.length > 0) notes.push(`${arReqCount(s.notAnalyzed.length)} لم يُراجَع بمساعد وثّق بعد.`);
   if (notes.length === 0) notes.push("لا توجد ملاحظات جوهرية — المتطلبات في حالة جيدة.");
   return `
   <section class="block">
@@ -497,7 +498,7 @@ export function projectSlug(ctx: ReportContext): string {
   return ctx.project?.code?.replace(/[^\w-]/g, "") || "report";
 }
 
-export function triggerDownload(blob: Blob, filename: string): void {
+function triggerDownload(blob: Blob, filename: string): void {
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;

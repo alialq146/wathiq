@@ -7,6 +7,7 @@ import { prisma, hasDatabase } from "@/lib/db";
 import { getSessionUser, getActiveProjectId, PROJECT_COOKIE } from "@/lib/session";
 import { authEnabled } from "@/lib/auth";
 import { isAccountActive } from "@/lib/account";
+import { arReqCount } from "@/lib/arabic";
 import { projectLimitFor } from "@/lib/plans";
 import type { RequirementStatus, PriorityLevel } from "@/components/ds";
 
@@ -304,7 +305,7 @@ export async function saveExtractedRequirements(
         actor,
         null,
         "requirements_imported",
-        `استيراد ${saved} متطلبًا من تحليل وثّق.`,
+        `استيراد ${arReqCount(saved)} من تحليل وثّق.`,
         "وثّق",
         projectId
       );

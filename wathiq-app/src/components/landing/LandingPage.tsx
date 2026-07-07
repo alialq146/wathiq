@@ -57,7 +57,7 @@ const SCREENS = [
 ];
 
 const STATS = [
-  { to: 94, prefix: "حتى ", suffix: "%", label: "دقة ثقة التحليل" },
+  { to: 94, prefix: "حتى ", suffix: "%", label: "مؤشر ثقة التحليل" },
   { to: 2, prefix: "أقل من ", suffix: " دقيقة", label: "زمن التحليل" },
   { to: 3, prefix: "", suffix: " صيغ", label: "تصدير: PDF · Word · Excel" },
   { to: 100, prefix: "", suffix: "%", label: "عربي · RTL" },
@@ -434,7 +434,9 @@ export function LandingPage() {
 
 /* Count-up number, animated once its section scrolls into view. */
 function CountUp({ to, run }: { to: number; run: boolean }) {
-  const [v, setV] = React.useState(0);
+  // نبدأ بالقيمة النهائية (لا بصفر) حتى تظهر الأرقام صحيحة لمحركات البحث وقارئات
+  // الشاشة وقبل وصول العنصر لمجال الرؤية — ثم يبدأ العدّ من الصفر عند الظهور.
+  const [v, setV] = React.useState(to);
   React.useEffect(() => {
     if (!run) return;
     let raf = 0;

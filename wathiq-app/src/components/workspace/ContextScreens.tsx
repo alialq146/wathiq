@@ -3,6 +3,7 @@
 import React from "react";
 import { Avatar, Icon, Tag } from "@/components/ds";
 import type { Requirement } from "@/lib/data";
+import { arReqCount } from "@/lib/arabic";
 import { useWorkspaceData } from "./WorkspaceDataContext";
 
 /* Shared page header. */
@@ -77,7 +78,7 @@ export function StakeholdersScreen({ onOpen }: { onOpen: (r: Requirement) => voi
     <div style={PAGE_STYLE}>
       <PageHeader
         title="أصحاب المصلحة"
-        subtitle={`${people.length} من أصحاب المصلحة عبر ${requirements.length} متطلبًا في المشروع.`}
+        subtitle={`${people.length} من أصحاب المصلحة عبر ${arReqCount(requirements.length)} في المشروع.`}
       />
       {people.length === 0 ? (
         <p style={{ color: "var(--text-muted)", font: "14px/1.8 var(--font-sans)" }}>

@@ -3,6 +3,7 @@
 import React from "react";
 import { Button, Icon } from "@/components/ds";
 import { useWorkspaceData } from "./WorkspaceDataContext";
+import { arReqCount } from "@/lib/arabic";
 import {
   exportCSV,
   exportDocumentPDF,
@@ -279,7 +280,7 @@ export function ExportDialog({ open, onClose, filteredIds }: ExportDialogProps) 
           )}
 
           <div style={{ font: "12px/1.6 var(--font-sans)", color: "var(--text-muted)", padding: "8px 12px", background: "var(--slate-50)", borderRadius: "var(--radius-md)", border: "1px solid var(--border-subtle)" }}>
-            سيشمل المستند <b style={{ color: "var(--text-body)" }}>{scopedReqs.length}</b> متطلبًا من مشروع «{activeProject?.name ?? "مساحة العمل"}».
+            سيشمل المستند <b style={{ color: "var(--text-body)" }}>{arReqCount(scopedReqs.length)}</b> من مشروع «{activeProject?.name ?? "مساحة العمل"}».
           </div>
         </div>
 

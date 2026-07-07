@@ -8,6 +8,7 @@ import { useWorkspaceData } from "./WorkspaceDataContext";
 import { RequirementFormDialog } from "./RequirementFormDialog";
 import { ExportDialog } from "./ExportDialog";
 import { deleteRequirement } from "@/app/actions";
+import { arReqCount } from "@/lib/arabic";
 
 export interface RequirementsScreenProps {
   onOpen?: (req: Requirement | null) => void;
@@ -207,7 +208,7 @@ export function RequirementsScreen({ onOpen, onViewAnalysis, search = "", onClea
           <p style={{ font: "14px/1.5 var(--font-sans)", color: "var(--text-muted)", margin: "6px 0 0" }}>
             {REQUIREMENTS.length === 0
               ? "ستظهر هنا متطلبات مشروعك بعد إضافتها."
-              : `${REQUIREMENTS.length} متطلبًا في المشروع${analyzedCount > 0 ? ` · ${analyzedCount} تم تحليله` : ""}`}
+              : `${arReqCount(REQUIREMENTS.length)} في المشروع${analyzedCount > 0 ? ` · ${analyzedCount} تم تحليله` : ""}`}
           </p>
         </div>
         <div style={{ display: "flex", gap: 8 }}>
@@ -452,7 +453,7 @@ export function RequirementsScreen({ onOpen, onViewAnalysis, search = "", onClea
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ font: "var(--weight-semibold) 14px/1.4 var(--font-sans)", color: "var(--teal-700)" }}>خلاصة وثّق</div>
           <div style={{ font: "13px/1.5 var(--font-sans)", color: "var(--text-body)" }}>
-            اكتمل تحليل {analyzedCount} من {REQUIREMENTS.length} متطلبًا
+            اكتمل تحليل {analyzedCount} من {arReqCount(REQUIREMENTS.length)}
             {avgConfidence != null ? ` بمتوسط جودة ${avgConfidence}٪` : ""}
             {needsInfoCount > 0 ? ` · ${needsInfoCount} بحاجة لمعلومات إضافية قبل الاعتماد` : ""}.
           </div>
