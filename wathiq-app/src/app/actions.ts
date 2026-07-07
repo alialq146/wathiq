@@ -6,6 +6,7 @@ import { revalidatePath } from "next/cache";
 import { prisma, hasDatabase } from "@/lib/db";
 import { getSessionUser, getActiveProjectId, PROJECT_COOKIE } from "@/lib/session";
 import { authEnabled } from "@/lib/auth";
+import { isAccountActive } from "@/lib/account";
 import { projectLimitFor } from "@/lib/plans";
 import type { RequirementStatus, PriorityLevel } from "@/components/ds";
 
@@ -64,7 +65,12 @@ interface Actor {
 // عند تفعيل الحسابات — لا يُتخذ أي قرار أمني في الواجهة.
 async function requireActor(): Promise<Actor | null> {
   const user = await getSessionUser();
-  if (user && user.uid !== "owner") return { uid: user.uid, name: user.name };
+  if (user && user.uid !== "owner") {
+    // أمان: الجلسة وحدها لا تكفي — الحساب يجب أن يكون موجودًا وفعالًا
+    // (ACTIVE). المحذوف/المعطَّل يُرفض مركزيًا في كل Server Action.
+    if (!(await isAccountActive(user.uid))) return null;
+    return { uid: user.uid, name: user.name };
+  }
   if (user) return { uid: null, name: user.name || "المالك" }; // legacy owner mode
   if (authEnabled()) return null; // sign-in required but not signed in → deny
   return { uid: null, name: "سارة العتيبي" }; // open mode (demo persona)

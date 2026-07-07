@@ -1,8 +1,10 @@
+import { redirect } from "next/navigation";
 import { WorkspaceClient } from "@/components/workspace/WorkspaceClient";
 import { LandingPage } from "@/components/landing/LandingPage";
 import { getWorkspaceData } from "@/lib/workspace-data";
 import { getSessionUser, getActiveProjectId } from "@/lib/session";
 import { authEnabled } from "@/lib/auth";
+import { isAccountActive } from "@/lib/account";
 
 // Read fresh from the database on each request (falls back to mock data when
 // no database is configured), so seeded changes show up without a rebuild.
@@ -17,6 +19,13 @@ export default async function Page() {
   }
 
   const scopeId = user && user.uid !== "owner" ? user.uid : undefined;
+
+  // أمان: حساب معطَّل أو محذوف لا يفتح مساحة العمل — يُعاد لتسجيل الدخول
+  // برسالة مفهومة (نفس الفحص المركزي المستخدم في كل Server Action).
+  if (scopeId && !(await isAccountActive(scopeId))) {
+    redirect("/login?err=disabled");
+  }
+
   const activeProjectId = scopeId ? await getActiveProjectId() : null;
   const data = await getWorkspaceData(scopeId, activeProjectId);
 

@@ -33,6 +33,7 @@ import {
 } from "@/app/actions";
 import type { ReqAnalysisStatus } from "@/lib/data";
 import { useWorkspaceData } from "./WorkspaceDataContext";
+import { RequirementFormDialog } from "./RequirementFormDialog";
 
 const NO_DB_MSG = "قاعدة البيانات غير متصلة، لذا تعذّر حفظ التغيير.";
 const GENERIC_ERR = "تعذّر تنفيذ العملية. يرجى المحاولة مرة أخرى.";
@@ -103,6 +104,19 @@ export function RequirementDetail({ req, onBack }: RequirementDetailProps) {
 
   const [tab, setTab] = React.useState("criteria");
 
+  // تعديل المتطلب من داخل صفحته: نفس نافذة التعديل المستخدمة في القائمة،
+  // وبعد الحفظ يبقى المستخدم هنا وتتحدث البيانات في مكانها مع Toast نجاح.
+  const editRouter = useRouter();
+  const [editOpen, setEditOpen] = React.useState(false);
+  const [toast, setToast] = React.useState<string | null>(null);
+  const toastTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  const showToast = (msg: string) => {
+    setToast(msg);
+    if (toastTimer.current) clearTimeout(toastTimer.current);
+    toastTimer.current = setTimeout(() => setToast(null), 3500);
+  };
+  React.useEffect(() => () => { if (toastTimer.current) clearTimeout(toastTimer.current); }, []);
+
   // حفظ/استعادة التبويب النشط لكل متطلب — يبقى مكانه بعد router.refresh
   // أو أي إعادة بناء، ويستقبل حدث «افتح تبويب التقييم» من لوحة المساعد.
   React.useEffect(() => {
@@ -172,6 +186,16 @@ export function RequirementDetail({ req, onBack }: RequirementDetailProps) {
         {req.type && <Tag color="blue">{req.type}</Tag>}
         <span style={{ font: "var(--weight-medium) 11px var(--font-mono)", color: "var(--text-subtle)", direction: "ltr" }}>
           V{req.version ?? 1}
+        </span>
+        <span style={{ marginInlineStart: "auto" }}>
+          <Button
+            variant="secondary"
+            size="sm"
+            iconStart={<Icon name="pencil" size={14} />}
+            onClick={() => setEditOpen(true)}
+          >
+            تعديل المتطلب
+          </Button>
         </span>
       </div>
 
@@ -252,6 +276,44 @@ export function RequirementDetail({ req, onBack }: RequirementDetailProps) {
       )}
       {tab === "quality" && <QualityTab req={req} connected={connected} />}
       {tab === "history" && <HistoryTab items={history} />}
+
+      {/* تعديل المتطلب من داخل صفحته — البيانات تُشتق من السياق فلا خروج من الصفحة */}
+      <RequirementFormDialog
+        open={editOpen}
+        mode="edit"
+        initial={req}
+        onClose={() => setEditOpen(false)}
+        onSaved={() => {
+          setEditOpen(false);
+          showToast("تم حفظ التغييرات بنجاح.");
+          editRouter.refresh();
+        }}
+      />
+
+      {toast && (
+        <div
+          role="status"
+          style={{
+            position: "fixed",
+            bottom: 24,
+            insetInlineStart: "50%",
+            transform: "translateX(50%)",
+            zIndex: 80,
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+            padding: "11px 18px",
+            borderRadius: "var(--radius-pill)",
+            background: "var(--navy-900)",
+            color: "#fff",
+            font: "var(--weight-medium) 13.5px var(--font-sans)",
+            boxShadow: "var(--shadow-lg)",
+          }}
+        >
+          <Icon name="check-circle" size={16} color="#7ee2b8" />
+          {toast}
+        </div>
+      )}
     </div>
   );
 }

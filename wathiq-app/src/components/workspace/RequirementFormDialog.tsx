@@ -5,6 +5,7 @@ import { Button, Icon } from "@/components/ds";
 import { saveRequirement, type RequirementInput } from "@/app/actions";
 import type { Requirement } from "@/lib/data";
 import type { PriorityLevel } from "@/components/ds";
+import { useWorkspaceData } from "./WorkspaceDataContext";
 
 const TYPE_OPTIONS: { v: string; l: string }[] = [
   { v: "", l: "— غير محدد —" },
@@ -34,7 +35,7 @@ const PRIORITY_OPTIONS: { v: PriorityLevel; l: string }[] = [
 
 const ERR: Record<string, string> = {
   "no-db": "التعديل يتطلب قاعدة بيانات — يعمل على الموقع المنشور فقط.",
-  "duplicate-id": "رقم المتطلب مستخدم من قبل. اختر رقمًا آخر.",
+  "duplicate-id": "رقم المتطلب مستخدم مسبقًا، اختر رقمًا آخر.",
   "missing-id": "أدخل رقم المتطلب.",
   "missing-title": "أدخل عنوان المتطلب.",
   server: "تعذّر الحفظ. حاول مرة أخرى.",
@@ -72,9 +73,23 @@ export function RequirementFormDialog({
   onClose,
   onSaved,
 }: RequirementFormDialogProps) {
+  const { requirements, activeProject } = useWorkspaceData();
   const [form, setForm] = React.useState<RequirementInput>(() => blank());
   const [saving, setSaving] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
+
+  // اقتراح رقم تلقائي منظم للمتطلب الجديد — قابل للتعديل دائمًا.
+  // الصيغة: <كود المشروع>-REQ-001 (أو REQ-001 بلا كود)، والرقم التالي يُشتق
+  // من أكبر لاحقة رقمية في متطلبات المشروع الظاهرة.
+  const suggestedId = React.useMemo(() => {
+    const prefix = activeProject?.code?.trim() ? `${activeProject.code.trim()}-REQ-` : "REQ-";
+    let maxN = 0;
+    for (const r of requirements) {
+      const m = r.id.match(/(\d+)\s*$/);
+      if (m) maxN = Math.max(maxN, parseInt(m[1], 10));
+    }
+    return `${prefix}${String(maxN + 1).padStart(3, "0")}`;
+  }, [requirements, activeProject]);
 
   React.useEffect(() => {
     if (!open) return;
@@ -98,9 +113,10 @@ export function RequirementFormDialog({
         version: initial.version ?? 1,
       });
     } else {
-      setForm(blank());
+      // متطلب جديد: نملأ الرقم بالاقتراح التلقائي — يبقى قابلًا للتعديل.
+      setForm({ ...blank(), id: suggestedId });
     }
-  }, [open, mode, initial]);
+  }, [open, mode, initial, suggestedId]);
 
   React.useEffect(() => {
     if (!open) return;

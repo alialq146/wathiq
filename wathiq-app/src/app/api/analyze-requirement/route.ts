@@ -4,7 +4,7 @@ import { analyzeRequirement, runAssistantTask, hasAnthropicKey, type AssistantTa
 import { prisma, hasDatabase } from "@/lib/db";
 import { getSessionUser } from "@/lib/session";
 import { authEnabled } from "@/lib/auth";
-import { resolveQuota, consumeQuota, logAiUsage } from "@/lib/usage";
+import { reserveQuota, releaseQuota, logAiUsage } from "@/lib/usage";
 
 export const dynamic = "force-dynamic";
 // مهلة أطول لاستدعاءات الذكاء الاصطناعي — Fluid Compute يدعم حتى 300 ثانية.
@@ -24,27 +24,35 @@ export async function POST(req: Request) {
     const user = await getSessionUser();
     if (!user) return NextResponse.json({ ok: false, error: "unauthorized" });
     if (user.uid !== "owner") {
-      const quota = await resolveQuota(user.uid);
-      // أمان: جلسة لمستخدم غير موجود أو معطَّل تُرفض — لا مسار تحليل
-      // بلا قياس ولا قراءة متطلب خارج نطاق الملكية.
-      if (!quota) return NextResponse.json({ ok: false, error: "unauthorized" });
-      model = quota.model;
-      if (quota.exceeded) {
+      // حجز ذري قبل أي استدعاء للنموذج — طلبات متوازية لا تتجاوز الحد،
+      // ومن لا يجد حصة لا يصل إلى الذكاء الاصطناعي إطلاقًا.
+      const r = await reserveQuota(user.uid);
+      if (!r.ok && r.reason === "unauthorized") {
+        // جلسة لمستخدم غير موجود أو معطَّل تُرفض.
+        return NextResponse.json({ ok: false, error: "unauthorized" });
+      }
+      model = r.model;
+      if (!r.ok) {
         await logAiUsage({ userId: user.uid, modelUsed: model, status: "BLOCKED_LIMIT" });
-        return NextResponse.json({ ok: false, error: "limit", limit: quota.limit });
+        return NextResponse.json({ ok: false, error: "limit", limit: r.limit });
       }
       userId = user.uid;
     }
   }
+  // من هنا فصاعدًا: أي خروج قبل نجاح النموذج يعيد الحجز (الفشل لا يُحاسَب).
+  const bail = async (payload: Record<string, unknown>) => {
+    if (userId) await releaseQuota(userId);
+    return NextResponse.json(payload);
+  };
 
   let body: { id?: unknown; task?: unknown };
   try {
     body = await req.json();
   } catch {
-    return NextResponse.json({ ok: false, error: "bad-request" });
+    return bail({ ok: false, error: "bad-request" });
   }
   const id = typeof body.id === "string" ? body.id : "";
-  if (!id) return NextResponse.json({ ok: false, error: "missing-id" });
+  if (!id) return bail({ ok: false, error: "missing-id" });
   // مهمة المساعد: "full" (افتراضي) = تحليل شامل يُحفظ؛ غيرها مهام خفيفة
   // مركزة ترجع نتيجتها للمستخدم ليقرر تطبيقها — أوفر في الرموز والتكلفة.
   const LIGHT_TASKS = ["improve", "criteria", "questions", "ambiguity", "risks"] as const;
@@ -56,7 +64,7 @@ export async function POST(req: Request) {
   // Load the requirement (scoped to the user in accounts mode).
   const where = userId ? { id, ownerId: userId } : { id };
   const reqRow = await prisma.requirement.findFirst({ where });
-  if (!reqRow) return NextResponse.json({ ok: false, error: "not-found" });
+  if (!reqRow) return bail({ ok: false, error: "not-found" });
 
   const reqInput = {
     id: reqRow.id,
@@ -74,8 +82,8 @@ export async function POST(req: Request) {
   if (task !== "full") {
     try {
       const { result, meta } = await runAssistantTask(reqInput, task, model);
+      // الحصة محجوزة مسبقًا (حجز ذري) — يكفي تسجيل النجاح.
       if (userId) {
-        await consumeQuota(userId);
         await logAiUsage({
           userId,
           projectId: reqRow.projectId,
@@ -90,6 +98,7 @@ export async function POST(req: Request) {
     } catch (err) {
       console.error("[/api/analyze-requirement task]", err);
       if (userId) {
+        await releaseQuota(userId); // الفشل لا يستهلك الحصة
         await logAiUsage({
           userId,
           projectId: reqRow.projectId,
@@ -169,9 +178,8 @@ export async function POST(req: Request) {
       { maxWait: 10_000, timeout: 30_000 }
     );
 
-    // Count against the user's quota + log usage.
+    // الحصة محجوزة مسبقًا (حجز ذري) — يكفي تسجيل النجاح.
     if (userId) {
-      await consumeQuota(userId);
       await logAiUsage({
         userId,
         projectId: reqRow.projectId,
@@ -187,6 +195,7 @@ export async function POST(req: Request) {
   } catch (err) {
     console.error("[/api/analyze-requirement]", err);
     if (userId) {
+      await releaseQuota(userId); // الفشل لا يستهلك الحصة
       await logAiUsage({
         userId,
         projectId: reqRow.projectId,

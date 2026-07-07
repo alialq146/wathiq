@@ -90,11 +90,66 @@ export async function resolveQuota(userId: string): Promise<Quota | null> {
   };
 }
 
-/** Increment the user's monthly analysis counter after a successful call. */
-export async function consumeQuota(userId: string): Promise<void> {
+/* ------------------------------------------------------------------
+   حجز الحصة الذري — إغلاق سباق «فحص ثم استهلاك»:
+   الحجز يزيد العداد بشرط أنه دون الحد في نفس العبارة (updateMany
+   المشروط)، فطلبات متوازية لا يمكن أن تتجاوز الحد أبدًا — من لا يجد
+   حصة لا يصل إلى الذكاء الاصطناعي إطلاقًا.
+
+   قرار موثق: الفشل لا يستهلك الحصة (نفس سلوك النظام السابق) —
+   لذلك عند فشل استدعاء الذكاء الاصطناعي يُعاد الحجز بـ releaseQuota.
+   ------------------------------------------------------------------ */
+
+export type QuotaReservation =
+  | { ok: true; model: string; limit: number | null }
+  | { ok: false; reason: "unauthorized" | "limit"; model: string; limit: number | null };
+
+export async function reserveQuota(userId: string): Promise<QuotaReservation> {
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { plan: true, analysisLimit: true, resetDate: true, limitOverride: true, accountStatus: true },
+  });
+  // أمان: حساب محذوف أو معطَّل لا يحجز حصة ولا يصل للنموذج.
+  if (!user || user.accountStatus !== "ACTIVE") {
+    return { ok: false, reason: "unauthorized", model: "", limit: null };
+  }
+
+  const model = modelForPlan(user.plan);
+  const now = new Date();
+
+  // بداية شهر جديد (أو أول استخدام): يُصفَّر العداد قبل الحجز مباشرة.
+  if (!user.resetDate || user.resetDate.getTime() <= now.getTime()) {
+    await prisma.user.update({
+      where: { id: userId },
+      data: { analysisCount: 0, resetDate: nextMonth(now) },
+    });
+  }
+
+  const limit = user.limitOverride ? user.analysisLimit : getPlan(user.plan).analysisLimit;
+
+  if (limit == null) {
+    // بلا حد (ENTERPRISE): العداد يبقى إحصائيًا فقط.
+    await prisma.user.update({ where: { id: userId }, data: { analysisCount: { increment: 1 } } });
+    return { ok: true, model, limit: null };
+  }
+
+  // العبارة الذرية: لا زيادة إلا إذا كان العداد لا يزال دون الحد.
+  const res = await prisma.user.updateMany({
+    where: { id: userId, analysisCount: { lt: limit } },
+    data: { analysisCount: { increment: 1 } },
+  });
+  if (res.count === 0) return { ok: false, reason: "limit", model, limit };
+  return { ok: true, model, limit };
+}
+
+/** إعادة حجز لم يكتمل (فشل النموذج أو رفض مبكر بعد الحجز) — الفشل لا يُحاسَب. */
+export async function releaseQuota(userId: string): Promise<void> {
   await prisma.user
-    .update({ where: { id: userId }, data: { analysisCount: { increment: 1 } } })
-    .catch((e) => console.error("[consumeQuota]", e));
+    .updateMany({
+      where: { id: userId, analysisCount: { gt: 0 } },
+      data: { analysisCount: { decrement: 1 } },
+    })
+    .catch((e) => console.error("[releaseQuota]", e));
 }
 
 /* ---------------- usage logging ---------------- */

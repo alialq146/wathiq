@@ -25,10 +25,18 @@ const field: React.CSSProperties = {
   outline: "none",
 };
 
-export function LoginForm({ next, showSignup = false }: { next: string; showSignup?: boolean }) {
+export function LoginForm({
+  next,
+  showSignup = false,
+  initialError,
+}: {
+  next: string;
+  showSignup?: boolean;
+  initialError?: string;
+}) {
   const [email, setEmail] = React.useState("");
   const [password, setPassword] = React.useState("");
-  const [error, setError] = React.useState<string | null>(null);
+  const [error, setError] = React.useState<string | null>(initialError ?? null);
   const [loading, setLoading] = React.useState(false);
 
   const submit = async (e: React.FormEvent) => {
