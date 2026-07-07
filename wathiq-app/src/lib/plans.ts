@@ -110,10 +110,16 @@ export function projectLimitFor(plan: string | null | undefined): number | null 
   return getPlan(plan).projectLimit;
 }
 
-/** WhatsApp contact link with a plan-aware message. */
-export function whatsappUpgradeLink(reason = "الترقية"): string {
-  return (
-    "https://wa.me/966531800106?text=" +
-    encodeURIComponent(`مرحبًا، أرغب في ${reason} في منصة وثّق.`)
-  );
+/**
+ * رابط واتساب برسالة ترقية مُهيكلة — المستخدم يكمل بريده بنفسه
+ * (لا نحقن بياناته في الرابط حفاظًا على الخصوصية).
+ */
+export function whatsappUpgradeLink(planTitle = ""): string {
+  const msg = [
+    "مرحبًا، أرغب في ترقية حسابي في منصة وثّق.",
+    `الخطة المطلوبة: ${planTitle || "—"}`,
+    "البريد المسجل: ",
+    "ملاحظات: ",
+  ].join("\n");
+  return "https://wa.me/966531800106?text=" + encodeURIComponent(msg);
 }

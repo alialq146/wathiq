@@ -2,6 +2,11 @@ import { redirect } from "next/navigation";
 import { authEnabled, hasDatabaseEnv } from "@/lib/auth";
 import { LoginForm } from "./LoginForm";
 
+export const metadata = {
+  title: "تسجيل الدخول · وثّق",
+  description: "سجّل الدخول إلى حسابك في منصة وثّق لتحليل متطلبات مشاريعك.",
+};
+
 export const dynamic = "force-dynamic";
 
 export default async function LoginPage({

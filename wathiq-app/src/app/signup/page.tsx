@@ -2,6 +2,11 @@ import { redirect } from "next/navigation";
 import { hasDatabaseEnv } from "@/lib/auth";
 import { SignupForm } from "./SignupForm";
 
+export const metadata = {
+  title: "إنشاء حساب · وثّق",
+  description: "أنشئ حسابك المجاني في منصة وثّق وابدأ تحليل متطلبات مشروعك خلال دقائق.",
+};
+
 export const dynamic = "force-dynamic";
 
 export default async function SignupPage() {

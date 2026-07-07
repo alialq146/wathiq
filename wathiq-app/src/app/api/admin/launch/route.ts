@@ -18,7 +18,7 @@ export async function GET() {
   const d30 = new Date(now - 30 * 24 * 60 * 60 * 1000);
 
   const kpisFor = async (since: Date) => {
-    const [newUsers, newProjects, newRequirements, ai, exportsBrd, exportsSrs, exportsReport, quotaHits, activeEventUsers, activeAiUsers] =
+    const [newUsers, newProjects, newRequirements, ai, exportsBrd, exportsSrs, exportsReport, quotaHits, upgradeClicks, activeEventUsers, activeAiUsers] =
       await Promise.all([
         prisma.user.count({ where: { createdAt: { gte: since } } }),
         prisma.project.count({ where: { createdAt: { gte: since } } }),
@@ -29,6 +29,7 @@ export async function GET() {
         prisma.productEvent.count({ where: { eventName: "export_srs_created", createdAt: { gte: since } } }),
         prisma.productEvent.count({ where: { eventName: "export_report_created", createdAt: { gte: since } } }),
         prisma.aiUsage.count({ where: { status: "BLOCKED_LIMIT", createdAt: { gte: since } } }),
+        prisma.productEvent.count({ where: { eventName: "upgrade_clicked", createdAt: { gte: since } } }),
         prisma.productEvent.groupBy({ by: ["userId"], where: { createdAt: { gte: since }, userId: { not: null } } }),
         prisma.aiUsage.groupBy({ by: ["userId"], where: { createdAt: { gte: since } } }),
       ]);
@@ -48,13 +49,14 @@ export async function GET() {
       assistantSuccess: aiByStatus["SUCCESS"] ?? 0,
       assistantFailed: aiByStatus["FAILED"] ?? 0,
       quotaHits,
+      upgradeClicks,
       exportsBrd,
       exportsSrs,
       exportsReport,
     };
   };
 
-  const [k7, k30, openFeedback, planGroups, recentFeedback, topEvents, recentAiErrors] = await Promise.all([
+  const [k7, k30, openFeedback, planGroups, recentFeedback, topEvents, recentAiErrors, recentUpgrades] = await Promise.all([
     kpisFor(d7),
     kpisFor(d30),
     prisma.userFeedback.count({ where: { status: "open" } }),
@@ -77,6 +79,12 @@ export async function GET() {
       take: 5,
       select: { id: true, userId: true, modelUsed: true, errorMessage: true, createdAt: true },
     }),
+    prisma.productEvent.findMany({
+      where: { eventName: "upgrade_clicked" },
+      orderBy: { createdAt: "desc" },
+      take: 5,
+      select: { id: true, userId: true, plan: true, metadata: true, createdAt: true },
+    }),
   ]);
 
   // قمع بسيط (آخر 30 يومًا): مستخدمون مميزون لكل خطوة.
@@ -89,8 +97,9 @@ export async function GET() {
 
   const feedbackUserIds = [...new Set(recentFeedback.map((f) => f.userId))];
   const errorUserIds = [...new Set(recentAiErrors.map((e) => e.userId))];
+  const upgradeUserIds = [...new Set(recentUpgrades.map((u) => u.userId).filter(Boolean))] as string[];
   const users = await prisma.user.findMany({
-    where: { id: { in: [...new Set([...feedbackUserIds, ...errorUserIds])] } },
+    where: { id: { in: [...new Set([...feedbackUserIds, ...errorUserIds, ...upgradeUserIds])] } },
     select: { id: true, email: true },
   });
   const emailOf = new Map(users.map((u) => [u.id, u.email]));
@@ -122,6 +131,13 @@ export async function GET() {
       createdAt: f.createdAt.toISOString(),
     })),
     topEvents: topEvents.map((e) => ({ eventName: e.eventName, count: e._count._all })),
+    recentUpgrades: recentUpgrades.map((u) => ({
+      id: u.id,
+      email: u.userId ? (emailOf.get(u.userId) ?? "") : "",
+      plan: u.plan ?? "",
+      from: typeof u.metadata === "object" && u.metadata !== null && "from" in u.metadata ? String((u.metadata as Record<string, unknown>).from) : "",
+      createdAt: u.createdAt.toISOString(),
+    })),
     recentAiErrors: recentAiErrors.map((e) => ({
       id: e.id,
       email: emailOf.get(e.userId) ?? "",

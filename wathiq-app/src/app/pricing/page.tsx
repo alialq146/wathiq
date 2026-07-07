@@ -1,6 +1,7 @@
 import Image from "next/image";
 import { Icon } from "@/components/ds";
 import { PLANS, PLAN_ORDER, whatsappUpgradeLink, type Plan } from "@/lib/plans";
+import { TrackedUpgradeLink } from "./TrackedUpgradeLink";
 
 export const dynamic = "force-dynamic";
 
@@ -172,10 +173,10 @@ function PlanCard({ plan }: { plan: Plan }) {
           <a href="/signup" style={btn(false)}>ابدأ مجانًا</a>
         ) : (
           <>
-            <a href={whatsappUpgradeLink(`الترقية إلى ${plan.title}`)} target="_blank" rel="noopener noreferrer" style={btn(true)}>
+            <TrackedUpgradeLink href={whatsappUpgradeLink(plan.title)} plan={plan.id} style={btn(true)}>
               <Icon name="message-circle" size={17} color="#06231A" />
               {plan.id === "PRO" ? "طلب الترقية عبر واتساب" : "تواصل معنا"}
-            </a>
+            </TrackedUpgradeLink>
             <div style={{ marginTop: 9, font: "11.5px/1.6 var(--font-sans)", color: dark ? "rgba(255,255,255,.55)" : "var(--text-subtle)", textAlign: "center" }}>
               الترقية حاليًا بالتواصل المباشر، ويتم التفعيل خلال 24 ساعة عمل.
             </div>

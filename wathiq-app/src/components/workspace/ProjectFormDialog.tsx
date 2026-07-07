@@ -2,7 +2,7 @@
 
 import React from "react";
 import { Button, Icon } from "@/components/ds";
-import { createProject, updateProject, type ProjectInput } from "@/app/actions";
+import { createProject, updateProject, type ProjectInput , trackClientEvent } from "@/app/actions";
 import { whatsappUpgradeLink } from "@/lib/plans";
 import type { Project } from "@/lib/data";
 
@@ -116,10 +116,10 @@ export function ProjectFormDialog({ open, mode, initial, onClose, onSaved }: Pro
               للعمل على أكثر من مشروع، يمكنك الترقية للحصول على مشاريع متعددة ومساحة أكبر للتحليلات.
             </p>
             <div style={{ display: "flex", gap: 10, flexWrap: "wrap", justifyContent: "center", marginTop: 10 }}>
-              <a href="/pricing" style={{ display: "inline-flex", alignItems: "center", height: 44, padding: "0 20px", borderRadius: "var(--radius-pill)", background: "var(--primary)", color: "#fff", font: "var(--weight-bold) 15px var(--font-sans)", textDecoration: "none" }}>
+              <a href="/pricing" onClick={() => void trackClientEvent("upgrade_clicked", { from: "project_limit" })} style={{ display: "inline-flex", alignItems: "center", height: 44, padding: "0 20px", borderRadius: "var(--radius-pill)", background: "var(--primary)", color: "#fff", font: "var(--weight-bold) 15px var(--font-sans)", textDecoration: "none" }}>
                 عرض الباقات
               </a>
-              <a href={whatsappUpgradeLink("الترقية للحصول على مشاريع متعددة")} target="_blank" rel="noopener noreferrer" style={{ display: "inline-flex", alignItems: "center", gap: 8, height: 44, padding: "0 20px", borderRadius: "var(--radius-pill)", background: "#25D366", color: "#06231A", font: "var(--weight-bold) 15px var(--font-sans)", textDecoration: "none" }}>
+              <a href={whatsappUpgradeLink("الخطة الاحترافية — مشاريع متعددة")} onClick={() => void trackClientEvent("upgrade_clicked", { from: "project_limit_whatsapp" })} target="_blank" rel="noopener noreferrer" style={{ display: "inline-flex", alignItems: "center", gap: 8, height: 44, padding: "0 20px", borderRadius: "var(--radius-pill)", background: "#25D366", color: "#06231A", font: "var(--weight-bold) 15px var(--font-sans)", textDecoration: "none" }}>
                 <Icon name="message-circle" size={18} color="#06231A" /> التواصل للترقية
               </a>
             </div>

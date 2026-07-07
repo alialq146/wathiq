@@ -1323,7 +1323,7 @@ const EVENT_AR: Record<string, string> = {
 interface LaunchKpis {
   newUsers: number; activeUsers: number; newProjects: number; newRequirements: number;
   assistantRuns: number; assistantSuccess: number; assistantFailed: number; quotaHits: number;
-  exportsBrd: number; exportsSrs: number; exportsReport: number;
+  upgradeClicks: number; exportsBrd: number; exportsSrs: number; exportsReport: number;
 }
 interface LaunchData {
   last7: LaunchKpis; last30: LaunchKpis; openFeedback: number; topPlan: string | null;
@@ -1331,7 +1331,18 @@ interface LaunchData {
   recentFeedback: Array<{ id: string; type: string; severity: string; status: string; message: string; email: string; createdAt: string }>;
   topEvents: Array<{ eventName: string; count: number }>;
   recentAiErrors: Array<{ id: string; email: string; modelUsed: string; error: string; createdAt: string }>;
+  recentUpgrades: Array<{ id: string; email: string; plan: string; from: string; createdAt: string }>;
 }
+
+const UPGRADE_FROM_AR: Record<string, string> = {
+  "pricing": "صفحة الأسعار",
+  "overview-usage-card": "بطاقة الاستخدام",
+  "quota_card": "بطاقة حد التحليلات",
+  "quota_card_whatsapp": "حد التحليلات (واتساب)",
+  "assistant_limit": "حد المساعد",
+  "project_limit": "حد المشاريع",
+  "project_limit_whatsapp": "حد المشاريع (واتساب)",
+};
 
 function LaunchTab() {
   const [data, setData] = React.useState<LaunchData | null>(null);
@@ -1382,6 +1393,7 @@ function LaunchTab() {
         {kpi("تحليلات ناجحة", k7.assistantSuccess, k30.assistantSuccess, "var(--green-600)")}
         {kpi("تحليلات فاشلة", k7.assistantFailed, k30.assistantFailed, k7.assistantFailed > 0 ? "var(--red-600)" : undefined)}
         {kpi("بلوغ حد الخطة", k7.quotaHits, k30.quotaHits, k7.quotaHits > 0 ? "var(--amber-600)" : undefined)}
+        {kpi("نقرات الترقية", k7.upgradeClicks, k30.upgradeClicks, k7.upgradeClicks > 0 ? "var(--violet-500)" : undefined)}
         {kpi("تصديرات BRD", k7.exportsBrd, k30.exportsBrd)}
         {kpi("تصديرات SRS", k7.exportsSrs, k30.exportsSrs)}
         <Kpi label="ملاحظات مفتوحة" value={num(data.openFeedback)} accent={data.openFeedback > 0 ? "var(--amber-600)" : undefined} />
@@ -1438,6 +1450,28 @@ function LaunchTab() {
                   </span>
                   <span style={{ font: "11px var(--font-mono)", color: "var(--text-subtle)", direction: "ltr" }}>{e.eventName}</span>
                   <span style={{ font: "var(--weight-semibold) 12.5px var(--font-mono)", color: "var(--text-strong)" }}>{num(e.count)}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </Card>
+
+        <Card>
+          <SectionTitle>آخر نقرات الترقية</SectionTitle>
+          {data.recentUpgrades.length === 0 ? (
+            <EmptyState text="لا نقرات ترقية بعد — ستظهر هنا فور اهتمام أول مستخدم." />
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              {data.recentUpgrades.map((u) => (
+                <div key={u.id} style={{ borderBottom: "1px solid var(--border-subtle)", paddingBottom: 8 }}>
+                  <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
+                    {u.plan && <Badge label={u.plan} bg="var(--teal-50)" fg="var(--teal-600)" />}
+                    <span style={{ font: "12px var(--font-sans)", color: "var(--text-strong)" }}>
+                      {UPGRADE_FROM_AR[u.from] ?? u.from ?? "—"}
+                    </span>
+                    <span style={{ font: "11px var(--font-sans)", color: "var(--text-subtle)", marginInlineStart: "auto" }}>{when(u.createdAt)}</span>
+                  </div>
+                  <div style={{ font: "11px var(--font-sans)", color: "var(--text-subtle)", direction: "ltr", textAlign: "end", marginTop: 2 }}>{u.email || "غير مسجل"}</div>
                 </div>
               ))}
             </div>

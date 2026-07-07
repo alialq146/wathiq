@@ -1,9 +1,10 @@
 "use client";
 
 import React from "react";
+import { whatsappUpgradeLink } from "@/lib/plans";
 import { useRouter } from "next/navigation";
 import { AIInsightPanel, Button, Card, Icon, PriorityLabel, StatusBadge } from "@/components/ds";
-import { saveExtractedRequirements, type RequirementInput } from "@/app/actions";
+import { saveExtractedRequirements, type RequirementInput, trackClientEvent } from "@/app/actions";
 import type { AnalysisResult } from "@/lib/analysis-types";
 
 type Phase = "idle" | "running" | "done" | "error";
@@ -136,9 +137,7 @@ export function AnalysisScreen({ initialMode = "text" }: { initialMode?: "text" 
     setFileError(null);
   };
 
-  const WHATSAPP =
-    "https://wa.me/966531800106?text=" +
-    encodeURIComponent("مرحبًا، وصلت إلى حد التحليلات في خطتي الحالية بمنصة وثّق وأرغب في الترقية.");
+  const WHATSAPP = whatsappUpgradeLink("زيادة حد التحليلات");
 
   const save = async () => {
     if (!result) return;
@@ -399,6 +398,7 @@ export function AnalysisScreen({ initialMode = "text" }: { initialMode?: "text" 
             <div style={{ display: "flex", gap: 10, flexWrap: "wrap", justifyContent: "center", marginTop: 12 }}>
               <a
                 href="/pricing"
+                onClick={() => void trackClientEvent("upgrade_clicked", { from: "quota_card" })}
                 style={{
                   display: "inline-flex", alignItems: "center", gap: 8, height: 44, padding: "0 20px",
                   borderRadius: "var(--radius-pill)", background: "var(--primary)", color: "#fff",
@@ -409,6 +409,7 @@ export function AnalysisScreen({ initialMode = "text" }: { initialMode?: "text" 
               </a>
               <a
                 href={WHATSAPP}
+                onClick={() => void trackClientEvent("upgrade_clicked", { from: "quota_card_whatsapp" })}
                 target="_blank"
                 rel="noopener noreferrer"
                 style={{

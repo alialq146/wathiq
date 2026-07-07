@@ -572,7 +572,11 @@ export function RequirementsScreen({ onOpen, onViewAnalysis, search = "", onClea
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(min(320px, 100%), 1fr))", gap: 16 }}>
           {list.map((r) => (
             <div key={r.id} className="wq-req-cell" style={{ position: "relative" }}>
-              <RequirementCard {...r} onClick={() => onOpen && onOpen(r)} />
+              <RequirementCard
+                {...r}
+                moduleName={r.moduleId ? (modules.find((m) => m.id === r.moduleId)?.name ?? (r.module || null)) : null}
+                onClick={() => onOpen && onOpen(r)}
+              />
               <div
                 className="wq-req-actions"
                 style={{ position: "absolute", bottom: 14, insetInlineEnd: 14, display: "flex", gap: 6 }}

@@ -30,6 +30,7 @@ import {
   applyImprovedRequirement,
   addOpenQuestion,
   appendRequirementNote,
+  trackClientEvent,
 } from "@/app/actions";
 import type { ReqAnalysisStatus } from "@/lib/data";
 import { useWorkspaceData } from "./WorkspaceDataContext";
@@ -1150,7 +1151,7 @@ function RequirementAnalysisPanel({ req, connected }: { req: Requirement; connec
           يمكنك الترقية للحصول على مساحة أكبر للمشاريع والتحليلات المتقدمة.
         </p>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "center", marginTop: 6 }}>
-          <a href="/pricing" style={{ display: "inline-flex", alignItems: "center", height: 36, padding: "0 14px", borderRadius: "var(--radius-pill)", background: "var(--primary)", color: "#fff", font: "var(--weight-semibold) 13px var(--font-sans)", textDecoration: "none" }}>عرض الباقات</a>
+          <a href="/pricing" onClick={() => void trackClientEvent("upgrade_clicked", { from: "assistant_limit" })} style={{ display: "inline-flex", alignItems: "center", height: 36, padding: "0 14px", borderRadius: "var(--radius-pill)", background: "var(--primary)", color: "#fff", font: "var(--weight-semibold) 13px var(--font-sans)", textDecoration: "none" }}>عرض الباقات</a>
           <button onClick={() => setLimited(false)} style={{ border: "none", background: "transparent", cursor: "pointer", color: "var(--text-subtle)", font: "13px var(--font-sans)" }}>إغلاق</button>
         </div>
         <span style={{ font: "11px/1.6 var(--font-sans)", color: "var(--text-subtle)" }}>

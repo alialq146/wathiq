@@ -4,6 +4,7 @@ import React from "react";
 import { StatusBadge, type RequirementStatus } from "./StatusBadge";
 import { PriorityLabel, type PriorityLevel } from "./PriorityLabel";
 import { ConfidenceMeter } from "./ConfidenceMeter";
+import { Icon } from "./Icon";
 
 export interface RequirementCardProps
   extends Omit<React.HTMLAttributes<HTMLDivElement>, "id"> {
@@ -15,6 +16,8 @@ export interface RequirementCardProps
   confidence?: number | null;
   criteria?: number;
   openQuestions?: number;
+  /** اسم وحدة المشروع — يظهر كشارة صغيرة على البطاقة إن كان المتطلب مرتبطًا بوحدة (v1.9.12). */
+  moduleName?: string | null;
   selected?: boolean;
   onClick?: () => void;
 }
@@ -33,6 +36,7 @@ export function RequirementCard({
   confidence,
   criteria,
   openQuestions,
+  moduleName,
   selected = false,
   onClick,
   style,
@@ -133,6 +137,18 @@ export function RequirementCard({
         {openQuestions != null && openQuestions > 0 && (
           <span style={{ display: "inline-flex", alignItems: "center", gap: 5, color: "var(--amber-600)" }}>
             ● {openQuestions} أسئلة مفتوحة
+          </span>
+        )}
+        {moduleName && (
+          <span
+            style={{
+              display: "inline-flex", alignItems: "center", gap: 5, marginInlineStart: "auto",
+              color: "var(--teal-700)", background: "var(--teal-50)",
+              border: "1px solid var(--teal-100)", borderRadius: "var(--radius-pill)",
+              padding: "2px 9px", font: "var(--weight-medium) var(--text-xs)/1 var(--font-sans)",
+            }}
+          >
+            <Icon name="layout-grid" size={11} color="var(--teal-600)" /> {moduleName}
           </span>
         )}
       </div>
