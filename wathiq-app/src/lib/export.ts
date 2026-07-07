@@ -18,6 +18,7 @@ import type {
   OpenQuestion,
   Project,
 } from "./data";
+import { AI_DISCLOSURE } from "./report-config";
 
 /* ---------------- inputs ---------------- */
 
@@ -389,7 +390,7 @@ export function buildReportBody(ctx: ReportContext, opts: ReportOptions): string
   ${recommendationsHTML(s)}
   <section class="closing">
     <p>تم إنشاء هذا التقرير بواسطة منصة وثّق لمساعدة الفرق على تحسين جودة المتطلبات قبل بدء التنفيذ.</p>
-    ${hasAI ? `<p class="muted">تم إنشاء بعض التحليلات بمساعدة نماذج ذكاء اصطناعي متقدمة.</p>` : ""}
+    ${hasAI ? `<p class="muted">${esc(AI_DISCLOSURE)}</p>` : ""}
   </section>
   <div class="pfoot">وثّق · WATHIQ — تقرير تحليل المتطلبات</div>`;
 }
@@ -493,26 +494,6 @@ export function projectSlug(ctx: ReportContext): string {
   return ctx.project?.code?.replace(/[^\w-]/g, "") || "report";
 }
 
-export function exportPDF(ctx: ReportContext, opts: ReportOptions): void {
-  const win = window.open("", "_blank");
-  if (!win) {
-    window.alert("منع المتصفح فتح نافذة الطباعة. اسمح بالنوافذ المنبثقة ثم أعد المحاولة.");
-    return;
-  }
-  const html = `<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8">
-    <title>تقرير تحليل المتطلبات — ${esc(ctx.project?.name ?? "وثّق")}</title><style>${REPORT_CSS}
-    .bar { position: sticky; top: 0; background: #0f213f; color: #fff; padding: 10px 16px; display: flex; gap: 12px; align-items: center; z-index: 5; }
-    .bar button { font: inherit; background: #2563eb; color: #fff; border: none; padding: 8px 16px; border-radius: 8px; cursor: pointer; }
-    </style></head><body>
-    <div class="bar no-print"><b>التقرير جاهز</b><button onclick="window.print()">طباعة / حفظ PDF</button><span>اختر «حفظ كـ PDF» من وجهة الطابعة.</span></div>
-    ${buildReportBody(ctx, opts)}
-    <script>window.onload=function(){setTimeout(function(){window.print();},400);};<\/script>
-    </body></html>`;
-  win.document.open();
-  win.document.write(html);
-  win.document.close();
-}
-
 export function triggerDownload(blob: Blob, filename: string): void {
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
@@ -522,18 +503,6 @@ export function triggerDownload(blob: Blob, filename: string): void {
   a.click();
   document.body.removeChild(a);
   setTimeout(() => URL.revokeObjectURL(url), 1000);
-}
-
-/** Word opens this HTML-based .doc fully editable (headings, tables, badges). */
-export function exportWord(ctx: ReportContext, opts: ReportOptions): void {
-  const html = `<!doctype html><html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40" lang="ar" dir="rtl"><head><meta charset="utf-8"><title>تقرير تحليل المتطلبات</title><style>${REPORT_CSS}</style></head><body>${buildReportBody(
-    ctx,
-    opts
-  )}</body></html>`;
-  triggerDownload(
-    new Blob(["﻿", html], { type: "application/msword;charset=utf-8" }),
-    `wathiq-report-${projectSlug(ctx)}.doc`
-  );
 }
 
 function csvCell(v: string | number | null | undefined): string {

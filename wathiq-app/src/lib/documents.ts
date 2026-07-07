@@ -409,6 +409,7 @@ export function buildSRSBody(ctx: ReportContext, opts: DocOptions): string {
   <section class="block">
     <h2>٦. حالات الاستخدام (Use Cases)</h2>
     <p class="muted">حالات استخدام مقترحة مشتقة من المتطلبات الموثقة — تحتاج مراجعة واعتماد:</p>
+    ${frs.length === 0 ? `<p class="todo">${esc(NOT_AVAILABLE)}</p>` : ""}
     ${frs
       .slice(0, opts.detailed ? frs.length : 6)
       .map(

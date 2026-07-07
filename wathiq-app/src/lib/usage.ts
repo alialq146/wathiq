@@ -62,9 +62,11 @@ function nextMonth(from: Date): Date {
 export async function resolveQuota(userId: string): Promise<Quota | null> {
   const user = await prisma.user.findUnique({
     where: { id: userId },
-    select: { plan: true, analysisCount: true, analysisLimit: true, resetDate: true, limitOverride: true },
+    select: { plan: true, analysisCount: true, analysisLimit: true, resetDate: true, limitOverride: true, accountStatus: true },
   });
-  if (!user) return null;
+  // أمان: جلسة موقّعة لمستخدم محذوف أو معطَّل لا تمنح أي حصة تحليل —
+  // المسارات تعامل null كرفض، فلا تحليل غير محسوب ولا تجاوز للتعطيل.
+  if (!user || user.accountStatus === "DISABLED") return null;
 
   const now = new Date();
   let count = user.analysisCount;

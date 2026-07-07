@@ -25,14 +25,15 @@ export async function POST(req: Request) {
     if (!user) return NextResponse.json({ ok: false, error: "unauthorized" });
     if (user.uid !== "owner") {
       const quota = await resolveQuota(user.uid);
-      if (quota) {
-        model = quota.model;
-        if (quota.exceeded) {
-          await logAiUsage({ userId: user.uid, modelUsed: model, status: "BLOCKED_LIMIT" });
-          return NextResponse.json({ ok: false, error: "limit", limit: quota.limit });
-        }
-        userId = user.uid;
+      // أمان: جلسة لمستخدم غير موجود أو معطَّل تُرفض — لا مسار تحليل
+      // بلا قياس ولا قراءة متطلب خارج نطاق الملكية.
+      if (!quota) return NextResponse.json({ ok: false, error: "unauthorized" });
+      model = quota.model;
+      if (quota.exceeded) {
+        await logAiUsage({ userId: user.uid, modelUsed: model, status: "BLOCKED_LIMIT" });
+        return NextResponse.json({ ok: false, error: "limit", limit: quota.limit });
       }
+      userId = user.uid;
     }
   }
 

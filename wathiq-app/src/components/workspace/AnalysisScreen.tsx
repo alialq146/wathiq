@@ -71,7 +71,7 @@ export function AnalysisScreen({ initialMode = "text" }: { initialMode?: "text" 
   }, []);
 
   const ERRORS: Record<string, string> = {
-    "no-key": "ميزة التحليل تتطلب ربط مفتاح Anthropic API في إعدادات الموقع (متغيّر ANTHROPIC_API_KEY).",
+    "no-key": "ميزة التحليل غير مفعّلة في هذا الموقع بعد — تواصل مع مسؤول المنصة.",
     "too-short": "النص قصير جدًا — الصق وثيقة متطلبات أطول.",
     "too-large": "حجم الملف كبير جدًا — استخدم ملفًا أصغر من ٣ ميغابايت.",
     failed: "تعذّر التحليل. حاول مرة أخرى.",
@@ -471,8 +471,9 @@ export function AnalysisScreen({ initialMode = "text" }: { initialMode?: "text" 
                 <div style={{ font: "var(--weight-semibold) 15px/1.2 var(--font-sans)", color: "var(--text-strong)" }}>
                   {phase === "done" ? "اكتمل التحليل" : "جارٍ التحليل بالذكاء الاصطناعي…"}
                 </div>
-                <div style={{ font: "12px var(--font-mono)", color: "var(--text-subtle)", direction: "ltr" }}>
-                  claude-opus-4-8
+                {/* لا نعرض اسم النموذج للمستخدم — يختلف حسب الباقة ويُدار من الخادم. */}
+                <div style={{ font: "12px var(--font-sans)", color: "var(--text-subtle)" }}>
+                  مساعد وثّق
                 </div>
               </div>
               <span style={{ font: "var(--weight-semibold) 14px/1 var(--font-mono)", color: "var(--teal-600)", direction: "ltr" }}>

@@ -1004,7 +1004,7 @@ function RequirementAnalysisPanel({ req, connected }: { req: Requirement; connec
       } else {
         setError(
           data.error === "no-key"
-            ? "التحليل يتطلب ربط مفتاح Anthropic API في إعدادات الموقع."
+            ? "ميزة التحليل غير مفعّلة في هذا الموقع بعد — تواصل مع مسؤول المنصة."
             : data.error === "no-db"
             ? "التحليل يتطلب قاعدة بيانات — يعمل على الموقع المنشور فقط."
             : "تعذر تشغيل مساعد وثّق. حاول مرة أخرى."
