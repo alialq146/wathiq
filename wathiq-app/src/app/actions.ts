@@ -246,7 +246,8 @@ export async function saveRequirement(
       const projectId = await activeProjectId(actor.uid);
       // أمان: الوحدة تُقبل فقط إذا كانت للمستخدم نفسه وفي المشروع النشط.
       data.moduleId = await validModuleId(data.moduleId, actor.uid, projectId);
-      const max = await prisma.requirement.aggregate({ _max: { order: true } });
+      // الترتيب داخل نطاق المستخدم/المشروع نفسه — لا معنى (ولا داعي) لقيمة عالمية.
+      const max = await prisma.requirement.aggregate({ _max: { order: true }, where: { ...ownedBy(actor.uid), ...(projectId ? { projectId } : {}) } });
       await prisma.requirement.create({
         data: { id, ownerId: actor.uid, projectId, ...data, order: (max._max.order ?? -1) + 1 },
       });

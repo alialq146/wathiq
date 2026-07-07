@@ -3,7 +3,6 @@
 import React from "react";
 import { useRouter } from "next/navigation";
 import {
-  AIInsightPanel,
   Badge,
   Button,
   ConfidenceMeter,
@@ -790,52 +789,6 @@ const STATUS_ACTIONS: StatusAction[] = [
   },
 ];
 
-/**
- * Build the AI-insight panel content from the requirement's real data, so the
- * panel reflects this specific requirement instead of static copy.
- */
-function deriveInsights(
-  req: Requirement,
-  criteria: AcceptanceCriterion[],
-  rules: BusinessRule[],
-  questions: OpenQuestion[]
-) {
-  const done = criteria.filter((c) => c.done).length;
-  const undone = criteria.filter((c) => !c.done);
-  const unanswered = questions.filter((q) => !q.answer);
-
-  const summary =
-    criteria.length + rules.length + questions.length === 0
-      ? "لم تُستخرَج عناصر لهذا المتطلب بعد. ابدأ بإضافة معايير القبول أو أعد تحليل المستند."
-      : `يضم هذا المتطلب ${criteria.length} معيار قبول (${done} منجز) و${rules.length} قاعدة عمل و${questions.length} سؤالًا مفتوحًا.`;
-
-  const reasoning: string[] = [];
-  if (criteria.length > 0) {
-    reasoning.push(`اكتمل ${done} من ${criteria.length} من معايير القبول.`);
-  }
-  if (questions.length > 0) {
-    reasoning.push(`${unanswered.length} من ${questions.length} من الأسئلة المفتوحة بلا إجابة.`);
-  }
-  if (rules.length > 0) {
-    reasoning.push(`ترتبط ${rules.length} قاعدة عمل بهذا المتطلب.`);
-  }
-  if (reasoning.length === 0) {
-    reasoning.push("لا توجد عناصر تحليل بعد لهذا المتطلب.");
-  }
-
-  const recommendations: string[] = [];
-  undone.slice(0, 2).forEach((c) => recommendations.push(`أكمل معيار القبول ${c.id}.`));
-  unanswered.slice(0, 2).forEach((q) => recommendations.push(`أجب عن السؤال الموجّه إلى ${q.to}.`));
-  if (recommendations.length === 0 && (criteria.length > 0 || questions.length > 0)) {
-    recommendations.push("جميع العناصر مكتملة — المتطلب جاهز لطلب الاعتماد.");
-  }
-
-  // Confidence: prefer the stored value; otherwise approximate from completion.
-  const ratio = criteria.length ? Math.round((done / criteria.length) * 100) : 0;
-  const confidence = req.confidence ?? (criteria.length ? ratio : undefined);
-
-  return { summary, reasoning, recommendations, confidence };
-}
 
 const REQ_STATUS_META: Record<ReqAnalysisStatus, { label: string; fg: string; bg: string }> = {
   ready: { label: "جاهز", fg: "var(--status-success-fg)", bg: "var(--status-success-bg)" },

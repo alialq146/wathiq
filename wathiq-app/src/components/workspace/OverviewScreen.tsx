@@ -165,7 +165,7 @@ const STATUS_META = [
 /* Project overview — BA-specific readiness view, computed from the user's
    real data. Shows an onboarding empty state for brand-new workspaces. */
 export function OverviewScreen({ onOpen, onNewAnalysis, onNewProject, onGoToRequirements }: OverviewScreenProps) {
-  const { requirements, acceptanceCriteria, openQuestions, usage, activeProject } = useWorkspaceData();
+  const { requirements, acceptanceCriteria, usage, activeProject } = useWorkspaceData();
 
   const total = requirements.length;
   const projectName = activeProject?.name ?? "مساحة العمل";

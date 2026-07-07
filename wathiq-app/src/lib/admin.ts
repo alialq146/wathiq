@@ -22,6 +22,8 @@ export interface AdminUser {
  * Resolve the current session to a SUPER_ADMIN user, or null.
  * Null means: no session, owner-mode session, no database, or a
  * non-admin role — callers must refuse in all of those cases.
+ *
+ * كل مسارات الأدمن تعتمد على هذا الفحص في الخادم — إخفاء الواجهة وحده لا يحمي.
  */
 export async function requireSuperAdmin(): Promise<AdminUser | null> {
   if (!hasDatabase()) return null;
