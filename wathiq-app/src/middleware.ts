@@ -21,9 +21,13 @@ export async function middleware(req: NextRequest) {
     pathname === "/" ||
     pathname.startsWith("/login") ||
     pathname.startsWith("/signup") ||
+    pathname.startsWith("/forgot-password") ||
+    pathname.startsWith("/reset-password") ||
     pathname.startsWith("/pricing") ||
     pathname.startsWith("/privacy") ||
     pathname.startsWith("/terms") ||
+    pathname.startsWith("/security") ||
+    pathname.startsWith("/samples") ||
     pathname.startsWith("/api/auth") ||
     pathname === "/api/health"
   ) {

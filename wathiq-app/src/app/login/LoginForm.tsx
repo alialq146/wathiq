@@ -113,6 +113,11 @@ export function LoginForm({ next, showSignup = false }: { next: string; showSign
           required
           style={{ ...field, textAlign: "start" }}
         />
+        <div style={{ textAlign: "start", marginTop: 7 }}>
+          <a href="/forgot-password" style={{ color: "var(--text-link)", textDecoration: "none", font: "12.5px var(--font-sans)" }}>
+            نسيت كلمة المرور؟
+          </a>
+        </div>
       </div>
 
       {error && (

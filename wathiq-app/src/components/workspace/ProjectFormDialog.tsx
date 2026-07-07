@@ -123,6 +123,9 @@ export function ProjectFormDialog({ open, mode, initial, onClose, onSaved }: Pro
                 <Icon name="message-circle" size={18} color="#06231A" /> التواصل للترقية
               </a>
             </div>
+            <div style={{ font: "11.5px/1.6 var(--font-sans)", color: "var(--text-subtle)" }}>
+              الترقية حاليًا بالتواصل المباشر، ويتم التفعيل خلال 24 ساعة عمل.
+            </div>
           </div>
         ) : (
           <>

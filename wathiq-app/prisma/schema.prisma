@@ -29,6 +29,20 @@ model User {
   createdAt          DateTime  @default(now())
 }
 
+/// رمز استعادة كلمة المرور — يُخزَّن كبصمة (hash) فقط، صالح ٦٠ دقيقة،
+/// ويُستخدم مرة واحدة (usedAt). الرمز الخام لا يُحفظ ولا يُسجَّل أبدًا.
+model PasswordResetToken {
+  id        String    @id @default(cuid())
+  userId    String
+  tokenHash String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
 /// One row per AI analysis attempt (success or blocked) — for cost/usage
 /// monitoring. Token/cost fields are nullable when the model omits usage.
 model AiUsage {

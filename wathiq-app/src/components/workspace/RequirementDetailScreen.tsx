@@ -1039,6 +1039,9 @@ function RequirementAnalysisPanel({ req, connected }: { req: Requirement; connec
           <a href="/pricing" style={{ display: "inline-flex", alignItems: "center", height: 36, padding: "0 14px", borderRadius: "var(--radius-pill)", background: "var(--primary)", color: "#fff", font: "var(--weight-semibold) 13px var(--font-sans)", textDecoration: "none" }}>عرض الباقات</a>
           <button onClick={() => setLimited(false)} style={{ border: "none", background: "transparent", cursor: "pointer", color: "var(--text-subtle)", font: "13px var(--font-sans)" }}>إغلاق</button>
         </div>
+        <span style={{ font: "11px/1.6 var(--font-sans)", color: "var(--text-subtle)" }}>
+          الترقية حاليًا بالتواصل المباشر، ويتم التفعيل خلال 24 ساعة عمل.
+        </span>
       </div>
     );
   }

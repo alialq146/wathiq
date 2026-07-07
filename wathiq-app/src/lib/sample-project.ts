@@ -1,0 +1,195 @@
+/**
+ * مشروع تجريبي ثابت لنماذج الوثائق العامة (/samples/brd و /samples/srs).
+ *
+ * - بيانات وهمية بالكامل باسم «نظام إدارة طلبات العملاء» — لا بيانات حقيقية.
+ * - لا يعتمد على قاعدة البيانات ولا يستدعي الذكاء الاصطناعي.
+ * - بعض الحقول متروكة ناقصة عمدًا ليرى الزائر كيف تُوسم النواقص رسميًا
+ *   («لم يتم تحديده بعد» / «يحتاج استكمال من صاحب المصلحة») بدل اختراعها.
+ */
+
+import type { ReportContext } from "./export";
+
+export const SAMPLE_CONTEXT: ReportContext = {
+  project: {
+    id: "PRJ-DEMO",
+    name: "نظام إدارة طلبات العملاء",
+    code: "CRM-DEMO",
+    description:
+      "نظام داخلي لاستقبال طلبات العملاء ومتابعة حالتها من الاستلام حتى الإغلاق، مع إشعارات وتقارير شهرية للإدارة.",
+    domain: "خدمة العملاء",
+    client: "شركة تجريبية للتوضيح",
+    status: "active",
+    color: null,
+    icon: null,
+  },
+  userName: "نموذج تجريبي — منصة وثّق",
+  requirements: [
+    {
+      id: "FR-001",
+      title: "تسجيل طلب عميل جديد",
+      description:
+        "يجب أن يتيح النظام لموظف خدمة العملاء تسجيل طلب جديد يتضمن بيانات العميل (الاسم، رقم الجوال)، تصنيف الطلب من قائمة معتمدة، ووصفًا نصيًا، على أن يُنشأ رقم مرجعي فريد تلقائيًا ويظهر للموظف فور الحفظ.",
+      status: "approved",
+      priority: "critical",
+      type: "وظيفي",
+      confidence: 88,
+      criteria: 3,
+      openQuestions: 1,
+      module: "الطلبات",
+      stakeholders: ["مدير خدمة العملاء"],
+      source: "ورشة عمل",
+      assignee: "سارة العتيبي",
+      version: 2,
+      analysis: {
+        qualityScore: 88,
+        status: "ready",
+        summary: "متطلب واضح ومكتمل العناصر الأساسية وقابل للاختبار، مع نقطة واحدة تحتاج تأكيدًا حول صيغة الرقم المرجعي.",
+        ambiguity: {
+          vagueWords: [],
+          missingInfo: ["صيغة الرقم المرجعي (طول/بادئة) لم تُحدد"],
+          assumptions: ["يُفترض أن تصنيفات الطلبات تُدار من شاشة إعدادات"],
+          risks: [],
+        },
+        stakeholderQuestions: ["ما الصيغة المعتمدة للرقم المرجعي؟ وهل تتضمن سنة الإنشاء؟"],
+        acceptanceCriteria: [],
+        smart: {
+          specific: { rating: "pass", reason: "الوظيفة والحقول المطلوبة محددة بوضوح." },
+          measurable: { rating: "pass", reason: "نجاح التسجيل وظهور الرقم المرجعي قابلان للتحقق." },
+          achievable: { rating: "pass", reason: "نمط قياسي في أنظمة إدارة الطلبات." },
+          relevant: { rating: "pass", reason: "جوهر عمل النظام." },
+          testable: { rating: "pass", reason: "لكل عنصر معيار قبول قابل للاختبار." },
+        },
+        improvedVersion:
+          "يجب أن يتيح النظام لموظف خدمة العملاء تسجيل طلب جديد بإدخال اسم العميل ورقم جواله واختيار تصنيف من القائمة المعتمدة وكتابة وصف نصي، وأن يولّد رقمًا مرجعيًا فريدًا [صيغته يُحدد لاحقًا] يظهر للموظف خلال ثانيتين من الحفظ.",
+      },
+    },
+    {
+      id: "FR-002",
+      title: "إشعارات تحديث حالة الطلب",
+      description: "يجب أن يرسل النظام إشعارًا سريعًا للعميل عند أي تغيير مهم في حالة طلبه.",
+      status: "needs_info",
+      priority: "high",
+      type: "وظيفي",
+      confidence: 58,
+      criteria: 0,
+      openQuestions: 2,
+      module: "الإشعارات",
+      stakeholders: ["مدير خدمة العملاء", "فريق التشغيل"],
+      source: "اجتماع",
+      assignee: null,
+      version: 1,
+      analysis: {
+        qualityScore: 58,
+        status: "needs_info",
+        summary: "الفكرة واضحة لكن المتطلب يفتقر لتعريف «سريع» و«مهم» وقنوات الإرسال — لا يمكن اختباره بصيغته الحالية.",
+        ambiguity: {
+          vagueWords: ["سريعًا", "مهم"],
+          missingInfo: ["قنوات الإشعار (رسالة نصية/بريد/تطبيق)", "الحالات التي تستوجب إشعارًا"],
+          assumptions: ["يُفترض توفر رقم جوال مؤكد لكل عميل"],
+          risks: ["اعتماد محتمل على مزود خارجي للرسائل النصية"],
+        },
+        stakeholderQuestions: [
+          "ما القنوات المطلوبة للإشعار؟ (رسالة نصية، بريد، إشعار تطبيق)",
+          "ما الحالات التي تُعد تغييرًا مهمًا يستوجب إشعارًا؟",
+        ],
+        acceptanceCriteria: [],
+        smart: {
+          specific: { rating: "partial", reason: "الوظيفة معروفة لكن القنوات والحالات غير محددة." },
+          measurable: { rating: "fail", reason: "«سريعًا» غير معرّف بزمن قابل للقياس." },
+          achievable: { rating: "pass", reason: "قدرة قياسية متى ما حُددت القنوات." },
+          relevant: { rating: "pass", reason: "يرفع رضا العملاء ويقلل الاستفسارات." },
+          testable: { rating: "fail", reason: "لا يمكن كتابة اختبار دون تعريف الزمن والحالات." },
+        },
+        improvedVersion:
+          "يجب أن يرسل النظام إشعارًا للعميل عبر [القنوات يُحدد لاحقًا] خلال [مدة يُحدد لاحقًا] من تغيّر حالة الطلب إلى إحدى الحالات المعتمدة [تُحدد لاحقًا]، مع تسجيل كل إشعار ونتيجته في سجل النظام.",
+      },
+    },
+    {
+      id: "FR-003",
+      title: "تقارير شهرية للإدارة",
+      description:
+        "يجب أن يوفر النظام تقريرًا شهريًا للإدارة يعرض عدد الطلبات المستلمة والمغلقة ومتوسط زمن الإغلاق لكل تصنيف.",
+      status: "draft",
+      priority: "medium",
+      type: "وظيفي",
+      confidence: null,
+      criteria: 0,
+      openQuestions: 0,
+      module: "التقارير",
+      stakeholders: [],
+      source: "بريد",
+      assignee: null,
+      version: 1,
+      analysis: null,
+    },
+    {
+      id: "FR-004",
+      title: "بحث وتصفية الطلبات",
+      description:
+        "يجب أن يتيح النظام للموظف البحث في الطلبات بالرقم المرجعي أو اسم العميل أو رقم الجوال، مع تصفية النتائج بالحالة والتصنيف والفترة الزمنية.",
+      status: "review",
+      priority: "high",
+      type: "وظيفي",
+      confidence: null,
+      criteria: 2,
+      openQuestions: 0,
+      module: "الطلبات",
+      stakeholders: ["موظفو خدمة العملاء"],
+      source: "ورشة عمل",
+      assignee: "علي القحطاني",
+      version: 1,
+      analysis: null,
+    },
+    {
+      id: "NFR-001",
+      title: "زمن استجابة شاشات النظام",
+      description:
+        "يجب ألا يتجاوز زمن تحميل أي شاشة رئيسية ثانيتين، وألا يتجاوز زمن تنفيذ البحث ثلاث ثوانٍ عند وجود ١٠٠ ألف طلب في القاعدة.",
+      status: "approved",
+      priority: "high",
+      type: "غير وظيفي",
+      confidence: null,
+      criteria: 0,
+      openQuestions: 0,
+      module: "عام",
+      stakeholders: ["فريق التشغيل"],
+      source: "وثيقة",
+      assignee: null,
+      version: 1,
+      analysis: null,
+    },
+    {
+      id: "CST-001",
+      title: "الاستضافة داخل بيئة الجهة",
+      description: "يجب أن يُستضاف النظام داخل البنية التحتية المعتمدة لدى الجهة، ولا يُسمح بنقل بيانات العملاء خارجها.",
+      status: "approved",
+      priority: "critical",
+      type: "قيد",
+      confidence: null,
+      criteria: 0,
+      openQuestions: 0,
+      module: "عام",
+      stakeholders: ["إدارة تقنية المعلومات"],
+      source: "وثيقة",
+      assignee: null,
+      version: 1,
+      analysis: null,
+    },
+  ],
+  acceptanceCriteria: [
+    { id: "AC-01", requirementId: "FR-001", text: "عند حفظ طلب مكتمل البيانات، يظهر رقم مرجعي فريد خلال ثانيتين.", done: false, ai: true },
+    { id: "AC-02", requirementId: "FR-001", text: "لا يمكن حفظ الطلب دون اسم العميل ورقم الجوال والتصنيف.", done: false, ai: true },
+    { id: "AC-03", requirementId: "FR-001", text: "يُسجَّل وقت الإنشاء واسم الموظف تلقائيًا مع كل طلب.", done: false, ai: true },
+    { id: "AC-04", requirementId: "FR-004", text: "البحث بالرقم المرجعي يعيد الطلب المطابق فقط.", done: false, ai: false },
+    { id: "AC-05", requirementId: "FR-004", text: "التصفية بالحالة والفترة تعمل معًا دون تعارض.", done: false, ai: false },
+  ],
+  businessRules: [
+    { id: "BR-01", requirementId: "FR-001", text: "لا يُقبل تسجيل طلب لعميل دون رقم جوال سعودي صالح.", source: "سياسة خدمة العملاء" },
+    { id: "BR-02", requirementId: "FR-002", text: "تُحفظ سجلات الإشعارات المرسلة لمدة لا تقل عن ١٢ شهرًا.", source: "متطلب تنظيمي" },
+  ],
+  openQuestions: [
+    { id: "Q-01", requirementId: "FR-001", text: "ما الصيغة المعتمدة للرقم المرجعي؟ وهل تتضمن سنة الإنشاء؟", to: "مدير خدمة العملاء", ai: true, answer: null },
+    { id: "Q-02", requirementId: "FR-002", text: "ما القنوات المطلوبة للإشعار؟ (رسالة نصية، بريد، إشعار تطبيق)", to: "مدير خدمة العملاء", ai: true, answer: null },
+    { id: "Q-03", requirementId: "FR-002", text: "ما الحالات التي تُعد تغييرًا مهمًا يستوجب إشعارًا؟", to: "فريق التشغيل", ai: true, answer: null },
+  ],
+};

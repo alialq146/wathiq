@@ -385,14 +385,15 @@ export function LandingPage() {
             <h4>روابط سريعة</h4>
             <a href="#home">الرئيسية</a>
             <a href="#features">المميزات</a>
-            <a href="#how">كيف يعمل</a>
+            <a href="/samples/brd">نموذج وثيقة BRD</a>
+            <a href="/samples/srs">نموذج وثيقة SRS</a>
             <a href="/login">تسجيل الدخول</a>
           </div>
 
           <div className="wl-foot-col">
             <h4>الدعم</h4>
-            <a href="#faq">مركز المساعدة</a>
             <a href="#faq">الأسئلة الشائعة</a>
+            <a href="/security">الأمان والخصوصية</a>
             <a href="/privacy">سياسة الخصوصية</a>
             <a href="/terms">شروط الاستخدام</a>
           </div>
