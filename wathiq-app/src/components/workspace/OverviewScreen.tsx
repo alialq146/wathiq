@@ -5,6 +5,7 @@ import { Badge, Button, Card, ConfidenceMeter, Icon, PriorityLabel, StatusBadge 
 import { type Requirement } from "@/lib/data";
 import { getPlan } from "@/lib/plans";
 import { useWorkspaceData } from "./WorkspaceDataContext";
+import { ProjectContextSection } from "./ProjectContextSection";
 import type { UsageInfo } from "@/lib/workspace-data";
 
 export interface OverviewScreenProps {
@@ -484,6 +485,11 @@ export function OverviewScreen({ onOpen, onNewAnalysis }: OverviewScreenProps) {
             ))}
           </div>
         </Card>
+      </div>
+
+      {/* سياق المشروع ووحداته (v1.9.9) — اختياريان بالكامل */}
+      <div style={{ marginTop: 20 }}>
+        <ProjectContextSection />
       </div>
     </div>
   );

@@ -80,6 +80,32 @@ model Project {
   order       Int      @default(0)
   createdAt   DateTime @default(now())
 
+  // سياق المشروع (اختياري بالكامل) — يحسّن دقة مساعد وثّق ووثائق BRD/SRS.
+  // المشاريع القديمة تبقى بقيم فارغة وتعمل طبيعيًا.
+  projectIdea    String?
+  projectGoal    String?
+  targetUsers    String?
+  projectScope   String?
+  outOfScope     String?
+  relatedSystems String?
+  constraints    String?
+
+  @@index([ownerId])
+}
+
+/// وحدة داخل مشروع (اختيارية) — لتنظيم متطلبات المشاريع الكبيرة.
+/// المتطلب يرتبط بوحدة عبر Requirement.moduleId (nullable).
+model ProjectModule {
+  id          String   @id @default(cuid())
+  ownerId     String?
+  projectId   String
+  name        String
+  description String?
+  order       Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([projectId])
   @@index([ownerId])
 }
 
@@ -101,11 +127,13 @@ model Requirement {
   source        String? // مصدر المتطلب: عميل | اجتماع | وثيقة | بريد | ورشة عمل | أخرى
   assignee      String? // مالك المتطلب / المسؤول عنه
   version       Int      @default(1) // إصدار المتطلب — يرفعه المستخدم يدويًا عند تغيير جوهري
+  moduleId      String? // وحدة المشروع (اختيارية) — null للمتطلبات العامة والقديمة
   analysis      Json?
   order         Int      @default(0)
 
   @@index([ownerId])
   @@index([projectId])
+  @@index([moduleId])
 }
 
 model AcceptanceCriterion {

@@ -12,6 +12,7 @@ import {
   type OpenQuestion,
   type AuditEvent,
   type Project,
+  type ProjectModule,
   type RequirementAnalysis,
 } from "./data";
 import { analysisLimitFor } from "./plans";
@@ -32,6 +33,8 @@ export interface WorkspaceData {
   auditEvents: AuditEvent[];
   projects: Project[];
   activeProject: Project | null;
+  /** وحدات المشروع النشط (قد تكون فارغة — الوحدات اختيارية). */
+  modules: ProjectModule[];
   usage: UsageInfo | null;
   source: "database" | "fallback";
 }
@@ -56,6 +59,7 @@ const FALLBACK: WorkspaceData = {
   auditEvents: AUDIT_EVENTS,
   projects: [FALLBACK_PROJECT],
   activeProject: FALLBACK_PROJECT,
+  modules: [],
   usage: null,
   source: "fallback",
 };
@@ -63,10 +67,17 @@ const FALLBACK: WorkspaceData = {
 function toProject(p: {
   id: string; name: string; code: string; description: string | null;
   domain: string | null; client: string | null; status: string; color: string | null; icon: string | null;
+  projectIdea?: string | null; projectGoal?: string | null; targetUsers?: string | null;
+  projectScope?: string | null; outOfScope?: string | null; relatedSystems?: string | null;
+  constraints?: string | null;
 }): Project {
   return {
     id: p.id, name: p.name, code: p.code, description: p.description,
     domain: p.domain, client: p.client, status: p.status, color: p.color, icon: p.icon,
+    projectIdea: p.projectIdea ?? null, projectGoal: p.projectGoal ?? null,
+    targetUsers: p.targetUsers ?? null, projectScope: p.projectScope ?? null,
+    outOfScope: p.outOfScope ?? null, relatedSystems: p.relatedSystems ?? null,
+    constraints: p.constraints ?? null,
   };
 }
 
@@ -117,6 +128,7 @@ export async function getWorkspaceData(
         ...mapEntities(requirements, acceptanceCriteria, businessRules, openQuestions, auditEvents),
         projects: [FALLBACK_PROJECT],
         activeProject: FALLBACK_PROJECT,
+        modules: [],
         usage: null,
         source: "database",
       };
@@ -140,19 +152,24 @@ export async function getWorkspaceData(
 
     const scope = active ? { ownerId: userId, projectId: active.id } : { ownerId: userId, projectId: "__none__" };
 
-    const [requirements, acceptanceCriteria, businessRules, openQuestions, auditEvents] =
+    const [requirements, acceptanceCriteria, businessRules, openQuestions, auditEvents, modulesRaw] =
       await Promise.all([
         prisma.requirement.findMany({ where: scope, orderBy: { order: "asc" } }),
         prisma.acceptanceCriterion.findMany({ where: scope, orderBy: { order: "asc" } }),
         prisma.businessRule.findMany({ where: scope, orderBy: { order: "asc" } }),
         prisma.openQuestion.findMany({ where: scope, orderBy: { order: "asc" } }),
         prisma.auditEvent.findMany({ where: scope, orderBy: { createdAt: "desc" }, take: 200 }),
+        // وحدات المشروع النشط — نفس نطاق الملكية (لا وحدات مستخدم آخر أبدًا).
+        active
+          ? prisma.projectModule.findMany({ where: { ownerId: userId, projectId: active.id }, orderBy: { order: "asc" } })
+          : Promise.resolve([]),
       ]);
 
     return {
       ...mapEntities(requirements, acceptanceCriteria, businessRules, openQuestions, auditEvents),
       projects,
       activeProject: active,
+      modules: modulesRaw.map((m) => ({ id: m.id, projectId: m.projectId, name: m.name, description: m.description ?? null })),
       usage: user
         ? {
             plan: user.plan,
@@ -195,6 +212,7 @@ function mapEntities(
       assignee: (r.assignee as string | null) ?? null,
       version: (r.version as number | undefined) ?? 1,
       projectId: (r.projectId as string | null) ?? null,
+      moduleId: (r.moduleId as string | null) ?? null,
       analysis: (r.analysis as RequirementAnalysis | null) ?? null,
     })),
     acceptanceCriteria: acceptanceCriteria.map((c) => ({

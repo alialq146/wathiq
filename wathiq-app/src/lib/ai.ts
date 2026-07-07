@@ -302,6 +302,67 @@ export interface RequirementForAnalysis {
   type?: string | null;
   stakeholders?: string[];
   notes?: string | null;
+  /** كتلة سياق جاهزة (مشروع + وحدة) يبنيها المسار في الخادم — اختيارية. */
+  contextBlock?: string | null;
+}
+
+/* ------------------------------------------------------------------
+   سياق المشروع والوحدة (v1.9.9): يُبنى في الخادم من بيانات مملوكة
+   للمستخدم فقط، ويُمرَّر للنموذج لتحسين الدقة — غيابه لا يفشل شيئًا،
+   والنموذج ممنوع من اختراع سياق (BASE_RULES).
+   ------------------------------------------------------------------ */
+export interface ProjectContextForAI {
+  projectIdea?: string | null;
+  projectGoal?: string | null;
+  targetUsers?: string | null;
+  projectScope?: string | null;
+  outOfScope?: string | null;
+  relatedSystems?: string | null;
+  constraints?: string | null;
+}
+
+export interface ModuleContextForAI {
+  name: string;
+  description?: string | null;
+}
+
+const CTX_FIELD_MAX = 400; // قص كل حقل سياق — توفير رموز
+
+export function buildContextBlock(
+  project?: ProjectContextForAI | null,
+  module?: ModuleContextForAI | null
+): string {
+  const f = (v: string | null | undefined) => clipInput(v, CTX_FIELD_MAX);
+  const lines: string[] = [];
+
+  const pFields: Array<[string, string | null | undefined]> = project
+    ? [
+        ["الفكرة", project.projectIdea],
+        ["الهدف", project.projectGoal],
+        ["المستخدمون", project.targetUsers],
+        ["النطاق", project.projectScope],
+        ["خارج النطاق", project.outOfScope],
+        ["الأنظمة المرتبطة", project.relatedSystems],
+        ["القيود", project.constraints],
+      ]
+    : [];
+  const filled = pFields.filter(([, v]) => (v ?? "").trim());
+  if (filled.length) {
+    lines.push("سياق المشروع:");
+    for (const [k, v] of filled) lines.push(`- ${k}: ${f(v)}`);
+  } else {
+    lines.push("سياق المشروع: لم يتم تحديده بعد.");
+  }
+
+  if (module?.name) {
+    lines.push("سياق الوحدة:");
+    lines.push(`- اسم الوحدة: ${f(module.name)}`);
+    if ((module.description ?? "").trim()) lines.push(`- وصف الوحدة: ${f(module.description)}`);
+  } else {
+    lines.push("سياق الوحدة: لم يتم تحديده بعد.");
+  }
+
+  return lines.join("\n");
 }
 
 /* ------------------------------------------------------------
@@ -444,7 +505,7 @@ export async function runAssistantTask(
   const client = new Anthropic();
   // مدخلات المهام الخفيفة مقلصة عمدًا: العنوان والوصف والنوع والملاحظات فقط
   // (لا رقم ولا وحدة ولا أولوية ولا أصحاب مصلحة) — توفير رموز وحدّ من الإسهاب.
-  const userText = `المتطلب:
+  const userText = `${req.contextBlock ? `${req.contextBlock}\n\n` : ""}المتطلب:
 العنوان: ${req.title}
 الوصف: ${clipInput(req.description, 4000)}
 ${req.type ? `النوع: ${req.type}\n` : ""}${req.notes ? `ملاحظات: ${clipInput(req.notes, 800)}\n` : ""}
@@ -494,7 +555,7 @@ export async function analyzeRequirement(
   model: string = DEFAULT_MODEL
 ): Promise<Analyzed<RequirementAnalysis>> {
   const client = new Anthropic();
-  const userText = `قيّم جودة المتطلب التالي:
+  const userText = `${req.contextBlock ? `${req.contextBlock}\n\n` : ""}قيّم جودة المتطلب التالي:
 
 الرقم: ${req.id}
 العنوان: ${req.title}

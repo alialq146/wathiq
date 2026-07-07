@@ -8,6 +8,7 @@ import type {
   OpenQuestion,
   AuditEvent,
   Project,
+  ProjectModule,
 } from "@/lib/data";
 import type { UsageInfo } from "@/lib/workspace-data";
 
@@ -19,6 +20,8 @@ export interface WorkspaceDataValue {
   auditEvents: AuditEvent[];
   projects: Project[];
   activeProject: Project | null;
+  /** وحدات المشروع النشط — اختيارية وقد تكون فارغة. */
+  modules: ProjectModule[];
   usage: UsageInfo | null;
   /** Whether the data is backed by the live database (writes will persist). */
   source: "database" | "fallback";

@@ -55,6 +55,7 @@ export interface Requirement {
   assignee?: string | null; // المسؤول عن المتطلب
   version?: number; // إصدار المتطلب (افتراضي 1)
   projectId?: string | null;
+  moduleId?: string | null; // وحدة المشروع (اختيارية) — null = متطلب عام
   analysis?: RequirementAnalysis | null;
 }
 
@@ -68,6 +69,22 @@ export interface Project {
   status: string;
   color: string | null;
   icon: string | null;
+  /** سياق المشروع (اختياري بالكامل) — يحسّن دقة المساعد والوثائق. */
+  projectIdea?: string | null;
+  projectGoal?: string | null;
+  targetUsers?: string | null;
+  projectScope?: string | null;
+  outOfScope?: string | null;
+  relatedSystems?: string | null;
+  constraints?: string | null;
+}
+
+/** وحدة مشروع (اختيارية) لتنظيم متطلبات المشاريع الكبيرة. */
+export interface ProjectModule {
+  id: string;
+  projectId: string;
+  name: string;
+  description: string | null;
 }
 
 export const PROJECT = {

@@ -113,6 +113,7 @@ export function RequirementDetail({ req, onBack }: RequirementDetailProps) {
     businessRules,
     openQuestions,
     auditEvents,
+    modules,
     source,
   } = useWorkspaceData();
   const connected = source === "database";
@@ -271,6 +272,12 @@ export function RequirementDetail({ req, onBack }: RequirementDetailProps) {
           <span style={{ font: "var(--weight-medium) 11px/1 var(--font-sans)", color: "var(--text-subtle)" }}>المسؤول</span>
           <span style={{ font: "13px var(--font-sans)", color: req.assignee ? "var(--text-body)" : "var(--text-subtle)" }}>
             {req.assignee ?? "غير محدد"}
+          </span>
+        </div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          <span style={{ font: "var(--weight-medium) 11px/1 var(--font-sans)", color: "var(--text-subtle)" }}>الوحدة</span>
+          <span style={{ font: "13px var(--font-sans)", color: req.moduleId ? "var(--text-body)" : "var(--text-subtle)" }}>
+            {req.moduleId ? modules.find((m) => m.id === req.moduleId)?.name ?? req.module : "لم يتم تحديده بعد"}
           </span>
         </div>
         <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>

@@ -73,7 +73,7 @@ export function RequirementFormDialog({
   onClose,
   onSaved,
 }: RequirementFormDialogProps) {
-  const { requirements, activeProject } = useWorkspaceData();
+  const { requirements, activeProject, modules } = useWorkspaceData();
   const [form, setForm] = React.useState<RequirementInput>(() => blank());
   const [saving, setSaving] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
@@ -111,6 +111,7 @@ export function RequirementFormDialog({
         source: initial.source ?? null,
         assignee: initial.assignee ?? null,
         version: initial.version ?? 1,
+        moduleId: initial.moduleId ?? null,
       });
     } else {
       // متطلب جديد: نملأ الرقم بالاقتراح التلقائي — يبقى قابلًا للتعديل.
@@ -318,13 +319,28 @@ export function RequirementFormDialog({
 
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
             <div>
-              <label style={fieldLabel}>الوحدة</label>
-              <input
-                value={form.module}
-                onChange={(e) => set("module", e.target.value)}
-                placeholder="المصادقة"
+              <label style={fieldLabel}>الوحدة (اختياري)</label>
+              <select
+                value={form.moduleId ?? ""}
+                onChange={(e) => {
+                  const id = e.target.value || null;
+                  const mod = modules.find((m) => m.id === id);
+                  // نزامن الاسم النصي القديم (module) مع الوحدة المختارة —
+                  // وعند «بدون وحدة» نُبقي النص القديم كما هو (توافق خلفي).
+                  setForm((f) => ({ ...f, moduleId: id, module: mod ? mod.name : f.module }));
+                }}
                 style={fieldBox}
-              />
+              >
+                <option value="">— بدون وحدة —</option>
+                {modules.map((m) => (
+                  <option key={m.id} value={m.id}>{m.name}</option>
+                ))}
+              </select>
+              {modules.length === 0 && (
+                <div style={{ font: "11px/1.6 var(--font-sans)", color: "var(--text-subtle)", marginTop: 5 }}>
+                  يمكنك إضافة وحدات من صفحة المشروع لتنظيم المتطلبات.
+                </div>
+              )}
             </div>
             <div>
               <label style={fieldLabel}>أصحاب المصلحة (افصل بفاصلة)</label>

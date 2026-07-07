@@ -26,6 +26,7 @@ export interface RequirementInput {
   source?: string | null;
   assignee?: string | null;
   version?: number | null;
+  moduleId?: string | null;
 }
 
 export type ActionResult = { ok: true } | { ok: false; error: string };
@@ -137,7 +138,26 @@ function clean(input: RequirementInput) {
     assignee: input.assignee?.trim() || null,
     // الإصدار رقم بسيط يتحكم فيه المستخدم — لا يقل عن 1.
     version: Math.max(1, Math.round(Number(input.version)) || 1),
+    moduleId: input.moduleId?.trim() || null,
   };
+}
+
+/**
+ * أمان (حرج): moduleId من العميل لا يُقبل إلا إذا كانت الوحدة مملوكة لنفس
+ * المستخدم وضمن نفس المشروع المستهدف — لا ربط بوحدة مشروع آخر أبدًا.
+ * ترجع moduleId الصالح أو null (التنظيف الصامت أفضل من رفض الحفظ كله).
+ */
+async function validModuleId(
+  moduleId: string | null,
+  uid: string | null,
+  projectId: string | null
+): Promise<string | null> {
+  if (!moduleId) return null;
+  const mod = await prisma.projectModule.findFirst({
+    where: { id: moduleId, ...(uid ? { ownerId: uid } : {}), ...(projectId ? { projectId } : {}) },
+    select: { id: true },
+  });
+  return mod ? mod.id : null;
 }
 
 /**
@@ -200,6 +220,11 @@ export async function saveRequirement(
       if ((target.assignee ?? null) !== data.assignee)
         changes.push(data.assignee ? `تم تعيين المسؤول: ${data.assignee}` : "تمت إزالة المسؤول");
 
+      // أمان: الوحدة تُقبل فقط إذا كانت للمستخدم نفسه وفي نفس مشروع المتطلب.
+      data.moduleId = await validModuleId(data.moduleId, actor.uid, target.projectId);
+      if ((target.moduleId ?? null) !== data.moduleId)
+        changes.push(data.moduleId ? "تم تغيير وحدة المتطلب" : "أُزيل ربط المتطلب بالوحدة");
+
       const contentChanged =
         target.title !== data.title || target.description !== data.description || (target.notes ?? null) !== data.notes;
       if (contentChanged && data.version === target.version) data.version = target.version + 1;
@@ -216,6 +241,8 @@ export async function saveRequirement(
       const exists = await prisma.requirement.findUnique({ where: { id } });
       if (exists) return { ok: false, error: "duplicate-id" };
       const projectId = await activeProjectId(actor.uid);
+      // أمان: الوحدة تُقبل فقط إذا كانت للمستخدم نفسه وفي المشروع النشط.
+      data.moduleId = await validModuleId(data.moduleId, actor.uid, projectId);
       const max = await prisma.requirement.aggregate({ _max: { order: true } });
       await prisma.requirement.create({
         data: { id, ownerId: actor.uid, projectId, ...data, order: (max._max.order ?? -1) + 1 },
@@ -266,7 +293,8 @@ export async function saveExtractedRequirements(
         continue;
       }
       await prisma.requirement.create({
-        data: { id, ownerId: actor.uid, projectId, ...clean(input), order: order++ },
+        // moduleId يُصفَّر في الاستيراد الجماعي — الربط بالوحدات قرار يدوي لاحق.
+        data: { id, ownerId: actor.uid, projectId, ...clean(input), moduleId: null, order: order++ },
       });
       saved++;
     }
@@ -650,6 +678,142 @@ export async function applyImprovedRequirement(id: string, description: string):
     return { ok: true };
   } catch (err) {
     console.error("[applyImprovedRequirement]", err);
+    return { ok: false, error: "server" };
+  }
+}
+
+/* ---------------- project context & modules (v1.9.9) ---------------- */
+
+export interface ProjectContextInput {
+  projectIdea?: string | null;
+  projectGoal?: string | null;
+  targetUsers?: string | null;
+  projectScope?: string | null;
+  outOfScope?: string | null;
+  relatedSystems?: string | null;
+  constraints?: string | null;
+}
+
+const ctxField = (v: string | null | undefined) => {
+  const t = (v ?? "").trim();
+  return t ? t.slice(0, 2000) : null; // حد آمن لكل حقل سياق
+};
+
+/** حفظ سياق المشروع — اختياري بالكامل؛ الحقول الفارغة تبقى null. */
+export async function saveProjectContext(
+  projectId: string,
+  input: ProjectContextInput
+): Promise<ActionResult> {
+  if (!hasDatabase()) return { ok: false, error: "no-db" };
+  try {
+    const actor = await requireActor();
+    if (!actor) return { ok: false, error: "unauthorized" };
+    // أمان: لا تعديل لسياق مشروع لا يملكه المستخدم.
+    const project = await prisma.project.findFirst({ where: { id: projectId, ...ownedBy(actor.uid) }, select: { id: true } });
+    if (!project) return { ok: false, error: "not-found" };
+
+    await prisma.project.update({
+      where: { id: project.id },
+      data: {
+        projectIdea: ctxField(input.projectIdea),
+        projectGoal: ctxField(input.projectGoal),
+        targetUsers: ctxField(input.targetUsers),
+        projectScope: ctxField(input.projectScope),
+        outOfScope: ctxField(input.outOfScope),
+        relatedSystems: ctxField(input.relatedSystems),
+        constraints: ctxField(input.constraints),
+      },
+    });
+    await logAudit(actor, null, "project_context_updated", "تحديث سياق المشروع.", undefined, project.id);
+    revalidatePath("/");
+    return { ok: true };
+  } catch (err) {
+    console.error("[saveProjectContext]", err);
+    return { ok: false, error: "server" };
+  }
+}
+
+/** إنشاء وحدة مشروع — اسم إلزامي ووصف اختياري. */
+export async function createProjectModule(
+  projectId: string,
+  name: string,
+  description?: string | null
+): Promise<ActionResult> {
+  if (!hasDatabase()) return { ok: false, error: "no-db" };
+  const cleanName = name.trim();
+  if (!cleanName) return { ok: false, error: "missing-name" };
+  try {
+    const actor = await requireActor();
+    if (!actor) return { ok: false, error: "unauthorized" };
+    // أمان: الوحدة تُنشأ فقط داخل مشروع يملكه المستخدم.
+    const project = await prisma.project.findFirst({ where: { id: projectId, ...ownedBy(actor.uid) }, select: { id: true } });
+    if (!project) return { ok: false, error: "not-found" };
+
+    const max = await prisma.projectModule.aggregate({ where: { projectId: project.id }, _max: { order: true } });
+    await prisma.projectModule.create({
+      data: {
+        ownerId: actor.uid,
+        projectId: project.id,
+        name: cleanName.slice(0, 120),
+        description: description?.trim() ? description.trim().slice(0, 600) : null,
+        order: (max._max.order ?? -1) + 1,
+      },
+    });
+    await logAudit(actor, null, "module_created", `إضافة وحدة «${cleanName}».`, undefined, project.id);
+    revalidatePath("/");
+    return { ok: true };
+  } catch (err) {
+    console.error("[createProjectModule]", err);
+    return { ok: false, error: "server" };
+  }
+}
+
+/** تعديل وحدة مشروع (ملكية إلزامية). */
+export async function updateProjectModule(
+  moduleId: string,
+  name: string,
+  description?: string | null
+): Promise<ActionResult> {
+  if (!hasDatabase()) return { ok: false, error: "no-db" };
+  const cleanName = name.trim();
+  if (!cleanName) return { ok: false, error: "missing-name" };
+  try {
+    const actor = await requireActor();
+    if (!actor) return { ok: false, error: "unauthorized" };
+    const mod = await prisma.projectModule.findFirst({ where: { id: moduleId, ...ownedBy(actor.uid) } });
+    if (!mod) return { ok: false, error: "not-found" };
+
+    await prisma.projectModule.update({
+      where: { id: mod.id },
+      data: { name: cleanName.slice(0, 120), description: description?.trim() ? description.trim().slice(0, 600) : null },
+    });
+    await logAudit(actor, null, "module_updated", `تعديل الوحدة «${cleanName}».`, undefined, mod.projectId);
+    revalidatePath("/");
+    return { ok: true };
+  } catch (err) {
+    console.error("[updateProjectModule]", err);
+    return { ok: false, error: "server" };
+  }
+}
+
+/** حذف وحدة — يُمنع إذا كانت مرتبطة بمتطلبات (انقلها أولًا). */
+export async function deleteProjectModule(moduleId: string): Promise<ActionResult> {
+  if (!hasDatabase()) return { ok: false, error: "no-db" };
+  try {
+    const actor = await requireActor();
+    if (!actor) return { ok: false, error: "unauthorized" };
+    const mod = await prisma.projectModule.findFirst({ where: { id: moduleId, ...ownedBy(actor.uid) } });
+    if (!mod) return { ok: false, error: "not-found" };
+
+    const linked = await prisma.requirement.count({ where: { moduleId: mod.id } });
+    if (linked > 0) return { ok: false, error: "module-linked" };
+
+    await prisma.projectModule.delete({ where: { id: mod.id } });
+    await logAudit(actor, null, "module_deleted", `حذف الوحدة «${mod.name}».`, undefined, mod.projectId);
+    revalidatePath("/");
+    return { ok: true };
+  } catch (err) {
+    console.error("[deleteProjectModule]", err);
     return { ok: false, error: "server" };
   }
 }

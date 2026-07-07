@@ -62,7 +62,7 @@ const groupLabel: React.CSSProperties = {
 };
 
 export function ExportDialog({ open, onClose, filteredIds }: ExportDialogProps) {
-  const { requirements, acceptanceCriteria, businessRules, openQuestions, activeProject, user } =
+  const { requirements, acceptanceCriteria, businessRules, openQuestions, activeProject, modules, user } =
     useWorkspaceData();
 
   const [docType, setDocType] = React.useState<DocType>("report");
@@ -103,6 +103,7 @@ export function ExportDialog({ open, onClose, filteredIds }: ExportDialogProps) 
       acceptanceCriteria: acceptanceCriteria.filter((c) => c.requirementId && scopedIds.has(c.requirementId)),
       businessRules: businessRules.filter((b) => b.requirementId && scopedIds.has(b.requirementId)),
       openQuestions: openQuestions.filter((q) => q.requirementId && scopedIds.has(q.requirementId)),
+      modules,
     };
     const scopeLabel =
       scope === "filtered" ? `النتائج المفلترة (${scopedReqs.length} من ${requirements.length})` : null;

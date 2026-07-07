@@ -126,6 +126,19 @@ function collectFromAnalyses(ctx: ReportContext, key: "assumptions" | "risks"): 
   return out;
 }
 
+/** جدول وحدات المشروع (v1.9.9) — بيانات حقيقية فقط، وعبارة نقص عند الغياب. */
+function modulesTableHTML(ctx: ReportContext, showEmptyLine: boolean): string {
+  const mods = ctx.modules ?? [];
+  if (!mods.length) return showEmptyLine ? `<p class="todo">لم يتم تحديد وحدات المشروع بعد.</p>` : "";
+  const countFor = (id: string) => ctx.requirements.filter((r) => r.moduleId === id).length;
+  return `<table class="req-table">
+    <thead><tr><th>الوحدة</th><th>الوصف</th><th>عدد المتطلبات</th></tr></thead>
+    <tbody>${mods
+      .map((m) => `<tr><td>${esc(m.name)}</td><td>${m.description ? esc(m.description) : "—"}</td><td>${countFor(m.id)}</td></tr>`)
+      .join("")}</tbody>
+  </table>`;
+}
+
 /* ============================================================
    BRD — وثيقة متطلبات الأعمال
    ============================================================ */
@@ -167,7 +180,9 @@ export function buildBRDBody(ctx: ReportContext, opts: DocOptions): string {
       <tr><td class="k">عدد المتطلبات الموثقة</td><td>${s.total}</td></tr>
     </table>
     <h4>سياق المشروع وسبب الحاجة</h4>
-    ${p?.description ? `<p class="desc">${esc(p.description)}</p>` : needs(NEEDS_INPUT)}
+    ${p?.projectIdea ? `<p class="desc">${esc(p.projectIdea)}</p>` : p?.description ? `<p class="desc">${esc(p.description)}</p>` : needs(NEEDS_INPUT)}
+    <h4>الأنظمة أو القنوات المرتبطة</h4>
+    ${p?.relatedSystems ? `<p class="desc">${esc(p.relatedSystems)}</p>` : needs(NOT_AVAILABLE)}
     <h4>الوضع الحالي والتحديات</h4>
     ${needs(NOT_AVAILABLE)}
   </section>`;
@@ -177,13 +192,14 @@ export function buildBRDBody(ctx: ReportContext, opts: DocOptions): string {
   const objectives = `
   <section class="block">
     <h2>٤. أهداف العمل</h2>
+    ${p?.projectGoal ? `<p class="desc">${esc(p.projectGoal)}</p>` : ""}
     ${
       modules.length
         ? `<p class="desc">بناءً على المتطلبات الموثقة، يغطي المشروع المجالات الوظيفية التالية:</p>
            <ul>${modules.map((m) => `<li>${esc(m)}</li>`).join("")}</ul>
            <h4>أهداف تحتاج إلى تأكيد من صاحب المصلحة</h4>
            ${needs("صياغة الأهداف الكمية (مؤشرات الأداء، النسب المستهدفة، الأطر الزمنية) " + NEEDS_INPUT)}`
-        : needs(NEEDS_INPUT)
+        : p?.projectGoal ? "" : needs(NEEDS_INPUT)
     }
   </section>`;
 
@@ -192,13 +208,16 @@ export function buildBRDBody(ctx: ReportContext, opts: DocOptions): string {
   <section class="block">
     <h2>٥. نطاق المشروع</h2>
     <h4>داخل النطاق</h4>
+    ${p?.projectScope ? `<p class="desc">${esc(p.projectScope)}</p>` : ""}
     ${
       ctx.requirements.length
         ? `<ul>${ctx.requirements.map((r) => `<li><span class="mono">${esc(r.id)}</span> ${esc(r.title)}</li>`).join("")}</ul>`
-        : needs(NOT_AVAILABLE)
+        : p?.projectScope ? "" : needs(NOT_AVAILABLE)
     }
     <h4>خارج النطاق</h4>
-    ${needs("لم تُحدَّد عناصر خارج النطاق بعد — يوصى بتوثيقها صراحة لتجنب توسع النطاق.")}
+    ${p?.outOfScope ? `<p class="desc">${esc(p.outOfScope)}</p>` : needs("لم تُحدَّد عناصر خارج النطاق بعد — يوصى بتوثيقها صراحة لتجنب توسع النطاق.")}
+    <h4>وحدات المشروع</h4>
+    ${modulesTableHTML(ctx, true)}
   </section>`;
 
   /* 7) أصحاب المصلحة */
@@ -206,6 +225,7 @@ export function buildBRDBody(ctx: ReportContext, opts: DocOptions): string {
   const stakeholders = `
   <section class="block">
     <h2>٦. أصحاب المصلحة</h2>
+    ${p?.targetUsers ? `<h4>المستخدمون المستهدفون</h4><p class="desc">${esc(p.targetUsers)}</p>` : ""}
     ${
       people.length
         ? `<table class="req-table"><thead><tr><th>الاسم</th><th>الدور</th></tr></thead>
@@ -251,10 +271,11 @@ export function buildBRDBody(ctx: ReportContext, opts: DocOptions): string {
   const constraintsHTML = `
   <section class="block">
     <h2>٩. القيود</h2>
+    ${p?.constraints ? `<p class="desc">${esc(p.constraints)}</p>` : ""}
     ${
       constraints.length
         ? `<ul>${constraints.map((r) => `<li><span class="mono">${esc(r.id)}</span> ${esc(r.title)} — ${esc(r.description)}</li>`).join("")}</ul>`
-        : needs(`القيود الزمنية والتنظيمية والتقنية والتشغيلية ${NEEDS_INPUT}`)
+        : p?.constraints ? "" : needs(`القيود الزمنية والتنظيمية والتقنية والتشغيلية ${NEEDS_INPUT}`)
     }
   </section>`;
 
@@ -401,6 +422,7 @@ export function buildSRSBody(ctx: ReportContext, opts: DocOptions): string {
     ${frs.length ? `<ul>${frs.slice(0, 10).map((r) => `<li>${esc(r.title)}</li>`).join("")}</ul>` : needs(NOT_AVAILABLE)}
     <h4>حدود النظام</h4>
     ${needs(NEEDS_INPUT)}
+    ${(ctx.modules ?? []).length ? `<h4>وحدات المشروع</h4>${modulesTableHTML(ctx, false)}` : ""}
   </section>`;
 
 
@@ -434,10 +456,36 @@ export function buildSRSBody(ctx: ReportContext, opts: DocOptions): string {
   </section>`;
 
   /* 5) FRs */
+  // v1.9.9: عند وجود وحدات، تُرتب المتطلبات الوظيفية في أقسام فرعية لكل وحدة
+  // (٦.١، ٦.٢، …) والمتطلبات بلا وحدة تحت «متطلبات عامة» — بلا اختراع وحدات.
+  const mods = ctx.modules ?? [];
+  const AR_NUM = ["١", "٢", "٣", "٤", "٥", "٦", "٧", "٨", "٩", "١٠", "١١", "١٢", "١٣", "١٤", "١٥"];
+  let frsBody: string;
+  if (frs.length === 0) {
+    frsBody = needs(NOT_AVAILABLE);
+  } else if (mods.length === 0) {
+    frsBody = frs.map((r) => srsRequirementSection(r, ctx, opts.detailed)).join("");
+  } else {
+    const groups: Array<{ title: string; desc: string | null; items: Requirement[] }> = [];
+    for (const m of mods) {
+      const items = frs.filter((r) => r.moduleId === m.id);
+      if (items.length) groups.push({ title: m.name, desc: m.description, items });
+    }
+    const general = frs.filter((r) => !r.moduleId || !mods.some((m) => m.id === r.moduleId));
+    if (general.length) groups.push({ title: "متطلبات عامة", desc: null, items: general });
+    frsBody = groups
+      .map(
+        (g, i) => `
+      <h3 class="fr-group">٦.${AR_NUM[i] ?? i + 1} ${esc(g.title)}</h3>
+      ${g.desc ? `<p class="muted">${esc(g.desc)}</p>` : ""}
+      ${g.items.map((r) => srsRequirementSection(r, ctx, opts.detailed)).join("")}`
+      )
+      .join("");
+  }
   const frsHTML = `
   <section class="block">
     <h2>٦. المتطلبات الوظيفية (Functional Requirements)</h2>
-    ${frs.length ? frs.map((r) => srsRequirementSection(r, ctx, opts.detailed)).join("") : needs(NOT_AVAILABLE)}
+    ${frsBody}
   </section>`;
 
   /* 6) NFRs */

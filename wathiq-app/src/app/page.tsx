@@ -39,6 +39,7 @@ export default async function Page() {
         auditEvents: data.auditEvents,
         projects: data.projects,
         activeProject: data.activeProject,
+        modules: data.modules,
         usage: data.usage,
         source: data.source,
         authEnabled: authEnabled(),

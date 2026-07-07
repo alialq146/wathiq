@@ -17,6 +17,7 @@ import type {
   BusinessRule,
   OpenQuestion,
   Project,
+  ProjectModule,
 } from "./data";
 import { AI_DISCLOSURE } from "./report-config";
 
@@ -29,6 +30,8 @@ export interface ReportContext {
   acceptanceCriteria: AcceptanceCriterion[];
   businessRules: BusinessRule[];
   openQuestions: OpenQuestion[];
+  /** وحدات المشروع (v1.9.9) — اختيارية؛ غيابها لا يغير شيئًا في التقارير. */
+  modules?: ProjectModule[];
 }
 
 export interface ReportSections {

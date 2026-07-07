@@ -1,6 +1,12 @@
 import { NextResponse } from "next/server";
 import { randomUUID } from "node:crypto";
-import { analyzeRequirement, runAssistantTask, hasAnthropicKey, type AssistantTask } from "@/lib/ai";
+import {
+  analyzeRequirement,
+  runAssistantTask,
+  hasAnthropicKey,
+  buildContextBlock,
+  type AssistantTask,
+} from "@/lib/ai";
 import { prisma, hasDatabase } from "@/lib/db";
 import { getSessionUser } from "@/lib/session";
 import { authEnabled } from "@/lib/auth";
@@ -66,6 +72,26 @@ export async function POST(req: Request) {
   const reqRow = await prisma.requirement.findFirst({ where });
   if (!reqRow) return bail({ ok: false, error: "not-found" });
 
+  // سياق المشروع والوحدة (v1.9.9): يُبنى من صفوف مملوكة لنفس المستخدم فقط —
+  // اختياري بالكامل؛ غيابه يمرر سطرَي «لم يتم تحديده بعد» ولا يفشل التحليل.
+  const [projRow, modRow] = await Promise.all([
+    reqRow.projectId
+      ? prisma.project.findFirst({
+          where: { id: reqRow.projectId, ...(userId ? { ownerId: userId } : {}) },
+          select: {
+            projectIdea: true, projectGoal: true, targetUsers: true, projectScope: true,
+            outOfScope: true, relatedSystems: true, constraints: true,
+          },
+        })
+      : Promise.resolve(null),
+    reqRow.moduleId
+      ? prisma.projectModule.findFirst({
+          where: { id: reqRow.moduleId, ...(userId ? { ownerId: userId } : {}) },
+          select: { name: true, description: true },
+        })
+      : Promise.resolve(null),
+  ]);
+
   const reqInput = {
     id: reqRow.id,
     title: reqRow.title,
@@ -75,6 +101,7 @@ export async function POST(req: Request) {
     type: reqRow.type,
     stakeholders: reqRow.stakeholders,
     notes: reqRow.notes,
+    contextBlock: buildContextBlock(projRow, modRow),
   };
 
   // مسار المهام الخفيفة: نفس الفحوصات والتسجيل، لكن بدون حفظ في المتطلب —

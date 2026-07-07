@@ -65,7 +65,7 @@ const SORTS: { v: SortBy; l: string }[] = [
    plus add / edit / delete backed by the database. */
 export function RequirementsScreen({ onOpen, onViewAnalysis, search = "", onClearSearch }: RequirementsScreenProps) {
   const router = useRouter();
-  const { requirements: REQUIREMENTS, acceptanceCriteria } = useWorkspaceData();
+  const { requirements: REQUIREMENTS, acceptanceCriteria, modules } = useWorkspaceData();
   // Data-driven header/banner facts (no hardcoded demo copy).
   const analyzedList = REQUIREMENTS.filter((r) => r.confidence != null || r.analysis != null);
   const analyzedCount = analyzedList.length;
@@ -82,6 +82,7 @@ export function RequirementsScreen({ onOpen, onViewAnalysis, search = "", onClea
   const [typeF, setTypeF] = React.useState("");
   const [sourceF, setSourceF] = React.useState("");
   const [assigneeF, setAssigneeF] = React.useState("");
+  const [moduleF, setModuleF] = React.useState(""); // فلتر وحدة المشروع (v1.9.9)
   const [analyzedF, setAnalyzedF] = React.useState<"any" | "yes" | "no">("any");
   const [criteriaF, setCriteriaF] = React.useState<"any" | "yes" | "no">("any");
   const [showFilter, setShowFilter] = React.useState(false);
@@ -119,6 +120,7 @@ export function RequirementsScreen({ onOpen, onViewAnalysis, search = "", onClea
   if (typeF) list = list.filter((r) => r.type === typeF);
   if (sourceF) list = list.filter((r) => r.source === sourceF);
   if (assigneeF) list = list.filter((r) => r.assignee === assigneeF);
+  if (moduleF) list = list.filter((r) => (moduleF === "__none__" ? !r.moduleId : r.moduleId === moduleF));
   if (analyzedF !== "any") {
     const done = (r: Requirement) => r.confidence != null || r.analysis != null;
     list = list.filter((r) => (analyzedF === "yes" ? done(r) : !done(r)));
@@ -135,7 +137,7 @@ export function RequirementsScreen({ onOpen, onViewAnalysis, search = "", onClea
     });
   }
 
-  const advActive = Boolean(typeF || sourceF || assigneeF) || analyzedF !== "any" || criteriaF !== "any";
+  const advActive = Boolean(typeF || sourceF || assigneeF || moduleF) || analyzedF !== "any" || criteriaF !== "any";
   const filterActive = priorities.size > 0 || advActive;
   const sortActive = sortBy !== "default";
   const anyRefinement = filterActive || sortActive || q.length > 0;
@@ -152,7 +154,7 @@ export function RequirementsScreen({ onOpen, onViewAnalysis, search = "", onClea
     setFilter("all");
     setPriorities(new Set());
     setSortBy("default");
-    setTypeF(""); setSourceF(""); setAssigneeF("");
+    setTypeF(""); setSourceF(""); setAssigneeF(""); setModuleF("");
     setAnalyzedF("any"); setCriteriaF("any");
     onClearSearch && onClearSearch();
   };
@@ -321,6 +323,13 @@ export function RequirementsScreen({ onOpen, onViewAnalysis, search = "", onClea
                 {assigneeOptions.map((t) => <option key={t} value={t}>{t}</option>)}
               </select>
             )}
+            {modules.length > 0 && (
+              <select value={moduleF} onChange={(e) => setModuleF(e.target.value)} style={selStyle}>
+                <option value="">الوحدة: الكل</option>
+                {modules.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
+                <option value="__none__">بدون وحدة</option>
+              </select>
+            )}
             <select value={analyzedF} onChange={(e) => setAnalyzedF(e.target.value as "any" | "yes" | "no")} style={selStyle}>
               <option value="any">مساعد وثّق: الكل</option>
               <option value="yes">تم تحليلها</option>
@@ -347,6 +356,7 @@ export function RequirementsScreen({ onOpen, onViewAnalysis, search = "", onClea
           {typeF && <FilterChip label={`النوع: ${typeF}`} onClear={() => setTypeF("")} />}
           {sourceF && <FilterChip label={`المصدر: ${sourceF}`} onClear={() => setSourceF("")} />}
           {assigneeF && <FilterChip label={`المسؤول: ${assigneeF}`} onClear={() => setAssigneeF("")} />}
+          {moduleF && <FilterChip label={`الوحدة: ${moduleF === "__none__" ? "بدون وحدة" : modules.find((m) => m.id === moduleF)?.name ?? ""}`} onClear={() => setModuleF("")} />}
           {analyzedF !== "any" && <FilterChip label={analyzedF === "yes" ? "تم تحليلها" : "لم تُحلَّل بعد"} onClear={() => setAnalyzedF("any")} />}
           {criteriaF !== "any" && <FilterChip label={criteriaF === "yes" ? "لديها معايير قبول" : "بلا معايير قبول"} onClear={() => setCriteriaF("any")} />}
           <button
