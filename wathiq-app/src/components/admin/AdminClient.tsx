@@ -1115,12 +1115,367 @@ function HealthTab({ d }: { d: AdminOverviewData }) {
 
 /* ================= shell ================= */
 
+/* ================= الملاحظات (v1.9.11) ================= */
+
+const FB_STATUS_UI: Record<string, { label: string; bg: string; fg: string }> = {
+  open: { label: "مفتوحة", bg: "var(--amber-50)", fg: "var(--amber-600)" },
+  in_review: { label: "قيد المراجعة", bg: "var(--blue-50)", fg: "var(--blue-600)" },
+  closed: { label: "مغلقة", bg: "var(--green-50)", fg: "var(--green-600)" },
+};
+const FB_SEV_UI: Record<string, { bg: string; fg: string }> = {
+  "عاجل": { bg: "var(--red-50)", fg: "var(--red-600)" },
+  "مهم": { bg: "var(--amber-50)", fg: "var(--amber-600)" },
+  "عادي": { bg: "var(--slate-100)", fg: "var(--text-muted)" },
+};
+
+interface FeedbackRow {
+  id: string; type: string; severity: string; message: string; currentPath: string | null;
+  plan: string | null; status: string; adminNote: string | null; createdAt: string;
+  userName: string; userEmail: string;
+}
+
+const fbSelect: React.CSSProperties = {
+  height: 32, padding: "0 10px", borderRadius: "var(--radius-md)",
+  border: "1px solid var(--border-default)", background: "var(--surface-card)",
+  font: "12.5px var(--font-sans)", color: "var(--text-strong)",
+};
+
+function FeedbackTab() {
+  const [items, setItems] = React.useState<FeedbackRow[] | null>(null);
+  const [total, setTotal] = React.useState(0);
+  const [page, setPage] = React.useState(1);
+  const [error, setError] = React.useState(false);
+  const [status, setStatus] = React.useState("");
+  const [type, setType] = React.useState("");
+  const [severity, setSeverity] = React.useState("");
+  const [plan, setPlan] = React.useState("");
+  const [expanded, setExpanded] = React.useState<string | null>(null);
+  const [noteDraft, setNoteDraft] = React.useState("");
+  const [saving, setSaving] = React.useState(false);
+
+  const load = React.useCallback(async () => {
+    setError(false);
+    try {
+      const qs = new URLSearchParams({ page: String(page), status, type, severity, plan });
+      const res = await fetch(`/api/admin/feedback?${qs}`);
+      const j = await res.json();
+      if (!j.ok) throw new Error();
+      setItems(j.items);
+      setTotal(j.total);
+    } catch {
+      setError(true);
+      setItems([]);
+    }
+  }, [page, status, type, severity, plan]);
+
+  React.useEffect(() => { void load(); }, [load]);
+
+  const patch = async (id: string, data: { status?: string; adminNote?: string }) => {
+    setSaving(true);
+    try {
+      await fetch("/api/admin/feedback", {
+        method: "PATCH", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id, ...data }),
+      });
+      await load();
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const filterRow = (
+    <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+      <select style={fbSelect} value={status} onChange={(e) => { setStatus(e.target.value); setPage(1); }}>
+        <option value="">الحالة: الكل</option>
+        <option value="open">مفتوحة</option>
+        <option value="in_review">قيد المراجعة</option>
+        <option value="closed">مغلقة</option>
+      </select>
+      <select style={fbSelect} value={type} onChange={(e) => { setType(e.target.value); setPage(1); }}>
+        <option value="">النوع: الكل</option>
+        {["مشكلة", "اقتراح", "صعوبة في الاستخدام", "طلب ميزة", "أخرى"].map((t) => <option key={t} value={t}>{t}</option>)}
+      </select>
+      <select style={fbSelect} value={severity} onChange={(e) => { setSeverity(e.target.value); setPage(1); }}>
+        <option value="">الأهمية: الكل</option>
+        {["عاجل", "مهم", "عادي"].map((t) => <option key={t} value={t}>{t}</option>)}
+      </select>
+      <select style={fbSelect} value={plan} onChange={(e) => { setPlan(e.target.value); setPage(1); }}>
+        <option value="">الخطة: الكل</option>
+        <option value="FREE">FREE</option>
+        <option value="PRO">PRO</option>
+        <option value="ENTERPRISE">ENTERPRISE</option>
+      </select>
+      <span style={{ font: "12px var(--font-sans)", color: "var(--text-subtle)", marginInlineStart: "auto" }}>
+        {num(total)} ملاحظة
+      </span>
+    </div>
+  );
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+      <Card>{filterRow}</Card>
+      <Card style={{ padding: 0 }}>
+        {items == null ? (
+          <div style={{ padding: 16 }}><Skeleton /></div>
+        ) : error ? (
+          <ErrorState text="تعذر تحميل الملاحظات." onRetry={load} />
+        ) : items.length === 0 ? (
+          <EmptyState text="لا توجد ملاحظات بعد — عندما يرسل المستخدمون ملاحظاتهم ستظهر هنا." />
+        ) : (
+          <div>
+            {items.map((f) => {
+              const st = FB_STATUS_UI[f.status] ?? FB_STATUS_UI.open;
+              const sv = FB_SEV_UI[f.severity] ?? FB_SEV_UI["عادي"];
+              const isOpen = expanded === f.id;
+              return (
+                <div key={f.id} style={{ borderBottom: "1px solid var(--border-subtle)", padding: "12px 16px" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                    <Badge label={f.type} bg="var(--slate-100)" fg="var(--text-strong)" />
+                    <Badge label={f.severity} bg={sv.bg} fg={sv.fg} />
+                    <Badge label={st.label} bg={st.bg} fg={st.fg} />
+                    {f.plan && <Badge label={f.plan} bg="var(--teal-50)" fg="var(--teal-600)" />}
+                    <span style={{ font: "12px var(--font-sans)", color: "var(--text-subtle)" }}>
+                      {f.userName} · <span style={{ direction: "ltr", display: "inline-block" }}>{f.userEmail}</span>
+                    </span>
+                    <span style={{ font: "11.5px var(--font-sans)", color: "var(--text-subtle)", marginInlineStart: "auto" }}>
+                      {f.currentPath ?? ""} · {when(f.createdAt)}
+                    </span>
+                  </div>
+                  <div style={{ font: "13px/1.7 var(--font-sans)", color: "var(--text-strong)", margin: "8px 0 0", whiteSpace: "pre-wrap" }}>
+                    {isOpen ? f.message : f.message.slice(0, 160) + (f.message.length > 160 ? "…" : "")}
+                  </div>
+                  {f.adminNote && !isOpen && (
+                    <div style={{ font: "12px/1.6 var(--font-sans)", color: "var(--violet-500)", marginTop: 4 }}>
+                      ملاحظة داخلية: {f.adminNote.slice(0, 100)}
+                    </div>
+                  )}
+                  <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 8, flexWrap: "wrap" }}>
+                    <select
+                      style={fbSelect}
+                      value={f.status}
+                      disabled={saving}
+                      onChange={(e) => void patch(f.id, { status: e.target.value })}
+                    >
+                      <option value="open">مفتوحة</option>
+                      <option value="in_review">قيد المراجعة</option>
+                      <option value="closed">مغلقة</option>
+                    </select>
+                    <SmallBtn onClick={() => { setExpanded(isOpen ? null : f.id); setNoteDraft(f.adminNote ?? ""); }}>
+                      {isOpen ? "إغلاق" : "ملاحظة داخلية"}
+                    </SmallBtn>
+                  </div>
+                  {isOpen && (
+                    <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 8 }}>
+                      <textarea
+                        rows={3}
+                        value={noteDraft}
+                        onChange={(e) => setNoteDraft(e.target.value)}
+                        placeholder="ملاحظة داخلية للفريق — لا تظهر للمستخدم."
+                        style={{ width: "100%", padding: "8px 10px", borderRadius: "var(--radius-md)", border: "1px solid var(--border-default)", font: "12.5px/1.6 var(--font-sans)", background: "var(--surface-card)", color: "var(--text-strong)" }}
+                      />
+                      <div>
+                        <SmallBtn tone="primary" disabled={saving} onClick={() => void patch(f.id, { adminNote: noteDraft }).then(() => setExpanded(null))}>
+                          {saving ? "جارٍ الحفظ…" : "حفظ الملاحظة"}
+                        </SmallBtn>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+            {total > 20 && (
+              <div style={{ display: "flex", gap: 8, padding: "12px 16px", justifyContent: "center" }}>
+                <SmallBtn disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>السابق</SmallBtn>
+                <span style={{ font: "12px var(--font-sans)", color: "var(--text-subtle)", alignSelf: "center" }}>صفحة {page}</span>
+                <SmallBtn disabled={page * 20 >= total} onClick={() => setPage((p) => p + 1)}>التالي</SmallBtn>
+              </div>
+            )}
+          </div>
+        )}
+      </Card>
+    </div>
+  );
+}
+
+/* ================= لوحة الإطلاق (v1.9.11) ================= */
+
+const EVENT_AR: Record<string, string> = {
+  signup_completed: "إكمال تسجيل",
+  login_completed: "تسجيل دخول",
+  project_created: "إنشاء مشروع",
+  project_context_updated: "تحديث سياق",
+  module_created: "إنشاء وحدة",
+  module_updated: "تعديل وحدة",
+  module_deleted: "حذف وحدة",
+  requirement_created: "إنشاء متطلب",
+  requirement_updated: "تعديل متطلب",
+  assistant_task_started: "بدء مهمة مساعد",
+  assistant_task_succeeded: "نجاح مهمة مساعد",
+  assistant_task_failed: "فشل مهمة مساعد",
+  export_report_created: "تصدير تقرير",
+  export_brd_created: "تصدير BRD",
+  export_srs_created: "تصدير SRS",
+  quota_limit_reached: "بلوغ حد الخطة",
+  feedback_submitted: "إرسال ملاحظة",
+  upgrade_clicked: "نقر ترقية",
+};
+
+interface LaunchKpis {
+  newUsers: number; activeUsers: number; newProjects: number; newRequirements: number;
+  assistantRuns: number; assistantSuccess: number; assistantFailed: number; quotaHits: number;
+  exportsBrd: number; exportsSrs: number; exportsReport: number;
+}
+interface LaunchData {
+  last7: LaunchKpis; last30: LaunchKpis; openFeedback: number; topPlan: string | null;
+  funnel30: { signedUp: number; createdProject: number; addedRequirement: number; ranAssistant: number; exported: number };
+  recentFeedback: Array<{ id: string; type: string; severity: string; status: string; message: string; email: string; createdAt: string }>;
+  topEvents: Array<{ eventName: string; count: number }>;
+  recentAiErrors: Array<{ id: string; email: string; modelUsed: string; error: string; createdAt: string }>;
+}
+
+function LaunchTab() {
+  const [data, setData] = React.useState<LaunchData | null>(null);
+  const [error, setError] = React.useState(false);
+
+  const load = React.useCallback(async () => {
+    setError(false);
+    try {
+      const res = await fetch("/api/admin/launch");
+      const j = await res.json();
+      if (!j.ok) throw new Error();
+      setData(j);
+    } catch {
+      setError(true);
+    }
+  }, []);
+  React.useEffect(() => { void load(); }, [load]);
+
+  if (error) return <ErrorState text="تعذر تحميل لوحة الإطلاق." onRetry={load} />;
+  if (!data) return <Card><Skeleton h={320} /></Card>;
+
+  const k7 = data.last7;
+  const k30 = data.last30;
+  const kpi = (label: string, v7: number, v30: number, accent?: string) => (
+    <Kpi key={label} label={label} value={num(v7)} sub={`آخر 30 يومًا: ${num(v30)}`} accent={accent} />
+  );
+
+  const maxFunnel = Math.max(1, data.funnel30.signedUp, data.funnel30.createdProject, data.funnel30.addedRequirement, data.funnel30.ranAssistant, data.funnel30.exported);
+  const funnelRows: Array<[string, number]> = [
+    ["سجّل حسابًا", data.funnel30.signedUp],
+    ["أنشأ مشروعًا", data.funnel30.createdProject],
+    ["أضاف متطلبًا", data.funnel30.addedRequirement],
+    ["شغّل المساعد", data.funnel30.ranAssistant],
+    ["صدّر وثيقة", data.funnel30.exported],
+  ];
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
+      <div style={{ font: "12px var(--font-sans)", color: "var(--text-subtle)" }}>
+        الأرقام الكبيرة = آخر 7 أيام · تحتها إجمالي آخر 30 يومًا.
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(170px, 1fr))", gap: 12 }}>
+        {kpi("مستخدمون جدد", k7.newUsers, k30.newUsers)}
+        {kpi("مستخدمون نشطون", k7.activeUsers, k30.activeUsers)}
+        {kpi("مشاريع جديدة", k7.newProjects, k30.newProjects)}
+        {kpi("متطلبات جديدة", k7.newRequirements, k30.newRequirements)}
+        {kpi("تشغيلات المساعد", k7.assistantRuns, k30.assistantRuns)}
+        {kpi("تحليلات ناجحة", k7.assistantSuccess, k30.assistantSuccess, "var(--green-600)")}
+        {kpi("تحليلات فاشلة", k7.assistantFailed, k30.assistantFailed, k7.assistantFailed > 0 ? "var(--red-600)" : undefined)}
+        {kpi("بلوغ حد الخطة", k7.quotaHits, k30.quotaHits, k7.quotaHits > 0 ? "var(--amber-600)" : undefined)}
+        {kpi("تصديرات BRD", k7.exportsBrd, k30.exportsBrd)}
+        {kpi("تصديرات SRS", k7.exportsSrs, k30.exportsSrs)}
+        <Kpi label="ملاحظات مفتوحة" value={num(data.openFeedback)} accent={data.openFeedback > 0 ? "var(--amber-600)" : undefined} />
+        <Kpi label="أكثر خطة" value={data.topPlan ?? "—"} />
+      </div>
+
+      <Card>
+        <SectionTitle>قمع الاستخدام — آخر 30 يومًا (مستخدمون مميزون)</SectionTitle>
+        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          {funnelRows.map(([label, v]) => (
+            <div key={label} style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <span style={{ font: "12.5px var(--font-sans)", color: "var(--text-strong)", width: 110, flex: "0 0 110px" }}>{label}</span>
+              <div style={{ flex: 1, height: 10, borderRadius: 999, background: "var(--slate-100)", overflow: "hidden" }}>
+                <div style={{ width: `${Math.round((v / maxFunnel) * 100)}%`, height: "100%", borderRadius: 999, background: "var(--teal-500)" }} />
+              </div>
+              <span style={{ font: "var(--weight-semibold) 12.5px var(--font-mono)", color: "var(--text-strong)", width: 40, textAlign: "end" }}>{num(v)}</span>
+            </div>
+          ))}
+        </div>
+      </Card>
+
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(320px, 100%), 1fr))", gap: 14 }}>
+        <Card>
+          <SectionTitle>آخر الملاحظات</SectionTitle>
+          {data.recentFeedback.length === 0 ? (
+            <EmptyState text="لا ملاحظات بعد." />
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              {data.recentFeedback.map((f) => (
+                <div key={f.id} style={{ borderBottom: "1px solid var(--border-subtle)", paddingBottom: 8 }}>
+                  <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
+                    <Badge label={f.type} bg="var(--slate-100)" fg="var(--text-strong)" />
+                    <Badge label={f.severity} bg={(FB_SEV_UI[f.severity] ?? FB_SEV_UI["عادي"]).bg} fg={(FB_SEV_UI[f.severity] ?? FB_SEV_UI["عادي"]).fg} />
+                    <span style={{ font: "11px var(--font-sans)", color: "var(--text-subtle)", marginInlineStart: "auto" }}>{when(f.createdAt)}</span>
+                  </div>
+                  <div style={{ font: "12.5px/1.6 var(--font-sans)", color: "var(--text-strong)", marginTop: 4 }}>{f.message}</div>
+                  <div style={{ font: "11px var(--font-sans)", color: "var(--text-subtle)", direction: "ltr", textAlign: "end", marginTop: 2 }}>{f.email}</div>
+                </div>
+              ))}
+            </div>
+          )}
+        </Card>
+
+        <Card>
+          <SectionTitle>أكثر أحداث الاستخدام — آخر 30 يومًا</SectionTitle>
+          {data.topEvents.length === 0 ? (
+            <EmptyState text="لا أحداث مسجلة بعد — تبدأ بالتجمع مع أول استخدام." />
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {data.topEvents.map((e) => (
+                <div key={e.eventName} style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  <span style={{ font: "12.5px var(--font-sans)", color: "var(--text-strong)", flex: 1 }}>
+                    {EVENT_AR[e.eventName] ?? e.eventName}
+                  </span>
+                  <span style={{ font: "11px var(--font-mono)", color: "var(--text-subtle)", direction: "ltr" }}>{e.eventName}</span>
+                  <span style={{ font: "var(--weight-semibold) 12.5px var(--font-mono)", color: "var(--text-strong)" }}>{num(e.count)}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </Card>
+
+        <Card>
+          <SectionTitle>آخر أخطاء الذكاء الاصطناعي</SectionTitle>
+          {data.recentAiErrors.length === 0 ? (
+            <EmptyState text="لا أخطاء حديثة — ممتاز." />
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              {data.recentAiErrors.map((e) => (
+                <div key={e.id} style={{ borderBottom: "1px solid var(--border-subtle)", paddingBottom: 8 }}>
+                  <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                    <span style={{ font: "11.5px var(--font-mono)", color: "var(--text-subtle)", direction: "ltr" }}>{e.modelUsed}</span>
+                    <span style={{ font: "11px var(--font-sans)", color: "var(--text-subtle)", marginInlineStart: "auto" }}>{when(e.createdAt)}</span>
+                  </div>
+                  <div style={{ font: "12px/1.6 var(--font-sans)", color: "var(--red-600)", marginTop: 3, direction: "ltr", textAlign: "end" }}>{e.error || "—"}</div>
+                  <div style={{ font: "11px var(--font-sans)", color: "var(--text-subtle)", direction: "ltr", textAlign: "end" }}>{e.email}</div>
+                </div>
+              ))}
+            </div>
+          )}
+        </Card>
+      </div>
+    </div>
+  );
+}
+
 const TABS = [
   { id: "overview", label: "نظرة عامة" },
   { id: "users", label: "المستخدمون" },
   { id: "subs", label: "الاشتراكات" },
   { id: "usage", label: "AI Usage" },
   { id: "errors", label: "الأخطاء" },
+  { id: "feedback", label: "الملاحظات" },
+  { id: "launch", label: "لوحة الإطلاق" },
   { id: "settings", label: "الإعدادات" },
   { id: "health", label: "صحة النظام" },
 ] as const;
@@ -1178,6 +1533,8 @@ export function AdminClient({ initial, adminName, adminEmail }: { initial: Admin
         {tab === "subs" && <SubscriptionsTab d={initial} />}
         {tab === "usage" && <UsageTab d={initial} />}
         {tab === "errors" && <ErrorsTab />}
+        {tab === "feedback" && <FeedbackTab />}
+        {tab === "launch" && <LaunchTab />}
         {tab === "settings" && <SettingsTab d={initial} />}
         {tab === "health" && <HealthTab d={initial} />}
       </main>

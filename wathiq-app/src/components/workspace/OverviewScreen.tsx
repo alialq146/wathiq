@@ -6,12 +6,16 @@ import { type Requirement } from "@/lib/data";
 import { getPlan } from "@/lib/plans";
 import { useWorkspaceData } from "./WorkspaceDataContext";
 import { ProjectContextSection } from "./ProjectContextSection";
+import { OnboardingChecklist } from "./OnboardingChecklist";
 import type { UsageInfo } from "@/lib/workspace-data";
 import { arCount, arReqCount } from "@/lib/arabic";
+import { trackClientEvent } from "@/app/actions";
 
 export interface OverviewScreenProps {
   onOpen?: (req: Requirement | null) => void;
   onNewAnalysis?: () => void;
+  onNewProject?: () => void;
+  onGoToRequirements?: () => void;
 }
 
 /* Compact plan + usage card for the dashboard. */
@@ -58,6 +62,7 @@ function UsageCard({ usage }: { usage: UsageInfo }) {
         {canUpgrade && (
           <a
             href="/pricing"
+            onClick={() => void trackClientEvent("upgrade_clicked", { from: "overview-usage-card" })}
             style={{
               display: "inline-flex", alignItems: "center", gap: 7, height: 38, padding: "0 16px",
               borderRadius: "var(--radius-pill)", background: "var(--primary)", color: "#fff",
@@ -159,12 +164,26 @@ const STATUS_META = [
 
 /* Project overview — BA-specific readiness view, computed from the user's
    real data. Shows an onboarding empty state for brand-new workspaces. */
-export function OverviewScreen({ onOpen, onNewAnalysis }: OverviewScreenProps) {
+export function OverviewScreen({ onOpen, onNewAnalysis, onNewProject, onGoToRequirements }: OverviewScreenProps) {
   const { requirements, acceptanceCriteria, openQuestions, usage, activeProject } = useWorkspaceData();
 
   const total = requirements.length;
   const projectName = activeProject?.name ?? "مساحة العمل";
   const projectCode = activeProject?.code ?? "";
+
+  const scrollToContext = () => {
+    document.getElementById("project-context-anchor")?.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
+  const checklist = (
+    <OnboardingChecklist
+      onNewProject={onNewProject}
+      onAddContext={scrollToContext}
+      onAddModule={scrollToContext}
+      onAddRequirement={() => onOpen && onOpen(null)}
+      onOpenAssistant={() => onNewAnalysis && onNewAnalysis()}
+      onExport={() => onGoToRequirements && onGoToRequirements()}
+    />
+  );
 
   // ---- first-time onboarding (no requirements yet) ----
   if (total === 0) {
@@ -274,9 +293,10 @@ export function OverviewScreen({ onOpen, onNewAnalysis }: OverviewScreenProps) {
           </div>
         </div>
 
+        <div style={{ marginTop: 20 }}>{checklist}</div>
         {/* سياق المشروع ووحداته متاحان من أول لحظة — قبل إضافة أي متطلب — لأن الرحلة
             الطبيعية للمحلل: سياق ← وحدات ← متطلبات. اختياري دائمًا ولا يعيق البدء. */}
-        <div style={{ marginTop: 20 }}>
+        <div id="project-context-anchor" style={{ marginTop: 20 }}>
           <ProjectContextSection />
         </div>
       </div>
@@ -318,6 +338,7 @@ export function OverviewScreen({ onOpen, onNewAnalysis }: OverviewScreenProps) {
   return (
     <div style={{ padding: "24px 28px 40px", maxWidth: 1120, margin: "0 auto" }}>
       {usage && <UsageCard usage={usage} />}
+      {checklist}
       {!hasAnalyzed && (
         <GettingStartedStrip
           states={["done", "done", "current", "pending"]}
@@ -495,7 +516,7 @@ export function OverviewScreen({ onOpen, onNewAnalysis }: OverviewScreenProps) {
       </div>
 
       {/* سياق المشروع ووحداته (v1.9.9) — اختياريان بالكامل */}
-      <div style={{ marginTop: 20 }}>
+      <div id="project-context-anchor" style={{ marginTop: 20 }}>
         <ProjectContextSection />
       </div>
     </div>

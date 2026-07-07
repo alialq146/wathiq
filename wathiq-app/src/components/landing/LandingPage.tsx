@@ -42,6 +42,12 @@ const FEATURES = [
   { icon: "languages", title: "دعم اللغة العربية", desc: "مصمم بواجهة عربية ويدعم تحليل المتطلبات المكتوبة بالعربية." },
 ];
 
+const TRUST = [
+  { icon: "shield-check", title: "لا نخترع بياناتك", desc: "الوثائق تُبنى من بيانات مشروعك فقط، وأي نقص يظهر بوضوح: «لم يتم تحديده بعد» — بلا معلومات ملفّقة." },
+  { icon: "hand", title: "المساعد اختياري بيدك", desc: "يعمل وثّق بالكامل بدون ذكاء اصطناعي؛ والمساعد لا يُشغَّل إلا عند ضغطك زرًا واضحًا، ولا يعمل تلقائيًا." },
+  { icon: "lock", title: "عزل تام لبياناتك", desc: "لكل حساب مساحة معزولة يتحقق منها الخادم في كل عملية — لا يرى أحد بيانات غيرك، والحدود تُفرض في الخادم." },
+];
+
 const STEPS = [
   { icon: "folder-plus", title: "أنشئ مشروعًا", desc: "ابدأ مساحة عمل جديدة واجمع فيها متطلبات مشروعك." },
   { icon: "upload", title: "ارفع ملف المتطلبات", desc: "ارفع ملف PDF أو أضف المتطلبات يدويًا داخل النظام." },
@@ -332,6 +338,31 @@ export function LandingPage() {
         </div>
       </section>
 
+      {/* ---------------- Trust / principles ---------------- */}
+      <section className="wl-sec wl-sec-alt" id="trust">
+        <div className="wl-wrap">
+          <div className="wl-sec-head wl-reveal">
+            <span className="wl-kicker">لماذا وثّق</span>
+            <h2 className="wl-h2">مبادئ نثق بها ونلتزم بها</h2>
+            <p className="wl-sub">أدوات تساعدك دون أن تحل محل حكمك — بشفافية كاملة حول ما تفعله وما لا تفعله.</p>
+          </div>
+          <div className="wl-feat wl-feat-3 wl-reveal">
+            {TRUST.map((t) => (
+              <div className="wl-feat-card" key={t.title}>
+                <span className="wl-feat-ic"><Icon name={t.icon} size={22} color="var(--teal-600)" /></span>
+                <h3>{t.title}</h3>
+                <p>{t.desc}</p>
+              </div>
+            ))}
+          </div>
+          <div className="wl-trust-links wl-reveal">
+            <a href="/samples/brd">نموذج وثيقة BRD</a>
+            <a href="/samples/srs">نموذج وثيقة SRS</a>
+            <a href="/security">الأمان والخصوصية</a>
+          </div>
+        </div>
+      </section>
+
       {/* ---------------- FAQ ---------------- */}
       <section className="wl-sec wl-sec-alt" id="faq">
         <div className="wl-wrap wl-faq-wrap">
@@ -544,6 +575,10 @@ html { scroll-behavior: smooth; }
 
 /* features */
 .wl-feat { display:grid; grid-template-columns: repeat(4,1fr); gap:16px; }
+.wl-feat-3 { grid-template-columns: repeat(3,1fr); margin-top: 8px; }
+.wl-trust-links { display:flex; gap:22px; justify-content:center; flex-wrap:wrap; margin-top:26px; }
+.wl-trust-links a { font: var(--weight-semibold) 13.5px var(--font-sans); color: var(--teal-600); text-decoration:none; display:inline-flex; align-items:center; gap:6px; }
+.wl-trust-links a:hover { text-decoration:underline; }
 .wl-feat-card { padding:24px; background: var(--slate-0); border:1px solid var(--border-subtle); border-radius: var(--radius-lg);
   transition: transform .18s, box-shadow .18s, border-color .18s; }
 .wl-feat-card:hover { transform: translateY(-4px); box-shadow: var(--shadow-lg); border-color: var(--teal-200); }
@@ -639,6 +674,7 @@ html { scroll-behavior: smooth; }
   .wl-h1 { font-size:38px; }
   .wl-aud { grid-template-columns: repeat(2,1fr); }
   .wl-feat { grid-template-columns: repeat(2,1fr); }
+  .wl-feat-3 { grid-template-columns: 1fr; }
   .wl-steps { grid-template-columns: repeat(2,1fr); }
   .wl-foot-grid { grid-template-columns: 1fr 1fr; }
 }

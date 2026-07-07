@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { trackEvent } from "@/lib/track";
 import { prisma, hasDatabase } from "@/lib/db";
 import { verifyPassword } from "@/lib/password";
 import {
@@ -55,6 +56,9 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: false, error: "invalid" });
   }
 
+  if (sessionUser.uid !== "owner") {
+    await trackEvent({ eventName: "login_completed", userId: sessionUser.uid });
+  }
   const token = await createSessionToken(sessionUser, Math.floor(Date.now() / 1000));
   const res = NextResponse.json({ ok: true });
   res.cookies.set(SESSION_COOKIE, token, {

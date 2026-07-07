@@ -11,6 +11,7 @@ import { prisma, hasDatabase } from "@/lib/db";
 import { getSessionUser } from "@/lib/session";
 import { authEnabled } from "@/lib/auth";
 import { reserveQuota, releaseQuota, logAiUsage } from "@/lib/usage";
+import { trackEvent } from "@/lib/track";
 
 export const dynamic = "force-dynamic";
 // مهلة أطول لاستدعاءات الذكاء الاصطناعي — Fluid Compute يدعم حتى 300 ثانية.
@@ -40,6 +41,7 @@ export async function POST(req: Request) {
       model = r.model;
       if (!r.ok) {
         await logAiUsage({ userId: user.uid, modelUsed: model, status: "BLOCKED_LIMIT" });
+        await trackEvent({ eventName: "quota_limit_reached", userId: user.uid });
         return NextResponse.json({ ok: false, error: "limit", limit: r.limit });
       }
       userId = user.uid;
@@ -104,6 +106,9 @@ export async function POST(req: Request) {
     contextBlock: buildContextBlock(projRow, modRow),
   };
 
+  // حدث منتج (v1.9.11): بدء مهمة — metadata خفيفة (اسم المهمة فقط).
+  await trackEvent({ eventName: "assistant_task_started", userId, projectId: reqRow.projectId, requirementId: id, metadata: { task } });
+
   // مسار المهام الخفيفة: نفس الفحوصات والتسجيل، لكن بدون حفظ في المتطلب —
   // النتيجة ترجع للواجهة والمستخدم يقرر اعتمادها.
   if (task !== "full") {
@@ -121,6 +126,7 @@ export async function POST(req: Request) {
           status: "SUCCESS",
         });
       }
+      await trackEvent({ eventName: "assistant_task_succeeded", userId, projectId: reqRow.projectId, requirementId: id, metadata: { task } });
       return NextResponse.json({ ok: true, task, result });
     } catch (err) {
       console.error("[/api/analyze-requirement task]", err);
@@ -135,6 +141,7 @@ export async function POST(req: Request) {
           errorMessage: String(err).slice(0, 300),
         });
       }
+      await trackEvent({ eventName: "assistant_task_failed", userId, projectId: reqRow.projectId, requirementId: id, metadata: { task } });
       return NextResponse.json({ ok: false, error: "failed" });
     }
   }
@@ -218,6 +225,7 @@ export async function POST(req: Request) {
       });
     }
 
+    await trackEvent({ eventName: "assistant_task_succeeded", userId, projectId: reqRow.projectId, requirementId: id, metadata: { task: "full" } });
     return NextResponse.json({ ok: true, analysis });
   } catch (err) {
     console.error("[/api/analyze-requirement]", err);
@@ -232,6 +240,7 @@ export async function POST(req: Request) {
         errorMessage: String(err).slice(0, 300),
       });
     }
+    await trackEvent({ eventName: "assistant_task_failed", userId, projectId: reqRow.projectId, requirementId: id, metadata: { task: "full" } });
     return NextResponse.json({ ok: false, error: "failed" });
   }
 }

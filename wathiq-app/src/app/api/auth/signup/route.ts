@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { trackEvent } from "@/lib/track";
 import { prisma, hasDatabase } from "@/lib/db";
 import { hashPassword } from "@/lib/password";
 import { createSessionToken, SESSION_COOKIE, SESSION_MAX_AGE } from "@/lib/auth";
@@ -35,6 +36,8 @@ export async function POST(req: Request) {
     const user = await prisma.user.create({
       data: { name, email, passwordHash: hashPassword(password) },
     });
+
+    await trackEvent({ eventName: "signup_completed", userId: user.id, plan: user.plan });
 
     const token = await createSessionToken(
       { uid: user.id, name: user.name, email: user.email },

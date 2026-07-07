@@ -4,6 +4,7 @@ import React from "react";
 import { Button, Icon } from "@/components/ds";
 import { useWorkspaceData } from "./WorkspaceDataContext";
 import { arReqCount } from "@/lib/arabic";
+import { trackClientEvent } from "@/app/actions";
 import {
   exportCSV,
   exportDocumentPDF,
@@ -124,6 +125,9 @@ export function ExportDialog({ open, onClose, filteredIds }: ExportDialogProps) 
         if (fmt === "pdf") exportDocumentPDF(title, body);
         else exportDocumentWord(title, body, `${DOC_TYPES[docType].filePrefix}-${projectSlug(ctx)}.doc`);
       }
+      // حدث منتج (v1.9.11): يُسجَّل في الخادم بقائمة بيضاء — فشله لا يؤثر على التصدير.
+      const evt = docType === "brd" ? "export_brd_created" : docType === "srs" ? "export_srs_created" : "export_report_created";
+      void trackClientEvent(evt, { format: fmt, detailed, count: scopedReqs.length });
       setPhase("done");
       setTimeout(() => {
         setPhase("idle");
@@ -281,6 +285,9 @@ export function ExportDialog({ open, onClose, filteredIds }: ExportDialogProps) 
 
           <div style={{ font: "12px/1.6 var(--font-sans)", color: "var(--text-muted)", padding: "8px 12px", background: "var(--slate-50)", borderRadius: "var(--radius-md)", border: "1px solid var(--border-subtle)" }}>
             سيشمل المستند <b style={{ color: "var(--text-body)" }}>{arReqCount(scopedReqs.length)}</b> من مشروع «{activeProject?.name ?? "مساحة العمل"}».
+            <span style={{ display: "block", marginTop: 4, color: "var(--text-subtle)" }}>
+              يمكنك تصدير BRD أو SRS بعد إضافة المتطلبات، حتى لو لم تستخدم المساعد.
+            </span>
           </div>
         </div>
 

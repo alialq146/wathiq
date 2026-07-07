@@ -1,13 +1,14 @@
 "use server";
 
 import { randomUUID } from "node:crypto";
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { revalidatePath } from "next/cache";
 import { prisma, hasDatabase } from "@/lib/db";
 import { getSessionUser, getActiveProjectId, PROJECT_COOKIE } from "@/lib/session";
 import { authEnabled } from "@/lib/auth";
 import { isAccountActive } from "@/lib/account";
 import { arReqCount } from "@/lib/arabic";
+import { trackEvent, type ProductEventName } from "@/lib/track";
 import { projectLimitFor } from "@/lib/plans";
 import type { RequirementStatus, PriorityLevel } from "@/components/ds";
 
@@ -238,6 +239,7 @@ export async function saveRequirement(
         "requirement_updated",
         changes.length ? changes.join("؛ ") + "." : `تعديل المتطلب «${data.title}».`
       );
+      await trackEvent({ eventName: "requirement_updated", userId: actor.uid, projectId: target.projectId, requirementId: originalId, metadata: { changes: changes.length } });
     } else {
       const exists = await prisma.requirement.findUnique({ where: { id } });
       if (exists) return { ok: false, error: "duplicate-id" };
@@ -249,6 +251,7 @@ export async function saveRequirement(
         data: { id, ownerId: actor.uid, projectId, ...data, order: (max._max.order ?? -1) + 1 },
       });
       await logAudit(actor, id, "requirement_created", `إنشاء المتطلب «${data.title}».`, undefined, projectId);
+      await trackEvent({ eventName: "requirement_created", userId: actor.uid, projectId, requirementId: id, metadata: { type: data.type ?? null, hasModule: Boolean(data.moduleId) } });
     }
 
     revalidatePath("/");
@@ -605,6 +608,7 @@ export async function createProject(input: ProjectInput): Promise<ActionResult> 
     store.set(PROJECT_COOKIE, project.id, { httpOnly: false, sameSite: "lax", path: "/", maxAge: 60 * 60 * 24 * 365 });
 
     await logAudit(actor, null, "project_created", `إنشاء مشروع «${name}».`, undefined, project.id);
+    await trackEvent({ eventName: "project_created", userId: actor.uid, projectId: project.id });
     revalidatePath("/");
     return { ok: true };
   } catch (err) {
@@ -726,6 +730,7 @@ export async function saveProjectContext(
       },
     });
     await logAudit(actor, null, "project_context_updated", "تحديث سياق المشروع.", undefined, project.id);
+    await trackEvent({ eventName: "project_context_updated", userId: actor.uid, projectId: project.id });
     revalidatePath("/");
     return { ok: true };
   } catch (err) {
@@ -761,6 +766,7 @@ export async function createProjectModule(
       },
     });
     await logAudit(actor, null, "module_created", `إضافة وحدة «${cleanName}».`, undefined, project.id);
+    await trackEvent({ eventName: "module_created", userId: actor.uid, projectId: project.id });
     revalidatePath("/");
     return { ok: true };
   } catch (err) {
@@ -789,6 +795,7 @@ export async function updateProjectModule(
       data: { name: cleanName.slice(0, 120), description: description?.trim() ? description.trim().slice(0, 600) : null },
     });
     await logAudit(actor, null, "module_updated", `تعديل الوحدة «${cleanName}».`, undefined, mod.projectId);
+    await trackEvent({ eventName: "module_updated", userId: actor.uid, projectId: mod.projectId });
     revalidatePath("/");
     return { ok: true };
   } catch (err) {
@@ -811,10 +818,103 @@ export async function deleteProjectModule(moduleId: string): Promise<ActionResul
 
     await prisma.projectModule.delete({ where: { id: mod.id } });
     await logAudit(actor, null, "module_deleted", `حذف الوحدة «${mod.name}».`, undefined, mod.projectId);
+    await trackEvent({ eventName: "module_deleted", userId: actor.uid, projectId: mod.projectId });
     revalidatePath("/");
     return { ok: true };
   } catch (err) {
     console.error("[deleteProjectModule]", err);
     return { ok: false, error: "server" };
+  }
+}
+
+/* ------------------------------------------------------------------
+   ملاحظات المستخدمين (v1.9.11) — قناة تحسين ما بعد الإطلاق.
+   ------------------------------------------------------------------ */
+
+const FEEDBACK_TYPES = ["مشكلة", "اقتراح", "صعوبة في الاستخدام", "طلب ميزة", "أخرى"] as const;
+const FEEDBACK_SEVERITIES = ["عادي", "مهم", "عاجل"] as const;
+
+export interface FeedbackInput {
+  type: string;
+  severity: string;
+  message: string;
+  currentPath?: string | null;
+  requirementId?: string | null;
+}
+
+/** إرسال ملاحظة من داخل المنصة — للمستخدم المسجل الفعال فقط. */
+export async function submitFeedback(input: FeedbackInput): Promise<ActionResult> {
+  if (!hasDatabase()) return { ok: false, error: "no-db" };
+  try {
+    const actor = await requireActor();
+    if (!actor || !actor.uid) return { ok: false, error: "unauthorized" };
+
+    const message = (input.message ?? "").trim().slice(0, 2000);
+    if (!message) return { ok: false, error: "empty-message" };
+    const type = FEEDBACK_TYPES.includes(input.type as (typeof FEEDBACK_TYPES)[number]) ? input.type : "أخرى";
+    const severity = FEEDBACK_SEVERITIES.includes(input.severity as (typeof FEEDBACK_SEVERITIES)[number])
+      ? input.severity
+      : "عادي";
+
+    // سياق خفيف يُلتقط في الخادم: الخطة من الحساب، الوكيل من الترويسة —
+    // لا نحفظ أسرارًا ولا محتوى صفحات.
+    const [user, hdrs, projectId] = await Promise.all([
+      prisma.user.findUnique({ where: { id: actor.uid }, select: { plan: true } }),
+      headers(),
+      getActiveProjectId(),
+    ]);
+
+    await prisma.userFeedback.create({
+      data: {
+        userId: actor.uid,
+        type,
+        severity,
+        message,
+        currentPath: input.currentPath ? input.currentPath.slice(0, 200) : null,
+        projectId: projectId ?? null,
+        requirementId: input.requirementId ? input.requirementId.slice(0, 60) : null,
+        plan: user?.plan ?? null,
+        userAgent: (hdrs.get("user-agent") ?? "").slice(0, 250) || null,
+      },
+    });
+
+    await trackEvent({ eventName: "feedback_submitted", userId: actor.uid, plan: user?.plan, metadata: { type, severity } });
+    return { ok: true };
+  } catch (err) {
+    console.error("[submitFeedback]", err);
+    return { ok: false, error: "server" };
+  }
+}
+
+/* ------------------------------------------------------------------
+   أحداث من المتصفح (v1.9.11) — قائمة بيضاء صارمة: التصدير يجري في
+   المتصفح (طباعة/Word) وزر الترقية رابط، فلا يمكن رصدهما في الخادم.
+   ------------------------------------------------------------------ */
+
+const CLIENT_EVENTS = [
+  "export_report_created",
+  "export_brd_created",
+  "export_srs_created",
+  "upgrade_clicked",
+] as const;
+
+export async function trackClientEvent(
+  eventName: string,
+  metadata?: Record<string, string | number | boolean | null>
+): Promise<void> {
+  try {
+    if (!CLIENT_EVENTS.includes(eventName as (typeof CLIENT_EVENTS)[number])) return;
+    const actor = await requireActor();
+    if (!actor || !actor.uid) return;
+    const user = await prisma.user.findUnique({ where: { id: actor.uid }, select: { plan: true } });
+    await trackEvent({
+      eventName: eventName as ProductEventName,
+      userId: actor.uid,
+      plan: user?.plan,
+      projectId: await getActiveProjectId(),
+      metadata: metadata ?? null,
+    });
+  } catch {
+    // الحدث ثانوي — لا يُظهر خطأ للمستخدم أبدًا.
   }
 }

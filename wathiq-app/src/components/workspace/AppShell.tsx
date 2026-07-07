@@ -7,6 +7,7 @@ import { Avatar, Button, Icon } from "@/components/ds";
 import { useTheme } from "@/lib/use-theme";
 import { setActiveProject } from "@/app/actions";
 import { useWorkspaceData } from "./WorkspaceDataContext";
+import { FeedbackDialog } from "./FeedbackDialog";
 
 export type ScreenId =
   | "overview"
@@ -87,6 +88,14 @@ export function AppShell({ current, onNavigate, onNewAnalysis, onNewProject, sea
   const [menu, setMenu] = React.useState<null | "project" | "settings">(null);
   const [sidebarOpen, setSidebarOpen] = React.useState(false);
   const [loggingOut, setLoggingOut] = React.useState(false);
+  const [feedbackOpen, setFeedbackOpen] = React.useState(false);
+  const [feedbackToast, setFeedbackToast] = React.useState<string | null>(null);
+  const feedbackTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  const showFeedbackToast = (msg: string) => {
+    setFeedbackToast(msg);
+    if (feedbackTimer.current) clearTimeout(feedbackTimer.current);
+    feedbackTimer.current = setTimeout(() => setFeedbackToast(null), 4000);
+  };
 
   const proj = activeProject;
   const projLabel = proj?.name ?? "مساحة العمل";
@@ -330,10 +339,29 @@ export function AppShell({ current, onNavigate, onNewAnalysis, onNewProject, sea
           ))}
         </div>
 
+        {/* قناة الملاحظات — للمستخدم المسجل فقط (v1.9.11) */}
+        {user?.email && (
+          <button
+            onClick={() => setFeedbackOpen(true)}
+            style={{
+              marginTop: "auto",
+              display: "flex", alignItems: "center", gap: 8,
+              width: "100%", padding: "8px 10px",
+              border: "1px dashed var(--border-default)",
+              borderRadius: "var(--radius-md)",
+              background: "transparent", cursor: "pointer",
+              font: "var(--weight-medium) 12px/1 var(--font-sans)",
+              color: "var(--text-muted)",
+            }}
+          >
+            <Icon name="message-circle" size={14} color="var(--teal-600)" />
+            إرسال ملاحظة
+          </button>
+        )}
         <div
           style={{
             position: "relative",
-            marginTop: "auto",
+            marginTop: user?.email ? 10 : "auto",
             borderTop: "1px solid var(--border-subtle)",
             paddingTop: 12,
             display: "flex",
@@ -625,6 +653,24 @@ export function AppShell({ current, onNavigate, onNewAnalysis, onNewProject, sea
           )}
         </div>
       </div>
+
+      <FeedbackDialog open={feedbackOpen} onClose={() => setFeedbackOpen(false)} onSent={showFeedbackToast} />
+      {feedbackToast && (
+        <div
+          role="status"
+          style={{
+            position: "fixed", bottom: 22, insetInlineStart: "50%", transform: "translateX(50%)",
+            zIndex: 70, display: "flex", alignItems: "center", gap: 8,
+            padding: "10px 16px", borderRadius: "var(--radius-pill)",
+            background: "var(--navy-900)", color: "#fff",
+            font: "var(--weight-medium) 13px/1 var(--font-sans)", boxShadow: "var(--shadow-lg)",
+            maxWidth: "calc(100vw - 40px)",
+          }}
+        >
+          <Icon name="check-circle" size={15} color="var(--green-500)" />
+          {feedbackToast}
+        </div>
+      )}
     </div>
   );
 }
