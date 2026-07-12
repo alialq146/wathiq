@@ -506,6 +506,22 @@ export function AppShell({ current, onNavigate, onNewAnalysis, onNewProject, sea
                 <Icon name="history" size={15} color="var(--text-muted)" />
                 <span style={{ flex: 1 }}>فتح سجل التدقيق</span>
               </button>
+              {authEnabled && user?.email && (
+                <a
+                  href="/account/billing"
+                  style={{
+                    display: "flex", alignItems: "center", gap: 8, width: "100%", marginTop: 2,
+                    padding: "8px 8px", borderRadius: "var(--radius-md)",
+                    color: "var(--text-body)", font: "13px var(--font-sans)",
+                    textDecoration: "none", textAlign: "start",
+                  }}
+                  onMouseEnter={(e) => (e.currentTarget.style.background = "var(--slate-100)")}
+                  onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
+                >
+                  <Icon name="credit-card" size={15} color="var(--text-muted)" />
+                  <span style={{ flex: 1 }}>الحساب والاشتراك</span>
+                </a>
+              )}
               {authEnabled && user && (
                 <button
                   onClick={logout}

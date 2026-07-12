@@ -1,2 +1,2 @@
 /** Single source of truth for the app version (footer, admin, health). */
-export const APP_VERSION = "1.9.13";
+export const APP_VERSION = "2.0.0";

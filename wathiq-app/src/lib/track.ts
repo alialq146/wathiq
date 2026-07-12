@@ -27,7 +27,23 @@ export type ProductEventName =
   | "export_srs_created"
   | "quota_limit_reached"
   | "feedback_submitted"
-  | "upgrade_clicked";
+  | "upgrade_clicked"
+  // فوترة (v2.0)
+  | "subscription_created"
+  | "subscription_renewed"
+  | "subscription_canceled"
+  | "subscription_updated"
+  | "subscription_expiring"
+  | "subscription_expired"
+  | "invoice_created"
+  | "invoice_viewed"
+  | "invoice_downloaded"
+  | "invoice_marked_paid"
+  | "payment_recorded"
+  | "billing_page_viewed"
+  | "renewal_clicked"
+  | "billing_email_sent"
+  | "billing_email_failed";
 
 export interface TrackInput {
   eventName: ProductEventName;

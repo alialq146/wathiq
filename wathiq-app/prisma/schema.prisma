@@ -237,3 +237,164 @@ model ProductEvent {
   @@index([createdAt])
   @@index([userId])
 }
+
+/* ============================================================
+   الفوترة والاشتراكات (v2.0) — Billing & Subscriptions
+   المبدأ: User.plan يبقى مصدر الحقيقة لقرارات الحصة والتوجيه
+   (لا نلمس منطق v1.9.7)، وSubscription هو السجل المالي والزمني.
+   تفعيل/تجديد الاشتراك يحدّث User.plan داخل نفس المعاملة الذرية.
+   ============================================================ */
+
+/// الاشتراك — سجل زمني ومالي واحد لكل مستخدم (يُحدَّث عند التجديد،
+/// والتاريخ الكامل محفوظ في Payments/Invoices/BillingAuditLog).
+/// «قارب على الانتهاء» حالة محسوبة من endDate — لا تُخزَّن لتجنب عدم التزامن.
+model Subscription {
+  id                 String    @id @default(cuid())
+  userId             String    @unique
+  plan               String // FREE | PRO | ENTERPRISE
+  status             String    @default("ACTIVE") // TRIAL | ACTIVE | EXPIRED | CANCELED | SUSPENDED
+  billingCycle       String    @default("MONTHLY") // MONTHLY | YEARLY | CUSTOM
+  startDate          DateTime
+  endDate            DateTime
+  price              Decimal   @db.Decimal(10, 2)
+  currency           String    @default("SAR")
+  autoRenew          Boolean   @default(false) // غير مفعل حاليًا — جاهز للبوابات لاحقًا
+  canceledAt         DateTime?
+  cancellationReason String?
+  createdByAdminId   String?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  @@index([endDate])
+  @@index([status])
+}
+
+/// الفاتورة — snapshot لبيانات العميل وقت الإصدار حتى لا تتغير الفواتير
+/// التاريخية لو عدّل المستخدم اسمه لاحقًا. internalNote للأدمن فقط ولا
+/// يُرسَل للعميل أبدًا. الضريبة قابلة للتهيئة — لا قيمة مفترضة في الكود.
+model Invoice {
+  id                           String    @id @default(cuid())
+  invoiceNumber                String    @unique
+  userId                       String
+  subscriptionId               String?
+  status                       String    @default("PENDING") // DRAFT | PENDING | PAID | OVERDUE | CANCELED | REFUNDED
+  issueDate                    DateTime  @default(now())
+  dueDate                      DateTime?
+  paidAt                       DateTime?
+  subtotal                     Decimal   @db.Decimal(10, 2)
+  discount                     Decimal   @default(0) @db.Decimal(10, 2)
+  taxAmount                    Decimal   @default(0) @db.Decimal(10, 2)
+  total                        Decimal   @db.Decimal(10, 2)
+  currency                     String    @default("SAR")
+  billingPeriodStart           DateTime?
+  billingPeriodEnd             DateTime?
+  customerNameSnapshot         String
+  customerEmailSnapshot        String
+  customerOrganizationSnapshot String?
+  notes                        String? // تظهر للعميل
+  internalNote                 String? // للأدمن فقط — لا تُعرض للعميل إطلاقًا
+  createdByAdminId             String?
+  createdAt                    DateTime  @default(now())
+  updatedAt                    DateTime  @updatedAt
+
+  @@index([userId])
+  @@index([status])
+  @@index([issueDate])
+}
+
+model InvoiceItem {
+  id          String   @id @default(cuid())
+  invoiceId   String
+  description String
+  quantity    Int      @default(1)
+  unitPrice   Decimal  @db.Decimal(10, 2)
+  total       Decimal  @db.Decimal(10, 2)
+  createdAt   DateTime @default(now())
+
+  @@index([invoiceId])
+}
+
+/// الدفعة — نقدًا/تحويلًا حاليًا، والحقول provider/providerPaymentId جاهزة
+/// لبوابات الدفع مستقبلًا دون تغيير المخطط. لا بيانات بطاقات تُخزَّن أبدًا.
+model Payment {
+  id                String    @id @default(cuid())
+  userId            String
+  invoiceId         String?
+  subscriptionId    String?
+  amount            Decimal   @db.Decimal(10, 2)
+  currency          String    @default("SAR")
+  method            String // CASH | BANK_TRANSFER | MANUAL | CARD | PAYMENT_GATEWAY | OTHER
+  status            String    @default("COMPLETED") // PENDING | COMPLETED | FAILED | REFUNDED | CANCELED
+  paidAt            DateTime  @default(now())
+  referenceNumber   String?
+  receivedByAdminId String?
+  notes             String?
+  provider          String?
+  providerPaymentId String?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  @@index([userId])
+  @@index([invoiceId])
+  @@index([paidAt])
+}
+
+/// تذكيرات انتهاء الاشتراك — scheduledFor مشتق من endDate، والقيد الفريد
+/// (subscriptionId + type + scheduledFor) يمنع تكرار نفس التذكير لنفس الفترة
+/// حتى بعد التجديد (فترة جديدة → scheduledFor جديد → صف جديد مسموح).
+model SubscriptionReminder {
+  id             String    @id @default(cuid())
+  userId         String
+  subscriptionId String
+  type           String // EXPIRY_7_DAYS | EXPIRY_3_DAYS | EXPIRY_1_DAY | EXPIRED | ADMIN_FOLLOW_UP
+  scheduledFor   DateTime
+  sentAt         DateTime?
+  channel        String    @default("IN_APP") // IN_APP | EMAIL
+  status         String    @default("PENDING") // PENDING | SENT | SKIPPED | FAILED
+  errorMessage   String?
+  createdAt      DateTime  @default(now())
+
+  @@unique([subscriptionId, type, scheduledFor, channel])
+  @@index([userId])
+  @@index([status, scheduledFor])
+}
+
+/// سجل تدقيق مالي منفصل — كل عملية اشتراك/فاتورة/دفعة تُسجَّل مع منفذها.
+/// metadata خفيفة (خطة/مبلغ/حالة) — لا أسرار ولا بيانات بطاقات.
+model BillingAuditLog {
+  id         String   @id @default(cuid())
+  actorId    String? // الأدمن المنفذ (null للعمليات الآلية كانتهاء الاشتراك)
+  userId     String
+  entityType String // SUBSCRIPTION | INVOICE | PAYMENT | REMINDER | EMAIL
+  entityId   String?
+  action     String // SUBSCRIPTION_CREATED | SUBSCRIPTION_RENEWED | ... | BILLING_EMAIL_SENT
+  metadata   Json?
+  createdAt  DateTime @default(now())
+
+  @@index([userId])
+  @@index([createdAt])
+}
+
+/// بيانات الفوترة الاختيارية — تُستخدم كـ snapshot عند إصدار الفواتير.
+/// وجود الرقم الضريبي لا يجعل الفاتورة «ضريبية» — ذلك يتطلب اعتمادًا صريحًا.
+model CustomerBillingProfile {
+  userId                 String   @id
+  legalName              String?
+  organizationName       String?
+  taxNumber              String?
+  commercialRegistration String?
+  address                String?
+  city                   String?
+  country                String?
+  billingEmail           String?
+  phone                  String?
+  internalNote           String? // ملاحظات أدمن داخلية عن العميل — لا تُعرض له
+  updatedAt              DateTime @updatedAt
+}
+
+/// عدّاد أرقام الفواتير لكل سنة — increment ذري داخل معاملة يضمن التفرد
+/// حتى مع الطلبات المتزامنة (لا نعتمد على count+1 إطلاقًا).
+model InvoiceCounter {
+  year  Int @id
+  value Int @default(0)
+}

@@ -10,6 +10,7 @@
 import React from "react";
 import Link from "next/link";
 import type { AdminOverviewData, AdminAlert, UsageRowLite, TopConsumer } from "@/lib/admin-data";
+import { BillingTab } from "./BillingAdmin";
 
 /* ================= formatting helpers ================= */
 
@@ -1509,6 +1510,7 @@ const TABS = [
   { id: "usage", label: "AI Usage" },
   { id: "errors", label: "الأخطاء" },
   { id: "feedback", label: "الملاحظات" },
+  { id: "billing", label: "الاشتراكات والفواتير" },
   { id: "launch", label: "لوحة الإطلاق" },
   { id: "settings", label: "الإعدادات" },
   { id: "health", label: "صحة النظام" },
@@ -1568,6 +1570,7 @@ export function AdminClient({ initial, adminName, adminEmail }: { initial: Admin
         {tab === "usage" && <UsageTab d={initial} />}
         {tab === "errors" && <ErrorsTab />}
         {tab === "feedback" && <FeedbackTab />}
+        {tab === "billing" && <BillingTab />}
         {tab === "launch" && <LaunchTab />}
         {tab === "settings" && <SettingsTab d={initial} />}
         {tab === "health" && <HealthTab d={initial} />}

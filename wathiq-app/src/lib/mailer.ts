@@ -35,7 +35,7 @@ export interface SendResult {
 }
 
 /** إرسال بريد عام عبر Resend (fetch مباشر — بلا مكتبات إضافية). */
-async function sendEmail(to: string, subject: string, html: string, text: string): Promise<SendResult> {
+export async function sendEmail(to: string, subject: string, html: string, text: string): Promise<SendResult> {
   if (!emailConfigured()) {
     console.warn("[mailer] email_provider_not_configured — الرسالة لم تُرسل (السلوك المتوقع قبل تهيئة البريد).");
     return { sent: false, reason: "email_provider_not_configured" };

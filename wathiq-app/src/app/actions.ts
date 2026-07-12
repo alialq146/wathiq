@@ -897,6 +897,8 @@ const CLIENT_EVENTS = [
   "export_brd_created",
   "export_srs_created",
   "upgrade_clicked",
+  "renewal_clicked",
+  "invoice_downloaded",
 ] as const;
 
 export async function trackClientEvent(
@@ -917,5 +919,65 @@ export async function trackClientEvent(
     });
   } catch {
     // الحدث ثانوي — لا يُظهر خطأ للمستخدم أبدًا.
+  }
+}
+
+/* ------------------------------------------------------------------
+   بيانات الفوترة (v2.0) — اختيارية بالكامل، تُستخدم كـ snapshot عند
+   إصدار الفواتير المستقبلية. internalNote لا يُقبل من العميل أبدًا.
+   ------------------------------------------------------------------ */
+
+export interface BillingProfileInput {
+  legalName?: string | null;
+  organizationName?: string | null;
+  taxNumber?: string | null;
+  commercialRegistration?: string | null;
+  address?: string | null;
+  city?: string | null;
+  country?: string | null;
+  billingEmail?: string | null;
+  phone?: string | null;
+}
+
+export async function saveBillingProfile(input: BillingProfileInput): Promise<ActionResult> {
+  if (!hasDatabase()) return { ok: false, error: "no-db" };
+  try {
+    const actor = await requireActor();
+    if (!actor || !actor.uid) return { ok: false, error: "unauthorized" };
+    const f = (v: string | null | undefined, max = 200) => {
+      const t = (v ?? "").trim();
+      return t ? t.slice(0, max) : null;
+    };
+    await prisma.customerBillingProfile.upsert({
+      where: { userId: actor.uid },
+      create: {
+        userId: actor.uid,
+        legalName: f(input.legalName),
+        organizationName: f(input.organizationName),
+        taxNumber: f(input.taxNumber, 50),
+        commercialRegistration: f(input.commercialRegistration, 50),
+        address: f(input.address, 300),
+        city: f(input.city, 100),
+        country: f(input.country, 100),
+        billingEmail: f(input.billingEmail, 200),
+        phone: f(input.phone, 30),
+      },
+      update: {
+        legalName: f(input.legalName),
+        organizationName: f(input.organizationName),
+        taxNumber: f(input.taxNumber, 50),
+        commercialRegistration: f(input.commercialRegistration, 50),
+        address: f(input.address, 300),
+        city: f(input.city, 100),
+        country: f(input.country, 100),
+        billingEmail: f(input.billingEmail, 200),
+        phone: f(input.phone, 30),
+      },
+    });
+    revalidatePath("/account/billing");
+    return { ok: true };
+  } catch (err) {
+    console.error("[saveBillingProfile]", err);
+    return { ok: false, error: "server" };
   }
 }

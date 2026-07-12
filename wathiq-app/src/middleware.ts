@@ -29,7 +29,9 @@ export async function middleware(req: NextRequest) {
     pathname.startsWith("/security") ||
     pathname.startsWith("/samples") ||
     pathname.startsWith("/api/auth") ||
-    pathname === "/api/health"
+    pathname === "/api/health" ||
+    // مسار الـ Cron له حارسه الخاص (CRON_SECRET) — بدونه يرد 403 دائمًا.
+    pathname.startsWith("/api/cron")
   ) {
     return NextResponse.next();
   }
