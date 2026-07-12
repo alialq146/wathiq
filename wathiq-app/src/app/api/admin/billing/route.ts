@@ -32,7 +32,16 @@ export async function GET(req: Request) {
       prisma.subscription.count({ where: { status: "ACTIVE" } }),
       prisma.subscription.count({ where: { status: "ACTIVE", endDate: { gte: now, lte: in7 } } }),
       prisma.subscription.count({ where: { status: "ACTIVE", endDate: { gte: now, lte: in30 } } }),
-      prisma.subscription.count({ where: { status: "EXPIRED" } }),
+      // v2.1: مع نموذج التاريخ، «منتهي» = عملاء متميّزون لديهم سجل منتهٍ
+      // وبلا اشتراك نشط/مجدول — لا عدّ الصفوف التاريخية المتراكمة.
+      (async () => {
+        const [expiredUsers, coveredUsers] = await Promise.all([
+          prisma.subscription.findMany({ where: { status: "EXPIRED" }, select: { userId: true }, distinct: ["userId"] }),
+          prisma.subscription.findMany({ where: { status: { in: ["ACTIVE", "SCHEDULED"] } }, select: { userId: true }, distinct: ["userId"] }),
+        ]);
+        const covered = new Set(coveredUsers.map((u) => u.userId));
+        return expiredUsers.filter((u) => !covered.has(u.userId)).length;
+      })(),
       prisma.invoice.count({ where: { status: "PAID" } }),
       prisma.invoice.count({ where: { status: "PENDING" } }),
       prisma.invoice.count({ where: { status: "OVERDUE" } }),
@@ -71,6 +80,7 @@ export async function GET(req: Request) {
     daysLeft: daysLeft(s.endDate, now),
     price: formatMoney(s.price),
     currency: s.currency,
+    source: s.source,
   }));
   if (subQ) {
     const q = subQ.toLowerCase();

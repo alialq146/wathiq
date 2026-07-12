@@ -248,25 +248,36 @@ model ProductEvent {
 /// الاشتراك — سجل زمني ومالي واحد لكل مستخدم (يُحدَّث عند التجديد،
 /// والتاريخ الكامل محفوظ في Payments/Invoices/BillingAuditLog).
 /// «قارب على الانتهاء» حالة محسوبة من endDate — لا تُخزَّن لتجنب عدم التزامن.
+/// الاشتراك (v2.1) — سجل تاريخي: كل فترة صف مستقل لا يُكتب فوقه.
+/// «الاشتراك الحالي» يُحسب لا يُخزَّن: أحدث صف ACTIVE يشمل تاريخ اليوم
+/// (getCurrentSubscription). التجديد ينشئ صفًا جديدًا ويربطه بـ renewedFromId
+/// ويُنهي/يستبدل السابق — لا فقد تاريخ. حالة SCHEDULED للتجديد المبكر حتى
+/// لا يوجد اشتراكان ACTIVE في وقت واحد (يحوّله syncSubscriptionStatuses).
 model Subscription {
-  id                 String    @id @default(cuid())
-  userId             String    @unique
-  plan               String // FREE | PRO | ENTERPRISE
-  status             String    @default("ACTIVE") // TRIAL | ACTIVE | EXPIRED | CANCELED | SUSPENDED
-  billingCycle       String    @default("MONTHLY") // MONTHLY | YEARLY | CUSTOM
-  startDate          DateTime
-  endDate            DateTime
-  price              Decimal   @db.Decimal(10, 2)
-  currency           String    @default("SAR")
-  autoRenew          Boolean   @default(false) // غير مفعل حاليًا — جاهز للبوابات لاحقًا
-  canceledAt         DateTime?
-  cancellationReason String?
-  createdByAdminId   String?
-  createdAt          DateTime  @default(now())
-  updatedAt          DateTime  @updatedAt
+  id                     String    @id @default(cuid())
+  userId                 String
+  plan                   String // FREE | PRO | ENTERPRISE
+  status                 String    @default("ACTIVE") // TRIAL | SCHEDULED | ACTIVE | EXPIRED | CANCELED | SUSPENDED | SUPERSEDED
+  billingCycle           String    @default("MONTHLY") // MONTHLY | YEARLY | CUSTOM
+  startDate              DateTime
+  endDate                DateTime
+  price                  Decimal   @db.Decimal(10, 2)
+  currency               String    @default("SAR")
+  autoRenew              Boolean   @default(false) // غير مفعل حاليًا — جاهز للبوابات لاحقًا
+  source                 String    @default("MANUAL") // MANUAL | PAYMENT_GATEWAY | ADMIN_GRANT | TRIAL | MIGRATED
+  previousSubscriptionId String? // السجل الذي سبقه زمنيًا لهذا المستخدم
+  renewedFromId          String? // السجل الذي جُدِّد منه (للتتبع)
+  canceledAt             DateTime?
+  cancellationReason     String?
+  supersededAt           DateTime? // وقت استبداله بتغيير خطة فوري
+  createdByAdminId       String?
+  createdAt              DateTime  @default(now())
+  updatedAt              DateTime  @updatedAt
 
-  @@index([endDate])
-  @@index([status])
+  @@index([userId, createdAt])
+  @@index([userId, status])
+  @@index([endDate, status])
+  @@index([renewedFromId])
 }
 
 /// الفاتورة — snapshot لبيانات العميل وقت الإصدار حتى لا تتغير الفواتير
@@ -291,6 +302,19 @@ model Invoice {
   customerNameSnapshot         String
   customerEmailSnapshot        String
   customerOrganizationSnapshot String?
+  // Snapshot الجهة المصدرة والإعدادات وقت الإصدار (v2.1) — الفواتير التاريخية
+  // ثابتة لا تتأثر بأي تعديل لاحق على إعدادات الفوترة.
+  issuerNameSnapshot           String?
+  issuerLegalNameSnapshot      String?
+  issuerEmailSnapshot          String?
+  issuerPhoneSnapshot          String?
+  issuerAddressSnapshot        String?
+  issuerTaxNumberSnapshot      String?
+  issuerCrSnapshot             String? // السجل التجاري
+  footerTextSnapshot           String?
+  paymentInstructionsSnapshot  String?
+  taxLabelSnapshot             String?
+  taxRateSnapshot              Decimal? @db.Decimal(5, 2) // نسبة الضريبة المطبقة وقت الإصدار
   notes                        String? // تظهر للعميل
   internalNote                 String? // للأدمن فقط — لا تُعرض للعميل إطلاقًا
   createdByAdminId             String?
@@ -397,4 +421,38 @@ model CustomerBillingProfile {
 model InvoiceCounter {
   year  Int @id
   value Int @default(0)
+}
+
+/// إعدادات الفوترة المركزية (v2.1) — صف واحد ثابت المعرّف ("singleton").
+/// كل الحقول قابلة للتعديل من الأدمن دون لمس الكود. لا أسرار هنا إطلاقًا
+/// (مفاتيح البريد/الدفع/Cron تبقى Environment Variables).
+/// ملاحظة: تفعيل الضريبة إعداد حسابي فقط ولا يمثل اعتمادًا ضريبيًا رسميًا.
+model BillingSettings {
+  id                      String   @id @default("singleton")
+  issuerName              String   @default("وثّق")
+  issuerLegalName         String?
+  issuerEmail             String?
+  issuerPhone             String?
+  issuerAddress           String?
+  issuerCity              String?
+  issuerCountry           String?
+  issuerTaxNumber         String?
+  issuerCommercialRegistration String?
+  logoUrl                 String?
+  defaultCurrency         String   @default("SAR")
+  taxEnabled              Boolean  @default(false)
+  defaultTaxRate          Decimal  @default(0) @db.Decimal(5, 2)
+  taxLabel                String   @default("ضريبة القيمة المضافة")
+  invoicePrefix           String   @default("INV")
+  invoiceFooterText       String   @default("شكرًا لاستخدامك وثّق.")
+  invoiceNotes            String?
+  defaultDueDays          Int      @default(0)
+  paymentInstructions     String?
+  showPaymentMethod       Boolean  @default(true)
+  showReferenceNumber     Boolean  @default(true)
+  supportEmail            String?
+  supportPhone            String?
+  updatedByAdminId        String?
+  createdAt               DateTime @default(now())
+  updatedAt               DateTime @updatedAt
 }

@@ -26,6 +26,12 @@ interface InvoiceRow {
   id: string; invoiceNumber: string; status: string; issueDate: string;
   total: string; currency: string; periodStart: string | null; periodEnd: string | null;
 }
+interface ScheduledView { plan: string; startDate: string; endDate: string; billingCycle: string }
+interface HistoryRow {
+  id: string; plan: string; status: string; billingCycle: string;
+  startDate: string; endDate: string; price: string; currency: string; isCurrent: boolean;
+  invoiceId: string | null;
+}
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const fmtDate = (iso: string | null) =>
@@ -34,9 +40,11 @@ const fmtDate = (iso: string | null) =>
 const STATUS_UI: Record<string, { bg: string; fg: string }> = {
   ACTIVE: { bg: "var(--green-50)", fg: "var(--green-600)" },
   TRIAL: { bg: "var(--blue-50)", fg: "var(--blue-600)" },
+  SCHEDULED: { bg: "var(--teal-50)", fg: "var(--teal-600)" },
   EXPIRED: { bg: "var(--red-50)", fg: "var(--red-600)" },
   CANCELED: { bg: "var(--slate-100)", fg: "var(--text-muted)" },
   SUSPENDED: { bg: "var(--amber-50)", fg: "var(--amber-600)" },
+  SUPERSEDED: { bg: "var(--slate-100)", fg: "var(--text-muted)" },
 };
 const INV_UI: Record<string, { bg: string; fg: string }> = {
   PAID: { bg: "var(--green-50)", fg: "var(--green-600)" },
@@ -72,12 +80,16 @@ const secTitle = (icon: string, title: string) => (
 export function BillingClient({
   user,
   subscription,
+  scheduled,
+  history,
   usage,
   invoices,
   profile,
 }: {
   user: { name: string; email: string; plan: string; planName: string };
   subscription: SubscriptionView | null;
+  scheduled: ScheduledView | null;
+  history: HistoryRow[];
   usage: UsageView;
   invoices: InvoiceRow[];
   profile: Record<keyof BillingProfileInput, string>;
@@ -251,20 +263,29 @@ export function BillingClient({
                 </div>
               </div>
 
-              {/* تنبيه الانتهاء المتدرج */}
-              {(expired || (active && remaining != null && remaining <= 7)) && (
-                <div role="status" style={{ marginTop: 14, padding: "12px 15px", borderRadius: "var(--radius-md)", background: tone.bg, border: `1px solid ${tone.border}`, display: "flex", gap: 10, alignItems: "flex-start" }}>
-                  <Icon name={expired ? "alert-circle" : "clock"} size={16} color={tone.fg} style={{ marginTop: 1 }} />
+              {/* تجديد مجدول — يحل محل تحذير الانتهاء (UX: العميل جدّد أصلًا) */}
+              {scheduled ? (
+                <div role="status" style={{ marginTop: 14, padding: "12px 15px", borderRadius: "var(--radius-md)", background: "var(--teal-50)", border: "1px solid var(--teal-100)", display: "flex", gap: 10, alignItems: "flex-start" }}>
+                  <Icon name="calendar-check" size={16} color="var(--teal-600)" style={{ marginTop: 1 }} />
                   <span style={{ font: "13px/1.7 var(--font-sans)", color: "var(--text-strong)" }}>
-                    {expired
-                      ? `انتهى اشتراكك بتاريخ ${fmtDate(subscription.endDate)}. تواصل معنا لتجديد الخطة — بياناتك محفوظة كما هي.`
-                      : remaining === 1
-                        ? "ينتهي اشتراكك غدًا. يمكنك التواصل معنا للتجديد دون انقطاع."
-                        : remaining != null && remaining <= 3
-                          ? `تبقى ${remaining} أيام على انتهاء اشتراكك. يمكنك التواصل معنا للتجديد دون انقطاع.`
-                          : `ينتهي اشتراكك بتاريخ ${fmtDate(subscription.endDate)}. يمكنك التواصل معنا للتجديد قبل توقف مزايا الخطة.`}
+                    تم تسجيل تجديدك (الخطة {PLAN_AR[scheduled.plan] ?? scheduled.plan}) وسيبدأ تلقائيًا بعد انتهاء الفترة الحالية بتاريخ {fmtDate(scheduled.startDate)}.
                   </span>
                 </div>
+              ) : (
+                (expired || (active && remaining != null && remaining <= 7)) && (
+                  <div role="status" style={{ marginTop: 14, padding: "12px 15px", borderRadius: "var(--radius-md)", background: tone.bg, border: `1px solid ${tone.border}`, display: "flex", gap: 10, alignItems: "flex-start" }}>
+                    <Icon name={expired ? "alert-circle" : "clock"} size={16} color={tone.fg} style={{ marginTop: 1 }} />
+                    <span style={{ font: "13px/1.7 var(--font-sans)", color: "var(--text-strong)" }}>
+                      {expired
+                        ? `انتهى اشتراكك بتاريخ ${fmtDate(subscription.endDate)}. تواصل معنا لتجديد الخطة — بياناتك محفوظة كما هي.`
+                        : remaining === 1
+                          ? "ينتهي اشتراكك غدًا. يمكنك التواصل معنا للتجديد دون انقطاع."
+                          : remaining != null && remaining <= 3
+                            ? `تبقى ${remaining} أيام على انتهاء اشتراكك. يمكنك التواصل معنا للتجديد دون انقطاع.`
+                            : `ينتهي اشتراكك بتاريخ ${fmtDate(subscription.endDate)}. يمكنك التواصل معنا للتجديد قبل توقف مزايا الخطة.`}
+                    </span>
+                  </div>
+                )
               )}
             </>
           )}
@@ -314,6 +335,52 @@ export function BillingClient({
                 : "مساحة عملك تتسع لمشاريعك الحالية."}
             </div>
           </div>
+        </div>
+
+        {/* ===== سجل الاشتراكات ===== */}
+        <div style={{ ...cardStyle, marginBottom: 16 }}>
+          {secTitle("history", "سجل الاشتراكات")}
+          {history.length <= 1 ? (
+            <p style={{ font: "13px/1.7 var(--font-sans)", color: "var(--text-muted)", margin: 0 }}>
+              سيظهر هنا سجل الفترات السابقة عند التجديد أو تغيير الخطة.
+            </p>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+              {history.map((h) => (
+                <div
+                  key={h.id}
+                  style={{
+                    border: h.isCurrent ? "1.5px solid var(--teal-300)" : "1px solid var(--border-subtle)",
+                    background: h.isCurrent ? "var(--teal-50)" : "var(--surface-card)",
+                    borderRadius: "var(--radius-lg)",
+                    padding: "14px 16px",
+                  }}
+                >
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 9, flexWrap: "wrap" }}>
+                      <span style={{ font: "var(--weight-bold) 14.5px/1.2 var(--font-sans)", color: "var(--text-strong)" }}>
+                        الخطة {PLAN_AR[h.plan] ?? h.plan}
+                      </span>
+                      {badge(SUB_STATUS_AR[h.status] ?? h.status, STATUS_UI[h.status] ?? STATUS_UI.CANCELED)}
+                      {h.isCurrent && badge("الحالية", { bg: "var(--teal-100)", fg: "var(--teal-700)" })}
+                    </div>
+                    <span style={{ font: "var(--weight-semibold) 13.5px var(--font-sans)", color: "var(--text-strong)", whiteSpace: "nowrap" }}>
+                      {h.price} {h.currency === "SAR" ? "ريال" : h.currency}
+                    </span>
+                  </div>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: "6px 18px", marginTop: 9, font: "12px/1.5 var(--font-sans)", color: "var(--text-muted)" }}>
+                    <span>من {fmtDate(h.startDate)} إلى {fmtDate(h.endDate)}</span>
+                    <span>دورة الفوترة: {CYCLE_AR[h.billingCycle] ?? h.billingCycle}</span>
+                    {h.invoiceId && (
+                      <Link href={`/account/billing/invoices/${h.invoiceId}`} style={{ font: "var(--weight-semibold) 12px var(--font-sans)", color: "var(--blue-600)", textDecoration: "none" }}>
+                        عرض الفاتورة
+                      </Link>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* ===== الفواتير ===== */}

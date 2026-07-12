@@ -13,6 +13,54 @@ import {
 export const dynamic = "force-dynamic";
 
 /**
+ * GET /api/admin/billing/subscription?userId=… — سجل اشتراكات عميل واحد
+ * كاملًا (كل الفترات، بما فيها الحقول الداخلية: المصدر، المنفّذ، renewedFrom،
+ * سبب الإلغاء). للأدمن فقط — لا يُعرض هذا للعميل. SUPER_ADMIN.
+ */
+export async function GET(req: Request) {
+  const admin = await requireSuperAdmin();
+  if (!admin) return NextResponse.json(ADMIN_FORBIDDEN, { status: 403 });
+
+  const userId = new URL(req.url).searchParams.get("userId")?.trim() ?? "";
+  if (!userId) return NextResponse.json({ ok: false, error: "bad-request" }, { status: 400 });
+
+  const rows = await prisma.subscription.findMany({
+    where: { userId },
+    orderBy: { startDate: "desc" },
+    take: 200,
+  });
+
+  // أسماء المنفّذين (الأدمن) لعرضها بدل المعرّفات الخام.
+  const adminIds = [...new Set(rows.map((r) => r.createdByAdminId).filter((v): v is string => !!v))];
+  const admins = adminIds.length
+    ? await prisma.user.findMany({ where: { id: { in: adminIds } }, select: { id: true, name: true, email: true } })
+    : [];
+  const adminOf = new Map(admins.map((a) => [a.id, a]));
+
+  return NextResponse.json({
+    ok: true,
+    history: rows.map((s) => ({
+      id: s.id,
+      plan: s.plan,
+      status: s.status,
+      billingCycle: s.billingCycle,
+      startDate: s.startDate.toISOString(),
+      endDate: s.endDate.toISOString(),
+      price: formatMoney(s.price),
+      currency: s.currency,
+      source: s.source,
+      renewedFromId: s.renewedFromId,
+      previousSubscriptionId: s.previousSubscriptionId,
+      canceledAt: s.canceledAt?.toISOString() ?? null,
+      cancellationReason: s.cancellationReason,
+      supersededAt: s.supersededAt?.toISOString() ?? null,
+      createdBy: s.createdByAdminId ? (adminOf.get(s.createdByAdminId)?.name ?? adminOf.get(s.createdByAdminId)?.email ?? s.createdByAdminId) : null,
+      createdAt: s.createdAt.toISOString(),
+    })),
+  });
+}
+
+/**
  * POST /api/admin/billing/subscription — تفعيل/تجديد يدوي ذري (SUPER_ADMIN).
  * كل التحقق (خطة/دورة/تواريخ/مبلغ/طريقة دفع) يتم في الخادم داخل النواة.
  */

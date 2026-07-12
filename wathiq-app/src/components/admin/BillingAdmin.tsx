@@ -53,9 +53,18 @@ const inp: React.CSSProperties = { height: 34, padding: "0 10px", borderRadius: 
 const SUB_UI: Record<string, { bg: string; fg: string }> = {
   ACTIVE: { bg: "var(--green-50)", fg: "var(--green-600)" },
   TRIAL: { bg: "var(--blue-50)", fg: "var(--blue-600)" },
+  SCHEDULED: { bg: "var(--teal-50)", fg: "var(--teal-600)" },
   EXPIRED: { bg: "var(--red-50)", fg: "var(--red-600)" },
   CANCELED: { bg: "var(--slate-100)", fg: "var(--text-muted)" },
   SUSPENDED: { bg: "var(--amber-50)", fg: "var(--amber-600)" },
+  SUPERSEDED: { bg: "var(--slate-100)", fg: "var(--text-muted)" },
+};
+const SOURCE_AR: Record<string, string> = {
+  MANUAL: "يدوي",
+  PAYMENT_GATEWAY: "بوابة دفع",
+  ADMIN_GRANT: "منحة إدارية",
+  TRIAL: "تجريبي",
+  MIGRATED: "مُرحّل",
 };
 const INV_UI: Record<string, { bg: string; fg: string }> = {
   PAID: { bg: "var(--green-50)", fg: "var(--green-600)" },
@@ -67,7 +76,12 @@ const INV_UI: Record<string, { bg: string; fg: string }> = {
 };
 
 /* ---- types ---- */
-interface SubRow { id: string; userId: string; name: string; email: string; plan: string; status: string; billingCycle: string; startDate: string; endDate: string; daysLeft: number; price: string; currency: string }
+interface SubRow { id: string; userId: string; name: string; email: string; plan: string; status: string; billingCycle: string; startDate: string; endDate: string; daysLeft: number; price: string; currency: string; source: string }
+interface HistoryRow {
+  id: string; plan: string; status: string; billingCycle: string; startDate: string; endDate: string;
+  price: string; currency: string; source: string; renewedFromId: string | null; previousSubscriptionId: string | null;
+  canceledAt: string | null; cancellationReason: string | null; supersededAt: string | null; createdBy: string | null; createdAt: string;
+}
 interface InvRow { id: string; invoiceNumber: string; userId: string; name: string; email: string; status: string; issueDate: string; dueDate: string | null; total: string; currency: string; periodStart: string | null; periodEnd: string | null; internalNote: string | null }
 interface PayRow { id: string; userId: string; name: string; email: string; amount: string; currency: string; method: string; status: string; paidAt: string; referenceNumber: string | null; invoiceId: string | null }
 interface BillingData {
@@ -255,6 +269,94 @@ function RenewalDialog({
   );
 }
 
+/* ================= سجل اشتراكات العميل (أدمن) ================= */
+
+function SubscriptionHistoryDialog({
+  target,
+  onClose,
+}: {
+  target: { userId: string; name: string; email: string };
+  onClose: () => void;
+}) {
+  const [rows, setRows] = React.useState<HistoryRow[] | null>(null);
+  const [error, setError] = React.useState(false);
+
+  React.useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        const res = await fetch(`/api/admin/billing/subscription?userId=${encodeURIComponent(target.userId)}`);
+        const j = await res.json();
+        if (!alive) return;
+        if (!j.ok) throw new Error();
+        setRows(j.history as HistoryRow[]);
+      } catch {
+        if (alive) setError(true);
+      }
+    })();
+    return () => { alive = false; };
+  }, [target.userId]);
+
+  const field = (label: string, value: React.ReactNode) => (
+    <div>
+      <div style={{ font: "var(--weight-medium) 10.5px/1 var(--font-sans)", color: "var(--text-subtle)", marginBottom: 4 }}>{label}</div>
+      <div style={{ font: "12px/1.5 var(--font-sans)", color: "var(--text-strong)" }}>{value}</div>
+    </div>
+  );
+
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "var(--surface-overlay)", backdropFilter: "blur(2px)", display: "flex", alignItems: "flex-start", justifyContent: "center", padding: "40px 16px", zIndex: 80, overflowY: "auto" }} onClick={onClose}>
+      <div role="dialog" aria-label="سجل الاشتراكات" style={{ width: "100%", maxWidth: 680, background: "var(--surface-card)", borderRadius: "var(--radius-lg)", boxShadow: "var(--shadow-lg)", maxHeight: "calc(100vh - 80px)", display: "flex", flexDirection: "column" }} onClick={(e) => e.stopPropagation()}>
+        <div style={{ padding: "16px 20px", borderBottom: "1px solid var(--border-subtle)", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+          <div>
+            <div style={{ font: "var(--weight-bold) 15px/1.3 var(--font-sans)", color: "var(--text-strong)" }}>سجل اشتراكات العميل</div>
+            <div style={{ font: "12px/1.5 var(--font-sans)", color: "var(--text-subtle)", marginTop: 3 }}>
+              {target.name} · <span style={{ direction: "ltr", display: "inline-block" }}>{target.email}</span>
+            </div>
+          </div>
+          <button style={btn("ghost")} onClick={onClose}>إغلاق</button>
+        </div>
+        <div style={{ padding: 20, overflowY: "auto" }}>
+          {error ? (
+            <EmptyState text="تعذر تحميل السجل — أعد المحاولة." />
+          ) : rows === null ? (
+            <EmptyState text="جارٍ التحميل…" />
+          ) : rows.length === 0 ? (
+            <EmptyState text="لا سجل اشتراكات لهذا العميل بعد." />
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+              {rows.map((h, idx) => (
+                <div key={h.id} style={{ border: idx === 0 ? "1.5px solid var(--teal-300)" : "1px solid var(--border-subtle)", borderRadius: "var(--radius-md)", padding: "13px 15px", background: idx === 0 ? "var(--teal-50)" : "var(--surface-card)" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
+                    <span style={{ font: "var(--weight-bold) 13.5px var(--font-sans)", color: "var(--text-strong)" }}>{PLAN_AR[h.plan] ?? h.plan}</span>
+                    <Badge label={SUB_STATUS_AR[h.status] ?? h.status} {...(SUB_UI[h.status] ?? SUB_UI.CANCELED)} />
+                    <Badge label={`المصدر: ${SOURCE_AR[h.source] ?? h.source}`} bg="var(--slate-100)" fg="var(--text-muted)" />
+                    <span style={{ marginInlineStart: "auto", font: "var(--weight-semibold) 12.5px var(--font-sans)", color: "var(--text-strong)" }}>{h.price} {h.currency === "SAR" ? "ر.س" : h.currency}</span>
+                  </div>
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))", gap: "10px 14px" }}>
+                    {field("البداية", dateOnly(h.startDate))}
+                    {field("الانتهاء", dateOnly(h.endDate))}
+                    {field("الدورة", CYCLE_AR[h.billingCycle] ?? h.billingCycle)}
+                    {field("المنفّذ", h.createdBy ?? "—")}
+                    {h.renewedFromId && field("جُدِّد من", <span style={{ direction: "ltr", display: "inline-block", font: "11px var(--font-mono)" }}>{h.renewedFromId.slice(0, 10)}…</span>)}
+                    {h.supersededAt && field("استُبدل في", dateOnly(h.supersededAt))}
+                    {h.canceledAt && field("أُلغي في", dateOnly(h.canceledAt))}
+                  </div>
+                  {h.cancellationReason && (
+                    <div style={{ marginTop: 10, padding: "8px 10px", background: "var(--slate-50)", borderRadius: "var(--radius-sm)", font: "11.5px/1.6 var(--font-sans)", color: "var(--text-muted)" }}>
+                      سبب الإلغاء/الاستبدال: {h.cancellationReason}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /* ================= التبويب الرئيسي ================= */
 
 export function BillingTab() {
@@ -265,6 +367,7 @@ export function BillingTab() {
   const [invFilter, setInvFilter] = React.useState("");
   const [invQ, setInvQ] = React.useState("");
   const [renewTarget, setRenewTarget] = React.useState<{ userId: string; name: string; email: string; plan?: string; endDate?: string | null } | null>(null);
+  const [historyTarget, setHistoryTarget] = React.useState<{ userId: string; name: string; email: string } | null>(null);
   const [toast, setToast] = React.useState<string | null>(null);
   const toastTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const showToast = (m: string) => {
@@ -316,12 +419,19 @@ export function BillingTab() {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
+      {/* شريط علوي: رابط إعدادات الفوترة */}
+      <div style={{ display: "flex", justifyContent: "flex-end" }}>
+        <a href="/admin/billing/settings" style={{ display: "inline-flex", alignItems: "center", gap: 7, height: 34, padding: "0 14px", borderRadius: "var(--radius-md)", border: "1px solid var(--border-default)", background: "var(--surface-card)", color: "var(--text-strong)", font: "var(--weight-semibold) 12.5px var(--font-sans)", textDecoration: "none" }}>
+          ⚙︎ إعدادات الفوترة
+        </a>
+      </div>
+
       {/* بطاقات مالية */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(170px, 1fr))", gap: 12 }}>
         <Kpi label="اشتراكات نشطة" value={num(k.activeCount)} accent="var(--green-600)" onClick={() => setSubFilter("ACTIVE")} />
         <Kpi label="تنتهي خلال 7 أيام" value={num(k.expiring7)} accent={k.expiring7 > 0 ? "var(--amber-600)" : undefined} onClick={() => setSubFilter("EXPIRING_7")} />
         <Kpi label="تنتهي خلال 30 يومًا" value={num(k.expiring30)} onClick={() => setSubFilter("EXPIRING_30")} />
-        <Kpi label="اشتراكات منتهية" value={num(k.expiredCount)} accent={k.expiredCount > 0 ? "var(--red-600)" : undefined} onClick={() => setSubFilter("EXPIRED")} />
+        <Kpi label="عملاء منتهية اشتراكاتهم" value={num(k.expiredCount)} accent={k.expiredCount > 0 ? "var(--red-600)" : undefined} onClick={() => setSubFilter("EXPIRED")} />
         <Kpi label="فواتير مدفوعة" value={num(k.paidCount)} onClick={() => setInvFilter("PAID")} />
         <Kpi label="فواتير معلقة" value={num(k.pendingCount)} accent={k.pendingCount > 0 ? "var(--amber-600)" : undefined} onClick={() => setInvFilter("PENDING")} />
         <Kpi label="فواتير متأخرة" value={num(k.overdueCount)} accent={k.overdueCount > 0 ? "var(--red-600)" : undefined} onClick={() => setInvFilter("OVERDUE")} />
@@ -374,10 +484,12 @@ export function BillingTab() {
           <select style={sel} value={subFilter} onChange={(e) => setSubFilter(e.target.value)}>
             <option value="">الحالة: الكل</option>
             <option value="ACTIVE">نشط</option>
+            <option value="SCHEDULED">مجدول</option>
             <option value="TRIAL">تجريبي</option>
             <option value="EXPIRED">منتهي</option>
             <option value="CANCELED">ملغي</option>
             <option value="SUSPENDED">موقوف</option>
+            <option value="SUPERSEDED">مستبدل</option>
             <option value="EXPIRING_7">ينتهي خلال 7 أيام</option>
             <option value="EXPIRING_30">ينتهي خلال 30 يومًا</option>
           </select>
@@ -387,10 +499,10 @@ export function BillingTab() {
           <EmptyState text="لا اشتراكات مسجلة بعد — أنشئ أول اشتراك من زر «تجديد/تفعيل» في ملف العميل." />
         ) : (
           <div style={{ overflowX: "auto" }}>
-            <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 860 }}>
+            <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 940 }}>
               <thead>
                 <tr>
-                  {["العميل", "الخطة", "الحالة", "البداية", "الانتهاء", "المتبقي", "الدورة", "المبلغ", "الإجراءات"].map((h) => (
+                  {["العميل", "الخطة", "الحالة", "المصدر", "البداية", "الانتهاء", "المتبقي", "الدورة", "المبلغ", "الإجراءات"].map((h) => (
                     <th key={h} style={{ textAlign: "start", font: "var(--weight-semibold) 11.5px/1 var(--font-sans)", color: "var(--text-subtle)", padding: "8px 10px", borderBottom: "1px solid var(--border-default)" }}>{h}</th>
                   ))}
                 </tr>
@@ -404,6 +516,7 @@ export function BillingTab() {
                     </td>
                     <td style={{ padding: 10, borderBottom: "1px solid var(--border-subtle)" }}><Badge label={PLAN_AR[s.plan] ?? s.plan} bg="var(--teal-50)" fg="var(--teal-600)" /></td>
                     <td style={{ padding: 10, borderBottom: "1px solid var(--border-subtle)" }}><Badge label={SUB_STATUS_AR[s.status] ?? s.status} {...(SUB_UI[s.status] ?? SUB_UI.ACTIVE)} /></td>
+                    <td style={{ padding: 10, borderBottom: "1px solid var(--border-subtle)", font: "12px var(--font-sans)", color: "var(--text-muted)", whiteSpace: "nowrap" }}>{SOURCE_AR[s.source] ?? s.source}</td>
                     <td style={{ padding: 10, borderBottom: "1px solid var(--border-subtle)", font: "12px var(--font-sans)", whiteSpace: "nowrap" }}>{dateOnly(s.startDate)}</td>
                     <td style={{ padding: 10, borderBottom: "1px solid var(--border-subtle)", font: "12px var(--font-sans)", whiteSpace: "nowrap" }}>{dateOnly(s.endDate)}</td>
                     <td style={{ padding: 10, borderBottom: "1px solid var(--border-subtle)", font: "12.5px var(--font-sans)" }}>{s.status === "ACTIVE" ? (s.daysLeft <= 0 ? "انتهى" : `${s.daysLeft} يومًا`) : "—"}</td>
@@ -412,6 +525,7 @@ export function BillingTab() {
                     <td style={{ padding: 10, borderBottom: "1px solid var(--border-subtle)", whiteSpace: "nowrap" }}>
                       <span style={{ display: "inline-flex", gap: 6 }}>
                         <button style={btn("primary")} onClick={() => setRenewTarget({ userId: s.userId, name: s.name, email: s.email, plan: s.plan, endDate: s.endDate })}>تجديد</button>
+                        <button style={btn("ghost")} onClick={() => setHistoryTarget({ userId: s.userId, name: s.name, email: s.email })}>السجل</button>
                         {s.status === "ACTIVE" && <button style={btn("ghost")} onClick={() => void subAction(s.userId, "SUSPENDED", "تعليق الاشتراك (يوقف مزايا الخطة فورًا)")}>تعليق</button>}
                         {s.status === "ACTIVE" && <button style={btn("danger")} onClick={() => void subAction(s.userId, "CANCELED", "إلغاء الاشتراك (يبقى فعالًا حتى نهاية المدة)")}>إلغاء</button>}
                         {(s.status === "SUSPENDED" || s.status === "CANCELED") && <button style={btn("ghost")} onClick={() => void subAction(s.userId, "ACTIVE", "إعادة تفعيل الاشتراك")}>إعادة تفعيل</button>}
@@ -519,6 +633,7 @@ export function BillingTab() {
       </Card>
 
       {renewTarget && <RenewalDialog target={renewTarget} onClose={() => setRenewTarget(null)} onDone={showToast} />}
+      {historyTarget && <SubscriptionHistoryDialog target={historyTarget} onClose={() => setHistoryTarget(null)} />}
 
       {toast && (
         <div role="status" style={{ position: "fixed", bottom: 22, insetInlineStart: "50%", transform: "translateX(50%)", zIndex: 90, padding: "10px 16px", borderRadius: 999, background: "var(--navy-900)", color: "#fff", font: "var(--weight-medium) 13px/1 var(--font-sans)", boxShadow: "var(--shadow-lg)" }}>

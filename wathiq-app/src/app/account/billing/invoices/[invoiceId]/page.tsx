@@ -27,6 +27,10 @@ export default async function CustomerInvoicePage({ params }: { params: Promise<
       subtotal: true, discount: true, taxAmount: true, total: true, currency: true,
       billingPeriodStart: true, billingPeriodEnd: true,
       customerNameSnapshot: true, customerEmailSnapshot: true, customerOrganizationSnapshot: true,
+      issuerNameSnapshot: true, issuerLegalNameSnapshot: true, issuerEmailSnapshot: true,
+      issuerPhoneSnapshot: true, issuerAddressSnapshot: true, issuerTaxNumberSnapshot: true,
+      issuerCrSnapshot: true, footerTextSnapshot: true, paymentInstructionsSnapshot: true,
+      taxLabelSnapshot: true, taxRateSnapshot: true,
       notes: true, subscriptionId: true,
     },
   });
@@ -65,6 +69,17 @@ export default async function CustomerInvoicePage({ params }: { params: Promise<
         customerOrganization: invoice.customerOrganizationSnapshot,
         notes: invoice.notes,
         plan: subscription?.plan ?? null,
+        issuerName: invoice.issuerNameSnapshot,
+        issuerLegalName: invoice.issuerLegalNameSnapshot,
+        issuerEmail: invoice.issuerEmailSnapshot,
+        issuerPhone: invoice.issuerPhoneSnapshot,
+        issuerAddress: invoice.issuerAddressSnapshot,
+        issuerTaxNumber: invoice.issuerTaxNumberSnapshot,
+        issuerCr: invoice.issuerCrSnapshot,
+        footerText: invoice.footerTextSnapshot,
+        paymentInstructions: invoice.paymentInstructionsSnapshot,
+        taxLabel: invoice.taxLabelSnapshot,
+        taxRate: invoice.taxRateSnapshot != null ? Number(invoice.taxRateSnapshot) : null,
       }}
       items={items.map((it) => ({
         id: it.id,

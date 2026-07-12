@@ -3,7 +3,7 @@ import { prisma, hasDatabase } from "@/lib/db";
 import { getSessionUser } from "@/lib/session";
 import { isAccountActive } from "@/lib/account";
 import { getPlan, projectLimitFor } from "@/lib/plans";
-import { toCustomerInvoiceSummary } from "@/lib/billing";
+import { toCustomerInvoiceSummary, getCurrentSubscription, syncSubscriptionStatuses } from "@/lib/billing";
 import { trackEvent } from "@/lib/track";
 import { BillingClient } from "./BillingClient";
 
@@ -24,19 +24,24 @@ export default async function BillingPage() {
   if (!session || session.uid === "owner") redirect("/login?next=/account/billing");
   if (!(await isAccountActive(session.uid))) redirect("/login?err=disabled");
 
-  const [user, subscription, invoices, profile, projectCount] = await Promise.all([
+  // v2.1: مزامنة حالات الاشتراك أولًا (انتهاء/تفعيل المجدول) قبل القراءة.
+  await syncSubscriptionStatuses(session.uid);
+
+  const [user, subscription, scheduled, history, invoices, profile, projectCount] = await Promise.all([
     prisma.user.findUnique({
       where: { id: session.uid },
       select: { id: true, name: true, email: true, plan: true, analysisCount: true, analysisLimit: true, resetDate: true, limitOverride: true },
     }),
-    prisma.subscription.findUnique({ where: { userId: session.uid } }),
+    getCurrentSubscription(session.uid),
+    prisma.subscription.findFirst({ where: { userId: session.uid, status: "SCHEDULED" }, orderBy: { startDate: "asc" } }),
+    prisma.subscription.findMany({ where: { userId: session.uid }, orderBy: { startDate: "desc" }, take: 50 }),
     prisma.invoice.findMany({
       where: { userId: session.uid },
       orderBy: { issueDate: "desc" },
       take: 50,
       select: {
         id: true, invoiceNumber: true, status: true, issueDate: true, total: true,
-        currency: true, billingPeriodStart: true, billingPeriodEnd: true,
+        currency: true, billingPeriodStart: true, billingPeriodEnd: true, subscriptionId: true,
       },
     }),
     prisma.customerBillingProfile.findUnique({ where: { userId: session.uid } }),
@@ -49,23 +54,50 @@ export default async function BillingPage() {
   const plan = getPlan(user.plan);
   const analysisLimit = user.limitOverride ? user.analysisLimit : plan.analysisLimit;
 
+  // بطاقة الاشتراك الرئيسية: الحالي (ACTIVE) إن وُجد، وإلا آخر سجل ذي معنى
+  // (منتهي/ملغي/موقوف) — كي يرى العميل المنتهي بطاقته وتنبيه التجديد كما في v2.0.
+  const displaySub =
+    subscription ?? history.find((h) => h.status !== "SCHEDULED" && h.status !== "SUPERSEDED") ?? null;
+
   return (
     <BillingClient
       user={{ name: user.name, email: user.email, plan: user.plan, planName: plan.name }}
       subscription={
-        subscription
+        displaySub
           ? {
-              plan: subscription.plan,
-              status: subscription.status,
-              billingCycle: subscription.billingCycle,
-              startDate: subscription.startDate.toISOString(),
-              endDate: subscription.endDate.toISOString(),
-              price: Number(subscription.price).toLocaleString("en-US", { minimumFractionDigits: 2 }),
-              currency: subscription.currency,
-              autoRenew: subscription.autoRenew,
+              plan: displaySub.plan,
+              status: displaySub.status,
+              billingCycle: displaySub.billingCycle,
+              startDate: displaySub.startDate.toISOString(),
+              endDate: displaySub.endDate.toISOString(),
+              price: Number(displaySub.price).toLocaleString("en-US", { minimumFractionDigits: 2 }),
+              currency: displaySub.currency,
+              autoRenew: displaySub.autoRenew,
             }
           : null
       }
+      scheduled={
+        scheduled
+          ? {
+              plan: scheduled.plan,
+              startDate: scheduled.startDate.toISOString(),
+              endDate: scheduled.endDate.toISOString(),
+              billingCycle: scheduled.billingCycle,
+            }
+          : null
+      }
+      history={history.map((h) => ({
+        id: h.id,
+        plan: h.plan,
+        status: h.status,
+        billingCycle: h.billingCycle,
+        startDate: h.startDate.toISOString(),
+        endDate: h.endDate.toISOString(),
+        price: Number(h.price).toLocaleString("en-US", { minimumFractionDigits: 2 }),
+        currency: h.currency,
+        isCurrent: subscription?.id === h.id,
+        invoiceId: invoices.find((inv) => inv.subscriptionId === h.id)?.id ?? null,
+      }))}
       usage={{
         analysisCount: user.analysisCount,
         analysisLimit: analysisLimit ?? null,

@@ -18,7 +18,8 @@ import { prisma } from "./db";
 import { analysisLimitFor } from "./plans";
 import { trackEvent } from "./track";
 
-export const SUBSCRIPTION_STATUSES = ["TRIAL", "ACTIVE", "EXPIRED", "CANCELED", "SUSPENDED"] as const;
+export const SUBSCRIPTION_STATUSES = ["TRIAL", "SCHEDULED", "ACTIVE", "EXPIRED", "CANCELED", "SUSPENDED", "SUPERSEDED"] as const;
+export const SUBSCRIPTION_SOURCES = ["MANUAL", "PAYMENT_GATEWAY", "ADMIN_GRANT", "TRIAL", "MIGRATED"] as const;
 export const BILLING_CYCLES = ["MONTHLY", "YEARLY", "CUSTOM"] as const;
 export const PAYMENT_METHODS = ["CASH", "BANK_TRANSFER", "MANUAL", "CARD", "PAYMENT_GATEWAY", "OTHER"] as const;
 export const INVOICE_STATUSES = ["DRAFT", "PENDING", "PAID", "OVERDUE", "CANCELED", "REFUNDED"] as const;
@@ -29,10 +30,12 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 
 export const SUB_STATUS_AR: Record<string, string> = {
   TRIAL: "تجريبي",
+  SCHEDULED: "مجدول",
   ACTIVE: "نشط",
   EXPIRED: "منتهي",
   CANCELED: "ملغي",
   SUSPENDED: "موقوف",
+  SUPERSEDED: "مستبدل",
 };
 export const CYCLE_AR: Record<string, string> = { MONTHLY: "شهري", YEARLY: "سنوي", CUSTOM: "مدة مخصصة" };
 export const INVOICE_STATUS_AR: Record<string, string> = {
@@ -81,20 +84,132 @@ async function billingAudit(
   });
 }
 
+/* ---------------- إعدادات الفوترة (v2.1) ---------------- */
+
+export interface ResolvedBillingSettings {
+  issuerName: string; issuerLegalName: string | null; issuerEmail: string | null;
+  issuerPhone: string | null; issuerAddress: string | null; issuerCity: string | null;
+  issuerCountry: string | null; issuerTaxNumber: string | null; issuerCommercialRegistration: string | null;
+  logoUrl: string | null; defaultCurrency: string; taxEnabled: boolean; defaultTaxRate: number;
+  taxLabel: string; invoicePrefix: string; invoiceFooterText: string; invoiceNotes: string | null;
+  defaultDueDays: number; paymentInstructions: string | null; showPaymentMethod: boolean;
+  showReferenceNumber: boolean; supportEmail: string | null; supportPhone: string | null;
+}
+
+/** يقرأ صف الإعدادات (singleton) أو يُرجع القيم الافتراضية الآمنة إن لم يُنشأ بعد. */
+export async function getBillingSettings(): Promise<ResolvedBillingSettings> {
+  const row = await prisma.billingSettings.findUnique({ where: { id: "singleton" } });
+  return {
+    issuerName: row?.issuerName ?? "وثّق",
+    issuerLegalName: row?.issuerLegalName ?? null,
+    issuerEmail: row?.issuerEmail ?? null,
+    issuerPhone: row?.issuerPhone ?? null,
+    issuerAddress: row?.issuerAddress ?? null,
+    issuerCity: row?.issuerCity ?? null,
+    issuerCountry: row?.issuerCountry ?? null,
+    issuerTaxNumber: row?.issuerTaxNumber ?? null,
+    issuerCommercialRegistration: row?.issuerCommercialRegistration ?? null,
+    logoUrl: row?.logoUrl ?? null,
+    defaultCurrency: row?.defaultCurrency ?? "SAR",
+    taxEnabled: row?.taxEnabled ?? false,
+    defaultTaxRate: row ? Number(row.defaultTaxRate) : 0,
+    taxLabel: row?.taxLabel ?? "ضريبة القيمة المضافة",
+    invoicePrefix: row?.invoicePrefix ?? "INV",
+    invoiceFooterText: row?.invoiceFooterText ?? "شكرًا لاستخدامك وثّق.",
+    invoiceNotes: row?.invoiceNotes ?? null,
+    defaultDueDays: row?.defaultDueDays ?? 0,
+    paymentInstructions: row?.paymentInstructions ?? null,
+    showPaymentMethod: row?.showPaymentMethod ?? true,
+    showReferenceNumber: row?.showReferenceNumber ?? true,
+    supportEmail: row?.supportEmail ?? null,
+    supportPhone: row?.supportPhone ?? null,
+  };
+}
+
+/* ---------------- الاشتراك الحالي + مزامنة الحالات (v2.1) ---------------- */
+
+/**
+ * الاشتراك الحالي = أحدث صف حالته ACTIVE يشمل تاريخ اليوم. لا يُخزَّن بل
+ * يُحسب دائمًا — مصدر واحد للحقيقة الزمنية. (يُستدعى بعد syncSubscriptionStatuses.)
+ */
+export async function getCurrentSubscription(userId: string, now = new Date()) {
+  return prisma.subscription.findFirst({
+    where: { userId, status: "ACTIVE", startDate: { lte: now }, endDate: { gte: now } },
+    orderBy: { startDate: "desc" },
+  });
+}
+
+/**
+ * مزامنة حالات اشتراكات مستخدم واحد (idempotent) — تُستدعى عند فتح صفحة
+ * الفوترة/لوحة الأدمن/الـ Cron وأي عملية حساسة، بلا تكرار أثر:
+ * 1) ACTIVE انتهت مدته → EXPIRED + عودة الخطة إلى FREE.
+ * 2) SCHEDULED حان تاريخ بدايته → ACTIVE + استبدال أي ACTIVE سابق (لا اشتراكان
+ *    نشطان معًا) + مزامنة User.plan.
+ * تضمن دائمًا وجود اشتراك ACTIVE واحد كحد أقصى.
+ */
+export async function syncSubscriptionStatuses(userId: string, now = new Date()): Promise<void> {
+  const subs = await prisma.subscription.findMany({
+    where: { userId, status: { in: ["ACTIVE", "SCHEDULED"] } },
+    orderBy: { startDate: "asc" },
+  });
+  if (subs.length === 0) return;
+
+  const toExpire = subs.filter((s) => s.status === "ACTIVE" && s.endDate.getTime() < now.getTime());
+  const toActivate = subs.filter((s) => s.status === "SCHEDULED" && s.startDate.getTime() <= now.getTime());
+
+  if (toExpire.length === 0 && toActivate.length === 0) return;
+
+  try {
+    await prisma.$transaction(async (tx) => {
+      for (const s of toExpire) {
+        await tx.subscription.update({ where: { id: s.id }, data: { status: "EXPIRED" } });
+        await billingAudit(tx, { userId, entityType: "SUBSCRIPTION", entityId: s.id, action: "SUBSCRIPTION_EXPIRED", metadata: { plan: s.plan } });
+      }
+      // فعّل أحدث مجدول حان وقته فقط (والباقي يبقى مجدولًا حتى دوره).
+      const activate = toActivate[toActivate.length - 1];
+      if (activate) {
+        // استبدل أي ACTIVE ما زال قائمًا (نادر — لكن نضمن عدم وجود اثنين).
+        await tx.subscription.updateMany({
+          where: { userId, status: "ACTIVE", id: { not: activate.id } },
+          data: { status: "SUPERSEDED", supersededAt: now, cancellationReason: "استُبدل تلقائيًا ببدء الاشتراك المجدول." },
+        });
+        await tx.subscription.update({ where: { id: activate.id }, data: { status: "ACTIVE" } });
+        const u = await tx.user.findUnique({ where: { id: userId }, select: { limitOverride: true } });
+        const data: Prisma.UserUpdateInput = { plan: activate.plan, subscriptionStatus: "ACTIVE" };
+        if (!u?.limitOverride) {
+          const lim = analysisLimitFor(activate.plan);
+          data.analysisLimit = lim === null ? 999_999 : lim;
+        }
+        await tx.user.update({ where: { id: userId }, data });
+        await billingAudit(tx, { userId, entityType: "SUBSCRIPTION", entityId: activate.id, action: "SCHEDULED_ACTIVATED", metadata: { plan: activate.plan } });
+      } else if (toExpire.length > 0) {
+        // انتهت مدة نشط ولا يوجد مجدول يخلفه → عودة إلى FREE.
+        const stillActive = await tx.subscription.count({ where: { userId, status: "ACTIVE" } });
+        if (stillActive === 0) {
+          await tx.user.update({ where: { id: userId }, data: { plan: "FREE", subscriptionStatus: "INACTIVE" } });
+        }
+      }
+    });
+  } catch (err) {
+    console.error("[syncSubscriptionStatuses]", err instanceof Error ? err.message : "error");
+  }
+}
+
 /* ---------------- رقم الفاتورة ---------------- */
 
 /**
  * INV-<سنة>-<تسلسل 6 خانات> — increment ذري على صف العدّاد داخل المعاملة
  * نفسها؛ upsert على مفتاح السنة يضمن التفرد حتى مع طلبات متزامنة.
  */
-export async function nextInvoiceNumber(tx: Prisma.TransactionClient, now = new Date()): Promise<string> {
+export async function nextInvoiceNumber(tx: Prisma.TransactionClient, prefix = "INV", now = new Date()): Promise<string> {
   const year = now.getFullYear();
   const counter = await tx.invoiceCounter.upsert({
     where: { year },
     create: { year, value: 1 },
     update: { value: { increment: 1 } },
   });
-  return `INV-${year}-${String(counter.value).padStart(6, "0")}`;
+  const safePrefix = (prefix || "INV").toUpperCase().replace(/[^A-Z0-9-]/g, "").slice(0, 8) || "INV";
+  return `${safePrefix}-${year}-${String(counter.value).padStart(6, "0")}`;
 }
 
 /* ---------------- التفعيل / التجديد الذري ---------------- */
@@ -116,6 +231,8 @@ export interface ActivateSubscriptionInput {
   markInvoicePaid: boolean;
   resetUsage: boolean;
   itemDescription?: string | null;
+  /** true (افتراضي): يبدأ الآن ويستبدل النشط الحالي. false: يُجدول للمستقبل. */
+  startImmediate?: boolean;
 }
 
 export interface ActivateResult {
@@ -124,6 +241,7 @@ export interface ActivateResult {
   invoiceId: string | null;
   invoiceNumber: string | null;
   paymentId: string;
+  scheduled: boolean;
 }
 export type ActivateError = { ok: false; error: string };
 
@@ -152,45 +270,56 @@ export async function activateOrRenewSubscription(
 
   const currency = (input.currency ?? "SAR").slice(0, 8);
   const paidAt = input.paidAt ?? new Date();
-  const isRenewal = Boolean(await prisma.subscription.findUnique({ where: { userId: user.id }, select: { id: true } }));
+  const now = new Date();
+  // البدء الفوري افتراضي؛ إن كانت البداية مستقبلية والأدمن اختار الجدولة → SCHEDULED.
+  const startImmediate = input.startImmediate !== false && input.startDate.getTime() <= now.getTime() + DAY_MS;
+  const scheduled = !startImmediate && input.startDate.getTime() > now.getTime();
+
+  // آخر اشتراك للمستخدم (لسلسلة renewedFrom/previous) — سجل تاريخي، لا صف وحيد.
+  const prev = await prisma.subscription.findFirst({ where: { userId: user.id }, orderBy: { createdAt: "desc" } });
+  const isRenewal = Boolean(prev);
+
+  const settings = await getBillingSettings();
+  const profile = await prisma.customerBillingProfile.findUnique({ where: { userId: user.id } });
+
+  // الضريبة من الإعدادات — تُطبَّق على الجديد فقط، وصفر إن كانت معطّلة.
+  const taxRate = settings.taxEnabled ? settings.defaultTaxRate : 0;
+  const subtotalN = Number(input.price.toFixed(2));
+  const taxN = Math.round(subtotalN * (taxRate / 100) * 100) / 100;
+  const totalN = Math.round((subtotalN + taxN) * 100) / 100;
 
   try {
     const result = await prisma.$transaction(async (tx) => {
-      // 1) الاشتراك — صف واحد لكل مستخدم يُحدَّث عند التجديد (التاريخ في السجلات المالية).
-      const sub = await tx.subscription.upsert({
-        where: { userId: user.id },
-        create: {
+      // 1) إنشاء صف اشتراك جديد (لا كتابة فوق السابق) — سجل تاريخي.
+      //    فوري → ACTIVE ويستبدل النشط الحالي؛ مجدول → SCHEDULED بلا لمس الخطة.
+      if (startImmediate) {
+        await tx.subscription.updateMany({
+          where: { userId: user.id, status: "ACTIVE" },
+          data: { status: "SUPERSEDED", supersededAt: now, cancellationReason: "استُبدل بتفعيل اشتراك جديد فوري." },
+        });
+      }
+      const sub = await tx.subscription.create({
+        data: {
           userId: user.id,
           plan: input.plan,
-          status: "ACTIVE",
+          status: startImmediate ? "ACTIVE" : "SCHEDULED",
           billingCycle: input.billingCycle,
           startDate: input.startDate,
           endDate: input.endDate,
-          price: new Prisma.Decimal(input.price.toFixed(2)),
+          price: new Prisma.Decimal(subtotalN.toFixed(2)),
           currency,
-          createdByAdminId: input.adminId,
-        },
-        update: {
-          plan: input.plan,
-          status: "ACTIVE",
-          billingCycle: input.billingCycle,
-          startDate: input.startDate,
-          endDate: input.endDate,
-          price: new Prisma.Decimal(input.price.toFixed(2)),
-          currency,
-          canceledAt: null,
-          cancellationReason: null,
+          source: "MANUAL",
+          previousSubscriptionId: prev?.id ?? null,
+          renewedFromId: prev?.id ?? null,
           createdByAdminId: input.adminId,
         },
       });
 
-      // 2) فاتورة اختيارية مع snapshot بيانات العميل وقت الإصدار.
+      // 2) فاتورة اختيارية — snapshot لبيانات العميل والجهة المصدرة والضريبة.
       let invoiceId: string | null = null;
       let invoiceNumber: string | null = null;
       if (input.createInvoice) {
-        const profile = await tx.customerBillingProfile.findUnique({ where: { userId: user.id } });
-        invoiceNumber = await nextInvoiceNumber(tx);
-        const amount = new Prisma.Decimal(input.price.toFixed(2));
+        invoiceNumber = await nextInvoiceNumber(tx, settings.invoicePrefix);
         const invoice = await tx.invoice.create({
           data: {
             invoiceNumber,
@@ -198,18 +327,31 @@ export async function activateOrRenewSubscription(
             subscriptionId: sub.id,
             status: input.markInvoicePaid ? "PAID" : "PENDING",
             issueDate: new Date(),
-            dueDate: input.markInvoicePaid ? null : new Date(Date.now() + 7 * DAY_MS),
+            dueDate: input.markInvoicePaid ? null : new Date(Date.now() + Math.max(0, settings.defaultDueDays) * DAY_MS),
             paidAt: input.markInvoicePaid ? paidAt : null,
-            subtotal: amount,
+            subtotal: new Prisma.Decimal(subtotalN.toFixed(2)),
             discount: new Prisma.Decimal(0),
-            taxAmount: new Prisma.Decimal(0), // الضريبة قابلة للتهيئة لاحقًا — لا نفترض قيمة
-            total: amount,
+            taxAmount: new Prisma.Decimal(taxN.toFixed(2)),
+            total: new Prisma.Decimal(totalN.toFixed(2)),
             currency,
             billingPeriodStart: input.startDate,
             billingPeriodEnd: input.endDate,
             customerNameSnapshot: profile?.legalName || user.name,
             customerEmailSnapshot: profile?.billingEmail || user.email,
             customerOrganizationSnapshot: profile?.organizationName ?? null,
+            // snapshot الجهة المصدرة والإعدادات — الفاتورة التاريخية ثابتة.
+            issuerNameSnapshot: settings.issuerName,
+            issuerLegalNameSnapshot: settings.issuerLegalName,
+            issuerEmailSnapshot: settings.issuerEmail,
+            issuerPhoneSnapshot: settings.issuerPhone,
+            issuerAddressSnapshot: settings.issuerAddress,
+            issuerTaxNumberSnapshot: settings.issuerTaxNumber,
+            issuerCrSnapshot: settings.issuerCommercialRegistration,
+            footerTextSnapshot: settings.invoiceFooterText,
+            paymentInstructionsSnapshot: settings.paymentInstructions,
+            taxLabelSnapshot: taxRate > 0 ? settings.taxLabel : null,
+            taxRateSnapshot: new Prisma.Decimal(taxRate.toFixed(2)),
+            notes: settings.invoiceNotes ?? null,
             internalNote: input.internalNote ?? null,
             createdByAdminId: input.adminId,
           },
@@ -222,84 +364,65 @@ export async function activateOrRenewSubscription(
               input.itemDescription ||
               `${isRenewal ? "تجديد اشتراك" : "اشتراك"} وثّق ${PLAN_AR[input.plan] ?? input.plan} — ${CYCLE_AR[input.billingCycle]}`,
             quantity: 1,
-            unitPrice: amount,
-            total: amount,
+            unitPrice: new Prisma.Decimal(subtotalN.toFixed(2)),
+            total: new Prisma.Decimal(subtotalN.toFixed(2)),
           },
         });
       }
 
-      // 3) الدفعة — نقدي/تحويل/يدوي = مكتملة فورًا.
+      // 3) الدفعة — مكتملة فورًا.
       const payment = await tx.payment.create({
         data: {
-          userId: user.id,
-          invoiceId,
-          subscriptionId: sub.id,
-          amount: new Prisma.Decimal(input.price.toFixed(2)),
-          currency,
-          method: input.paymentMethod,
-          status: "COMPLETED",
-          paidAt,
+          userId: user.id, invoiceId, subscriptionId: sub.id,
+          amount: new Prisma.Decimal(totalN.toFixed(2)), currency,
+          method: input.paymentMethod, status: "COMPLETED", paidAt,
           referenceNumber: input.referenceNumber?.slice(0, 120) ?? null,
           receivedByAdminId: input.adminId,
           notes: input.internalNote?.slice(0, 500) ?? null,
         },
       });
 
-      // 4) مزامنة User.plan والحدود داخل نفس المعاملة — لا تعارض ممكن.
-      //    limitOverride اليدوي يتقدم: لا نلمس الحد إذا كان مفعّلًا.
-      const userData: Prisma.UserUpdateInput = { plan: input.plan, subscriptionStatus: "ACTIVE" };
-      if (!user.limitOverride) {
-        const lim = analysisLimitFor(input.plan);
-        userData.analysisLimit = lim === null ? 999_999 : lim;
+      // 4) مزامنة User.plan — للاشتراك الفوري فقط (المجدول لا يغيّر الخطة الآن).
+      if (startImmediate) {
+        const userData: Prisma.UserUpdateInput = { plan: input.plan, subscriptionStatus: "ACTIVE" };
+        if (!user.limitOverride) {
+          const lim = analysisLimitFor(input.plan);
+          userData.analysisLimit = lim === null ? 999_999 : lim;
+        }
+        if (input.resetUsage) {
+          userData.analysisCount = 0;
+          const next = new Date(input.startDate);
+          next.setMonth(next.getMonth() + 1);
+          userData.resetDate = next;
+        }
+        await tx.user.update({ where: { id: user.id }, data: userData });
       }
-      if (input.resetUsage) {
-        userData.analysisCount = 0;
-        // resetDate = شهر من بداية الفترة الجديدة (نفس منطق الدورة الشهرية الحالي).
-        const next = new Date(input.startDate);
-        next.setMonth(next.getMonth() + 1);
-        userData.resetDate = next;
-      }
-      await tx.user.update({ where: { id: user.id }, data: userData });
 
       // 5) سجل التدقيق المالي.
       await billingAudit(tx, {
-        actorId: input.adminId,
-        userId: user.id,
-        entityType: "SUBSCRIPTION",
-        entityId: sub.id,
-        action: isRenewal ? "SUBSCRIPTION_RENEWED" : "SUBSCRIPTION_CREATED",
+        actorId: input.adminId, userId: user.id, entityType: "SUBSCRIPTION", entityId: sub.id,
+        action: scheduled ? "SUBSCRIPTION_SCHEDULED" : isRenewal ? "SUBSCRIPTION_RENEWED" : "SUBSCRIPTION_CREATED",
         metadata: {
-          plan: input.plan,
-          cycle: input.billingCycle,
-          amount: input.price,
-          method: input.paymentMethod,
-          invoice: invoiceNumber,
-          note: isRenewal
-            ? `تم تسجيل دفع ${PAY_METHOD_AR[input.paymentMethod]} وتجديد الاشتراك يدويًا بواسطة الأدمن.`
-            : `تم إنشاء الاشتراك وتسجيل دفع ${PAY_METHOD_AR[input.paymentMethod]} بواسطة الأدمن.`,
+          plan: input.plan, cycle: input.billingCycle, amount: totalN, method: input.paymentMethod,
+          invoice: invoiceNumber, renewedFrom: prev?.id ?? null,
+          note: scheduled
+            ? "تم جدولة تجديد يبدأ تلقائيًا بعد انتهاء الفترة الحالية."
+            : isRenewal
+              ? `تم تسجيل دفع ${PAY_METHOD_AR[input.paymentMethod]} وتجديد الاشتراك يدويًا بواسطة الأدمن.`
+              : `تم إنشاء الاشتراك وتسجيل دفع ${PAY_METHOD_AR[input.paymentMethod]} بواسطة الأدمن.`,
         },
       });
       if (invoiceId) {
-        await billingAudit(tx, {
-          actorId: input.adminId, userId: user.id, entityType: "INVOICE", entityId: invoiceId,
-          action: input.markInvoicePaid ? "INVOICE_MARKED_PAID" : "INVOICE_CREATED",
-          metadata: { invoice: invoiceNumber, amount: input.price },
-        });
+        await billingAudit(tx, { actorId: input.adminId, userId: user.id, entityType: "INVOICE", entityId: invoiceId, action: input.markInvoicePaid ? "INVOICE_MARKED_PAID" : "INVOICE_CREATED", metadata: { invoice: invoiceNumber, amount: totalN } });
       }
-      await billingAudit(tx, {
-        actorId: input.adminId, userId: user.id, entityType: "PAYMENT", entityId: payment.id,
-        action: "PAYMENT_RECORDED", metadata: { method: input.paymentMethod, amount: input.price },
-      });
+      await billingAudit(tx, { actorId: input.adminId, userId: user.id, entityType: "PAYMENT", entityId: payment.id, action: "PAYMENT_RECORDED", metadata: { method: input.paymentMethod, amount: totalN } });
 
       return { subscriptionId: sub.id, invoiceId, invoiceNumber, paymentId: payment.id };
     });
 
-    // الأحداث خارج المعاملة — آمنة الفشل ولا تؤثر على العملية.
     await trackEvent({
-      eventName: (isRenewal ? "subscription_renewed" : "subscription_created"),
-      userId: user.id,
-      plan: input.plan,
-      metadata: { cycle: input.billingCycle, method: input.paymentMethod },
+      eventName: isRenewal ? "subscription_renewed" : "subscription_created",
+      userId: user.id, plan: input.plan, metadata: { cycle: input.billingCycle, method: input.paymentMethod, scheduled },
     });
     if (result.invoiceId) {
       await trackEvent({ eventName: "invoice_created", userId: user.id, plan: input.plan });
@@ -307,7 +430,7 @@ export async function activateOrRenewSubscription(
     }
     await trackEvent({ eventName: "payment_recorded", userId: user.id, metadata: { method: input.paymentMethod } });
 
-    return { ok: true, ...result };
+    return { ok: true, ...result, scheduled };
   } catch (err) {
     console.error("[activateOrRenewSubscription]", err instanceof Error ? err.message : "error");
     return { ok: false, error: "transaction-failed" };
@@ -322,12 +445,15 @@ export async function setSubscriptionStatus(
   status: "CANCELED" | "SUSPENDED" | "ACTIVE",
   reason?: string | null
 ): Promise<{ ok: boolean; error?: string }> {
-  const sub = await prisma.subscription.findUnique({ where: { userId } });
+  // يستهدف الاشتراك الحالي/الأحدث (السجل التاريخي قد يحوي عدة صفوف).
+  const sub =
+    (await prisma.subscription.findFirst({ where: { userId, status: { in: ["ACTIVE", "SCHEDULED", "SUSPENDED"] } }, orderBy: { startDate: "desc" } })) ??
+    (await prisma.subscription.findFirst({ where: { userId }, orderBy: { createdAt: "desc" } }));
   if (!sub) return { ok: false, error: "no-subscription" };
   try {
     await prisma.$transaction(async (tx) => {
       await tx.subscription.update({
-        where: { userId },
+        where: { id: sub.id },
         data: {
           status,
           canceledAt: status === "CANCELED" ? new Date() : null,
@@ -422,14 +548,19 @@ export async function processSubscriptionLifecycle(now = new Date()): Promise<{
   let remindersCreated = 0;
   let overdueMarked = 0;
 
-  // 1) توليد التذكيرات — قبل قلب الحالة إلى EXPIRED حتى تُسجَّل تذكيرات
-  //    الفترة كاملة (بما فيها تذكير الانتهاء نفسه). (IN_APP الآن؛ EMAIL عند تفعيل البريد لاحقًا)
+  // 1) توليد التذكيرات — للاشتراكات النشطة الحالية فقط (لا التاريخية ولا
+  //    المستبدلة)، وقبل قلب الحالة إلى EXPIRED حتى تُسجَّل تذكيرات الفترة كاملة.
+  //    نتخطى من له اشتراك مجدول قادم (لا داعي لتذكير التجديد — مسجَّل أصلًا).
   const horizon = new Date(now.getTime() + 8 * DAY_MS);
-  const active = await prisma.subscription.findMany({
+  const activeAll = await prisma.subscription.findMany({
     where: { status: "ACTIVE", endDate: { lte: horizon } },
     select: { id: true, userId: true, endDate: true },
     take: 500,
   });
+  const scheduledUsers = new Set(
+    (await prisma.subscription.findMany({ where: { status: "SCHEDULED" }, select: { userId: true } })).map((r) => r.userId)
+  );
+  const active = activeAll.filter((s) => !scheduledUsers.has(s.userId));
   for (const sub of active) {
     for (const off of REMINDER_OFFSETS) {
       const scheduledFor = new Date(sub.endDate.getTime() - off.days * DAY_MS);
@@ -460,21 +591,14 @@ export async function processSubscriptionLifecycle(now = new Date()): Promise<{
     select: { id: true, userId: true, plan: true, endDate: true },
     take: 200,
   });
-  for (const sub of toExpire) {
-    try {
-      await prisma.$transaction(async (tx) => {
-        await tx.subscription.update({ where: { id: sub.id }, data: { status: "EXPIRED" } });
-        await tx.user.update({ where: { id: sub.userId }, data: { plan: "FREE", subscriptionStatus: "INACTIVE" } });
-        await billingAudit(tx, {
-          userId: sub.userId, entityType: "SUBSCRIPTION", entityId: sub.id,
-          action: "SUBSCRIPTION_EXPIRED", metadata: { plan: sub.plan, endDate: sub.endDate.toISOString().slice(0, 10) },
-        });
-      });
-      expired++;
-      await trackEvent({ eventName: "subscription_expired", userId: sub.userId, plan: sub.plan });
-    } catch (err) {
-      console.error("[lifecycle expire]", err instanceof Error ? err.message : "error");
-    }
+  //    نمرّ عبر syncSubscriptionStatuses لكل مستخدم متأثر — يتكفّل بالانتهاء
+  //    وتفعيل المجدول القادم (إن وُجد) وعدم الهبوط إلى FREE إذا كان هناك خليفة.
+  const affectedUsers = [...new Set(toExpire.map((s) => s.userId))];
+  for (const uid of affectedUsers) {
+    await syncSubscriptionStatuses(uid, now);
+    expired++;
+    const s = toExpire.find((x) => x.userId === uid);
+    if (s) await trackEvent({ eventName: "subscription_expired", userId: uid, plan: s.plan });
   }
 
   // 3) الفواتير المتأخرة
@@ -493,14 +617,20 @@ export async function processSubscriptionLifecycle(now = new Date()): Promise<{
  * تقدير الإيراد الشهري: الشهري كما هو، السنوي ÷ 12، والمدة المخصصة
  * مستثناة (موثق) — «تقدير مبني على الاشتراكات المسجلة داخل وثّق».
  */
-export async function estimateMRR(): Promise<{ mrr: number; excludedCustom: number }> {
-  const subs = await prisma.subscription.findMany({
-    where: { status: "ACTIVE" },
-    select: { billingCycle: true, price: true },
+export async function estimateMRR(now = new Date()): Promise<{ mrr: number; excludedCustom: number }> {
+  // فقط الاشتراكات النشطة الحالية (تشمل تاريخ اليوم) — لا التاريخية ولا المجدولة
+  // ولا المستبدلة/المنتهية. صف واحد لكل مستخدم (الأحدث تغطيةً لليوم).
+  const rows = await prisma.subscription.findMany({
+    where: { status: "ACTIVE", startDate: { lte: now }, endDate: { gte: now } },
+    select: { userId: true, billingCycle: true, price: true, startDate: true },
+    orderBy: { startDate: "desc" },
   });
+  const seen = new Set<string>();
   let mrr = 0;
   let excludedCustom = 0;
-  for (const s of subs) {
+  for (const s of rows) {
+    if (seen.has(s.userId)) continue; // احتياط: صف واحد لكل مستخدم
+    seen.add(s.userId);
     const p = Number(s.price);
     if (s.billingCycle === "MONTHLY") mrr += p;
     else if (s.billingCycle === "YEARLY") mrr += p / 12;
