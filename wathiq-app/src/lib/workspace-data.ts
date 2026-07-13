@@ -15,7 +15,7 @@ import {
   type ProjectModule,
   type RequirementAnalysis,
 } from "./data";
-import { analysisLimitFor } from "./plans";
+import { resolvedAnalysisLimitFor } from "@/lib/settings";
 import type { RequirementStatus, PriorityLevel } from "@/components/ds";
 
 export interface UsageInfo {
@@ -174,7 +174,7 @@ export async function getWorkspaceData(
         ? {
             plan: user.plan,
             analysisCount: user.analysisCount,
-            analysisLimit: user.limitOverride ? user.analysisLimit : analysisLimitFor(user.plan),
+            analysisLimit: user.limitOverride ? user.analysisLimit : await resolvedAnalysisLimitFor(user.plan),
             subscriptionStatus: user.subscriptionStatus,
           }
         : null,

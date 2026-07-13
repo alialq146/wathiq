@@ -1,4 +1,5 @@
 import { LegalShell } from "@/components/legal/LegalShell";
+import { getContactSettings } from "@/lib/settings";
 
 export const metadata = {
   title: "الأمان والخصوصية · وثّق",
@@ -9,9 +10,10 @@ export const metadata = {
  * صفحة أمان عامة لبناء الثقة قبل التسجيل — محتواها صادق ومطابق للمطبق فعلًا:
  * لا ادعاء شهادات امتثال، ولا ذكر لمزودي النماذج، ولا كشف لأي تفاصيل حساسة.
  */
-export default function SecurityPage() {
+export default async function SecurityPage() {
   return (
     <LegalShell
+      supportEmail={(await getContactSettings()).supportEmail}
       title="الأمان والخصوصية في وثّق"
       updated="٧ يوليو ٢٠٢٦"
       intro="نتعامل مع متطلبات مشاريعك كأصول عمل حساسة. توضح هذه الصفحة بشفافية كيف نحمي حسابك وبياناتك، وما الذي يفعله الذكاء الاصطناعي في وثّق — وما الذي لا يفعله."

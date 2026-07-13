@@ -499,9 +499,13 @@ export function clampTaskResult(task: AssistantTask, r: AssistantTaskResult): As
 export async function runAssistantTask(
   req: RequirementForAnalysis,
   task: AssistantTask,
-  model: string = DEFAULT_MODEL
+  model: string = DEFAULT_MODEL,
+  maxTokensOverride?: number
 ): Promise<Analyzed<AssistantTaskResult>> {
   const cfg = TASK_CONFIG[task];
+  // v2.2: حد الرموز من إعدادات النظام إن مُرر (مقصوص أصلًا بالسقف الصلب
+  // في settings service) — غيابه = السلوك التاريخي.
+  const maxTokens = maxTokensOverride && maxTokensOverride >= 100 ? maxTokensOverride : cfg.maxTokens;
   const client = new Anthropic();
   // مدخلات المهام الخفيفة مقلصة عمدًا: العنوان والوصف والنوع والملاحظات فقط
   // (لا رقم ولا وحدة ولا أولوية ولا أصحاب مصلحة) — توفير رموز وحدّ من الإسهاب.
@@ -513,7 +517,7 @@ ${req.type ? `النوع: ${req.type}\n` : ""}${req.notes ? `ملاحظات: ${c
 
   const response = await client.messages.create({
     model,
-    max_tokens: cfg.maxTokens,
+    max_tokens: maxTokens,
     system: BASE_RULES,
     output_config: { format: { type: "json_schema", schema: cfg.schema } },
     messages: [{ role: "user", content: userText }],

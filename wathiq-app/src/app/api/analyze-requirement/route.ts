@@ -12,6 +12,7 @@ import { getSessionUser } from "@/lib/session";
 import { authEnabled } from "@/lib/auth";
 import { reserveQuota, releaseQuota, logAiUsage } from "@/lib/usage";
 import { trackEvent } from "@/lib/track";
+import { getFeatureSettings, getAssistantSettings, assistantTaskBudget, type AssistantTaskKey } from "@/lib/settings";
 
 export const dynamic = "force-dynamic";
 // مهلة أطول لاستدعاءات الذكاء الاصطناعي — Fluid Compute يدعم حتى 300 ثانية.
@@ -112,8 +113,30 @@ export async function POST(req: Request) {
   // مسار المهام الخفيفة: نفس الفحوصات والتسجيل، لكن بدون حفظ في المتطلب —
   // النتيجة ترجع للواجهة والمستخدم يقرر اعتمادها.
   if (task !== "full") {
+    // v2.2: بوابات مساعد وثّق من إعدادات النظام — الرفض خادمي دائمًا:
+    // 1) المساعد كوحدة مفعّل؟ 2) الخطة مسموح لها؟ 3) المهمة مفعّلة؟
+    // 4) تتطلب خطة مدفوعة؟ حد الرموز مقصوص بالسقف الصلب في settings service.
+    const [feats, assistantCfg, taskBudget] = await Promise.all([
+      getFeatureSettings(),
+      getAssistantSettings(),
+      assistantTaskBudget(task as AssistantTaskKey),
+    ]);
+    if (!feats.assistantEnabled) return bail({ ok: false, error: "assistant-disabled" });
+    if (!taskBudget.enabled) return bail({ ok: false, error: "task-disabled" });
+    if (userId) {
+      const u = await prisma.user.findUnique({ where: { id: userId }, select: { plan: true } });
+      const plan = u?.plan ?? "FREE";
+      const planAllowed =
+        plan === "PRO" ? assistantCfg.enabledForPro
+        : plan === "ENTERPRISE" ? assistantCfg.enabledForEnterprise
+        : assistantCfg.enabledForFree;
+      if (!planAllowed) return bail({ ok: false, error: "assistant-plan-disabled" });
+      if (taskBudget.requiresPaidPlan && plan === "FREE") {
+        return bail({ ok: false, error: "task-requires-paid" });
+      }
+    }
     try {
-      const { result, meta } = await runAssistantTask(reqInput, task, model);
+      const { result, meta } = await runAssistantTask(reqInput, task, model, taskBudget.maxTokens);
       // الحصة محجوزة مسبقًا (حجز ذري) — يكفي تسجيل النجاح.
       if (userId) {
         await logAiUsage({

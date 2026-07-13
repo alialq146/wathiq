@@ -12,11 +12,14 @@ export function LegalShell({
   updated,
   intro,
   sections,
+  supportEmail = "wathiq.ai.app@gmail.com",
 }: {
   title: string;
   updated: string;
   intro: string;
   sections: LegalSection[];
+  /** v2.2: من إعدادات النظام — الافتراضي يطابق السلوك التاريخي. */
+  supportEmail?: string;
 }) {
   return (
     <div style={{ minHeight: "100vh", background: "var(--bg-app)" }}>
@@ -81,7 +84,7 @@ export function LegalShell({
           }}
         >
           للاستفسار عن هذه السياسة، تواصل معنا على{" "}
-          <a href="mailto:wathiq.ai.app@gmail.com" style={{ color: "var(--text-link)", textDecoration: "none" }}>
+          <a href={`mailto:${supportEmail}`} style={{ color: "var(--text-link)", textDecoration: "none" }}>
             wathiq.ai.app@gmail.com
           </a>{" "}
           أو عبر واتساب على ‎+966&nbsp;53&nbsp;180&nbsp;0106.

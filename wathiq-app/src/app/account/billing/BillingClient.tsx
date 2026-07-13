@@ -79,6 +79,7 @@ const secTitle = (icon: string, title: string) => (
 
 export function BillingClient({
   user,
+  contact,
   subscription,
   scheduled,
   history,
@@ -87,6 +88,7 @@ export function BillingClient({
   profile,
 }: {
   user: { name: string; email: string; plan: string; planName: string };
+  contact: { whatsappNumber: string; renewalMessageText: string; renewalCtaText: string };
   subscription: SubscriptionView | null;
   scheduled: ScheduledView | null;
   history: HistoryRow[];
@@ -121,14 +123,12 @@ export function BillingClient({
         ? { bg: "var(--amber-50)", border: "var(--border-subtle)", fg: "var(--amber-600)", bar: "var(--amber-500)" }
         : { bg: "transparent", border: "var(--border-subtle)", fg: "var(--text-muted)", bar: "var(--teal-500)" };
 
-  const renewMsg = [
-    "مرحبًا، أرغب في تجديد اشتراكي في منصة وثّق.",
-    `الخطة الحالية: ${PLAN_AR[user.plan] ?? user.plan}`,
-    `البريد المسجل: ${user.email}`,
-    subscription ? `تاريخ انتهاء الاشتراك: ${fmtDate(subscription.endDate)}` : "",
-    "ملاحظات: ",
-  ].filter(Boolean).join("\n");
-  const renewHref = "https://wa.me/966531800106?text=" + encodeURIComponent(renewMsg);
+  // نص الرسالة ورقم واتساب من إعدادات النظام (المتغيرات تُستبدل هنا).
+  const renewMsg = contact.renewalMessageText
+    .replace(/\{plan\}/g, PLAN_AR[user.plan] ?? user.plan)
+    .replace(/\{email\}/g, user.email)
+    .replace(/\{endDate\}/g, subscription ? fmtDate(subscription.endDate) : "—");
+  const renewHref = `https://wa.me/${contact.whatsappNumber.replace(/[^0-9]/g, "")}?text=` + encodeURIComponent(renewMsg);
 
   const saveProfile = async () => {
     if (saving) return;
@@ -222,7 +222,7 @@ export function BillingClient({
                 onClick={() => void trackClientEvent("renewal_clicked", { from: "billing_page" })}
                 style={{ display: "inline-flex", alignItems: "center", gap: 8, height: 40, padding: "0 18px", borderRadius: "var(--radius-pill)", background: "var(--primary)", color: "#fff", font: "var(--weight-semibold) 13.5px var(--font-sans)", textDecoration: "none" }}
               >
-                <Icon name="rotate-cw" size={15} color="#fff" /> طلب التجديد
+                <Icon name="rotate-cw" size={15} color="#fff" /> {contact.renewalCtaText}
               </a>
               <a
                 className="bl-btn"

@@ -3,6 +3,7 @@ import { trackEvent } from "@/lib/track";
 import { prisma, hasDatabase } from "@/lib/db";
 import { hashPassword } from "@/lib/password";
 import { createSessionToken, SESSION_COOKIE, SESSION_MAX_AGE } from "@/lib/auth";
+import { getFeatureSettings } from "@/lib/settings";
 
 export const dynamic = "force-dynamic";
 
@@ -12,6 +13,13 @@ export async function POST(req: Request) {
   // Accounts live in the database; without one, signup is impossible.
   if (!hasDatabase()) {
     return NextResponse.json({ ok: false, error: "no-db" });
+  }
+
+  // v2.2: بوابة التسجيل العام من إعدادات النظام — الرفض من الخادم دائمًا
+  // (إخفاء الواجهة وحده ليس حماية).
+  const feats = await getFeatureSettings();
+  if (!feats.publicRegistrationEnabled) {
+    return NextResponse.json({ ok: false, error: "registration-disabled" }, { status: 403 });
   }
 
   let body: { name?: unknown; email?: unknown; password?: unknown };

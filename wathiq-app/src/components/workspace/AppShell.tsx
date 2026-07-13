@@ -79,7 +79,7 @@ function Dropdown({
 
 /** App frame: right-anchored sidebar (RTL) + topbar. */
 export function AppShell({ current, onNavigate, onNewAnalysis, onNewProject, search = "", onSearchChange, children, rightRail }: AppShellProps) {
-  const { requirements, source, authEnabled, user, projects, activeProject } = useWorkspaceData();
+  const { requirements, source, authEnabled, user, projects, activeProject , featureFlags } = useWorkspaceData();
   const router = useRouter();
   // Demo persona when auth is off; the real account when signed in.
   const displayName = user?.name || "سارة العتيبي";
@@ -339,8 +339,8 @@ export function AppShell({ current, onNavigate, onNewAnalysis, onNewProject, sea
           ))}
         </div>
 
-        {/* قناة الملاحظات — للمستخدم المسجل فقط (v1.9.11) */}
-        {user?.email && (
+        {/* قناة الملاحظات — للمستخدم المسجل فقط (v1.9.11)؛ v2.2: خاضعة لخاصية النظام */}
+        {user?.email && featureFlags.feedbackEnabled && (
           <button
             onClick={() => setFeedbackOpen(true)}
             style={{

@@ -10,6 +10,7 @@
 import { emailConfigured, sendEmail, appUrl } from "./mailer";
 import { trackEvent } from "./track";
 import { prisma } from "./db";
+import { getFeatureSettings } from "@/lib/settings";
 
 export function billingEmailEnabled(): boolean {
   return process.env.BILLING_EMAIL_ENABLED?.trim() === "true" && emailConfigured();
@@ -64,6 +65,10 @@ export async function sendBillingEmail(userId: string, to: string, template: Bil
       console.warn("[billing-mailer] billing_email_not_configured — لم يُرسل شيء (متوقع قبل التفعيل).");
       return;
     }
+    // v2.2: بوابة إعدادات النظام (AND مع بوابة env أعلاه) — إيقاف تشغيلي
+    // من لوحة الأدمن دون لمس متغيرات البيئة. فشل قراءتها = defaults (مفعّل).
+    const feats = await getFeatureSettings();
+    if (!feats.billingEmailsEnabled) return;
     const { subject, html, text } = render(template);
     const res = await sendEmail(to, subject, html, text);
     if (res.sent) {

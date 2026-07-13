@@ -1030,6 +1030,7 @@ function HistoryTab({ items }: { items: AuditEvent[] }) {
 }
 
 function RequirementAnalysisPanel({ req, connected }: { req: Requirement; connected: boolean }) {
+  const { publicSettings } = useWorkspaceData();
   const router = useRouter();
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
@@ -1108,7 +1109,7 @@ function RequirementAnalysisPanel({ req, connected }: { req: Requirement; connec
           <button onClick={() => setLimited(false)} style={{ border: "none", background: "transparent", cursor: "pointer", color: "var(--text-subtle)", font: "13px var(--font-sans)" }}>إغلاق</button>
         </div>
         <span style={{ font: "11px/1.6 var(--font-sans)", color: "var(--text-subtle)" }}>
-          الترقية حاليًا بالتواصل المباشر، ويتم التفعيل خلال 24 ساعة عمل.
+          {publicSettings.activationTimeText}
         </span>
       </div>
     );

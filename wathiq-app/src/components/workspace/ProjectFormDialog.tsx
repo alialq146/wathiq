@@ -4,6 +4,7 @@ import React from "react";
 import { Button, Icon } from "@/components/ds";
 import { createProject, updateProject, type ProjectInput , trackClientEvent } from "@/app/actions";
 import { whatsappUpgradeLink } from "@/lib/plans";
+import { useWorkspaceData } from "./WorkspaceDataContext";
 import type { Project } from "@/lib/data";
 
 const STATUS_OPTIONS = [
@@ -39,6 +40,7 @@ export interface ProjectFormDialogProps {
 }
 
 export function ProjectFormDialog({ open, mode, initial, onClose, onSaved }: ProjectFormDialogProps) {
+  const { publicSettings } = useWorkspaceData();
   const [form, setForm] = React.useState<ProjectInput>(() => blank());
   const [saving, setSaving] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
@@ -119,12 +121,12 @@ export function ProjectFormDialog({ open, mode, initial, onClose, onSaved }: Pro
               <a href="/pricing" onClick={() => void trackClientEvent("upgrade_clicked", { from: "project_limit" })} style={{ display: "inline-flex", alignItems: "center", height: 44, padding: "0 20px", borderRadius: "var(--radius-pill)", background: "var(--primary)", color: "#fff", font: "var(--weight-bold) 15px var(--font-sans)", textDecoration: "none" }}>
                 عرض الباقات
               </a>
-              <a href={whatsappUpgradeLink("الخطة الاحترافية — مشاريع متعددة")} onClick={() => void trackClientEvent("upgrade_clicked", { from: "project_limit_whatsapp" })} target="_blank" rel="noopener noreferrer" style={{ display: "inline-flex", alignItems: "center", gap: 8, height: 44, padding: "0 20px", borderRadius: "var(--radius-pill)", background: "#25D366", color: "#06231A", font: "var(--weight-bold) 15px var(--font-sans)", textDecoration: "none" }}>
+              <a href={whatsappUpgradeLink("الخطة الاحترافية — مشاريع متعددة", { number: publicSettings.whatsappNumber, template: publicSettings.upgradeMessageText })} onClick={() => void trackClientEvent("upgrade_clicked", { from: "project_limit_whatsapp" })} target="_blank" rel="noopener noreferrer" style={{ display: "inline-flex", alignItems: "center", gap: 8, height: 44, padding: "0 20px", borderRadius: "var(--radius-pill)", background: "#25D366", color: "#06231A", font: "var(--weight-bold) 15px var(--font-sans)", textDecoration: "none" }}>
                 <Icon name="message-circle" size={18} color="#06231A" /> التواصل للترقية
               </a>
             </div>
             <div style={{ font: "11.5px/1.6 var(--font-sans)", color: "var(--text-subtle)" }}>
-              الترقية حاليًا بالتواصل المباشر، ويتم التفعيل خلال 24 ساعة عمل.
+              {publicSettings.activationTimeText}
             </div>
           </div>
         ) : (

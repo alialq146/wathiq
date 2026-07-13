@@ -64,9 +64,10 @@ const groupLabel: React.CSSProperties = {
 };
 
 export function ExportDialog({ open, onClose, filteredIds }: ExportDialogProps) {
-  const { requirements, acceptanceCriteria, businessRules, openQuestions, activeProject, modules, user } =
+  const { requirements, acceptanceCriteria, businessRules, openQuestions, activeProject, modules, user, docSettings, featureFlags } =
     useWorkspaceData();
 
+  const exportDisabled = !featureFlags.documentExportEnabled;
   const [docType, setDocType] = React.useState<DocType>("report");
   const [detailed, setDetailed] = React.useState(true);
   const [phase, setPhase] = React.useState<"idle" | "working" | "done">("idle");
@@ -87,6 +88,22 @@ export function ExportDialog({ open, onClose, filteredIds }: ExportDialogProps) 
   }, [open, onClose, filterActive]);
 
   if (!open) return null;
+
+  // v2.2: خاصية التصدير موقوفة من إعدادات النظام — رسالة واضحة بدل النموذج.
+  // (التصدير يُبنى بالكامل في المتصفح من بيانات مملوكة للمستخدم — لا API له،
+  // لذا البوابة هنا وفي payload الخادم الذي يمرر العلم.)
+  if (exportDisabled) {
+    return (
+      <div style={{ position: "fixed", inset: 0, background: "var(--surface-overlay)", display: "flex", alignItems: "center", justifyContent: "center", padding: 20, zIndex: 60 }} onClick={onClose}>
+        <div role="dialog" aria-label="التصدير غير متاح" style={{ maxWidth: 420, background: "var(--surface-card)", borderRadius: "var(--radius-lg)", boxShadow: "var(--shadow-lg)", padding: "30px 26px", textAlign: "center" }} onClick={(e) => e.stopPropagation()}>
+          <div style={{ fontSize: 34, marginBottom: 10 }}>📄</div>
+          <div style={{ font: "var(--weight-bold) 15px/1.5 var(--font-sans)", color: "var(--text-strong)", marginBottom: 6 }}>تصدير الوثائق غير متاح حاليًا</div>
+          <p style={{ font: "13px/1.7 var(--font-sans)", color: "var(--text-muted)", margin: "0 0 16px" }}>أوقف مسؤول المنصة هذه الخاصية مؤقتًا — بياناتك محفوظة ولن تتأثر.</p>
+          <button onClick={onClose} style={{ height: 38, padding: "0 18px", borderRadius: "var(--radius-pill)", border: "1px solid var(--border-default)", background: "var(--surface-card)", color: "var(--text-strong)", font: "var(--weight-medium) 13px var(--font-sans)", cursor: "pointer" }}>إغلاق</button>
+        </div>
+      </div>
+    );
+  }
 
   const scopedReqs =
     scope === "filtered" && filteredIds
@@ -117,9 +134,9 @@ export function ExportDialog({ open, onClose, filteredIds }: ExportDialogProps) 
       } else {
         const body =
           docType === "brd"
-            ? buildBRDBody(ctx, { detailed, scopeLabel })
+            ? buildBRDBody(ctx, { detailed, scopeLabel, docSettings })
             : docType === "srs"
-              ? buildSRSBody(ctx, { detailed, scopeLabel })
+              ? buildSRSBody(ctx, { detailed, scopeLabel, docSettings })
               : buildReportBody(ctx, { detailed, sections, scopeLabel } as ReportOptions);
         const title = DOC_TYPES[docType].title;
         if (fmt === "pdf") exportDocumentPDF(title, body);

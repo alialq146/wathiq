@@ -46,7 +46,10 @@ export type ProductEventName =
   | "billing_email_failed"
   // إعدادات الفوترة (v2.1)
   | "billing_settings_viewed"
-  | "billing_settings_updated";
+  | "billing_settings_updated"
+  // إعدادات النظام المركزية (v2.2)
+  | "system_settings_viewed"
+  | "system_settings_updated";
 
 export interface TrackInput {
   eventName: ProductEventName;

@@ -2,6 +2,7 @@
 
 import React from "react";
 import { whatsappUpgradeLink } from "@/lib/plans";
+import { useWorkspaceData } from "./WorkspaceDataContext";
 import { useRouter } from "next/navigation";
 import { AIInsightPanel, Button, Card, Icon, PriorityLabel, StatusBadge } from "@/components/ds";
 import { saveExtractedRequirements, type RequirementInput, trackClientEvent } from "@/app/actions";
@@ -29,6 +30,7 @@ const SAMPLE = `نظام إدارة طلبات الإجازات للموظفين
    Paste a requirements document → Claude extracts structured requirements →
    review the results and save them to the database. */
 export function AnalysisScreen({ initialMode = "text" }: { initialMode?: "text" | "pdf" }) {
+  const { publicSettings } = useWorkspaceData();
   const router = useRouter();
   const [phase, setPhase] = React.useState<Phase>("idle");
   const [mode, setMode] = React.useState<"text" | "pdf">(initialMode);
@@ -137,7 +139,7 @@ export function AnalysisScreen({ initialMode = "text" }: { initialMode?: "text" 
     setFileError(null);
   };
 
-  const WHATSAPP = whatsappUpgradeLink("زيادة حد التحليلات");
+  const WHATSAPP = whatsappUpgradeLink("زيادة حد التحليلات", { number: publicSettings.whatsappNumber, template: publicSettings.upgradeMessageText });
 
   const save = async () => {
     if (!result) return;

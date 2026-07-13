@@ -114,12 +114,16 @@ export function projectLimitFor(plan: string | null | undefined): number | null 
  * رابط واتساب برسالة ترقية مُهيكلة — المستخدم يكمل بريده بنفسه
  * (لا نحقن بياناته في الرابط حفاظًا على الخصوصية).
  */
-export function whatsappUpgradeLink(planTitle = ""): string {
-  const msg = [
-    "مرحبًا، أرغب في ترقية حسابي في منصة وثّق.",
-    `الخطة المطلوبة: ${planTitle || "—"}`,
-    "البريد المسجل: ",
-    "ملاحظات: ",
-  ].join("\n");
-  return "https://wa.me/966531800106?text=" + encodeURIComponent(msg);
+export function whatsappUpgradeLink(
+  planTitle = "",
+  opts?: { number?: string; template?: string }
+): string {
+  // v2.2: الرقم والنص من إعدادات النظام عند تمريرهما؛ الافتراضي يطابق
+  // السلوك التاريخي (defaults.ts هو المصدر الوحيد للقيم الافتراضية).
+  const template =
+    opts?.template ??
+    "مرحبًا، أرغب في ترقية حسابي في منصة وثّق.\nالخطة المطلوبة: {plan}\nالبريد المسجل: \nملاحظات: ";
+  const number = (opts?.number ?? "966531800106").replace(/[^0-9]/g, "");
+  const msg = template.replace(/\{plan\}/g, planTitle || "—");
+  return `https://wa.me/${number}?text=` + encodeURIComponent(msg);
 }

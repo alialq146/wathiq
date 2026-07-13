@@ -15,7 +15,7 @@
 
 import { Prisma } from "@prisma/client";
 import { prisma } from "./db";
-import { analysisLimitFor } from "./plans";
+import { resolvedAnalysisLimitFor, getNotificationSettings, reminderOffsets } from "@/lib/settings";
 import { trackEvent } from "./track";
 
 export const SUBSCRIPTION_STATUSES = ["TRIAL", "SCHEDULED", "ACTIVE", "EXPIRED", "CANCELED", "SUSPENDED", "SUPERSEDED"] as const;
@@ -177,7 +177,7 @@ export async function syncSubscriptionStatuses(userId: string, now = new Date())
         const u = await tx.user.findUnique({ where: { id: userId }, select: { limitOverride: true } });
         const data: Prisma.UserUpdateInput = { plan: activate.plan, subscriptionStatus: "ACTIVE" };
         if (!u?.limitOverride) {
-          const lim = analysisLimitFor(activate.plan);
+          const lim = await resolvedAnalysisLimitFor(activate.plan);
           data.analysisLimit = lim === null ? 999_999 : lim;
         }
         await tx.user.update({ where: { id: userId }, data });
@@ -386,7 +386,7 @@ export async function activateOrRenewSubscription(
       if (startImmediate) {
         const userData: Prisma.UserUpdateInput = { plan: input.plan, subscriptionStatus: "ACTIVE" };
         if (!user.limitOverride) {
-          const lim = analysisLimitFor(input.plan);
+          const lim = await resolvedAnalysisLimitFor(input.plan);
           userData.analysisLimit = lim === null ? 999_999 : lim;
         }
         if (input.resetUsage) {
@@ -524,12 +524,9 @@ export async function updateInvoiceStatus(
 
 /* ---------------- دورة الحياة: الانتهاء + التذكيرات + المتأخرات ---------------- */
 
-const REMINDER_OFFSETS: Array<{ type: string; days: number }> = [
-  { type: "EXPIRY_7_DAYS", days: 7 },
-  { type: "EXPIRY_3_DAYS", days: 3 },
-  { type: "EXPIRY_1_DAY", days: 1 },
-  { type: "EXPIRED", days: 0 },
-];
+// v2.2: أيام التذكير من إعدادات النظام (notificationSettings) —
+// الافتراضي يطابق السلوك التاريخي (7/3/1/يوم الانتهاء)، ومنع التكرار
+// يبقى بالقيد الفريد في القاعدة مهما تغيّرت الإعدادات.
 
 /**
  * معالجة دورية آمنة التكرار (idempotent) — تُستدعى عند فتح لوحة الأدمن
@@ -551,18 +548,25 @@ export async function processSubscriptionLifecycle(now = new Date()): Promise<{
   // 1) توليد التذكيرات — للاشتراكات النشطة الحالية فقط (لا التاريخية ولا
   //    المستبدلة)، وقبل قلب الحالة إلى EXPIRED حتى تُسجَّل تذكيرات الفترة كاملة.
   //    نتخطى من له اشتراك مجدول قادم (لا داعي لتذكير التجديد — مسجَّل أصلًا).
-  const horizon = new Date(now.getTime() + 8 * DAY_MS);
-  const activeAll = await prisma.subscription.findMany({
-    where: { status: "ACTIVE", endDate: { lte: horizon } },
-    select: { id: true, userId: true, endDate: true },
-    take: 500,
-  });
-  const scheduledUsers = new Set(
-    (await prisma.subscription.findMany({ where: { status: "SCHEDULED" }, select: { userId: true } })).map((r) => r.userId)
-  );
+  const notif = await getNotificationSettings();
+  const offsets = await reminderOffsets();
+  const maxDays = offsets.reduce((m, o) => Math.max(m, o.days), 0);
+  const horizon = new Date(now.getTime() + (maxDays + 1) * DAY_MS);
+  const activeAll = notif.inAppRemindersEnabled && offsets.length > 0
+    ? await prisma.subscription.findMany({
+        where: { status: "ACTIVE", endDate: { lte: horizon } },
+        select: { id: true, userId: true, endDate: true },
+        take: 500,
+      })
+    : [];
+  const scheduledUsers = notif.suppressWhenScheduled
+    ? new Set(
+        (await prisma.subscription.findMany({ where: { status: "SCHEDULED" }, select: { userId: true } })).map((r) => r.userId)
+      )
+    : new Set<string>();
   const active = activeAll.filter((s) => !scheduledUsers.has(s.userId));
   for (const sub of active) {
-    for (const off of REMINDER_OFFSETS) {
+    for (const off of offsets) {
       const scheduledFor = new Date(sub.endDate.getTime() - off.days * DAY_MS);
       if (scheduledFor.getTime() > now.getTime()) continue; // لم يحن وقته
       try {

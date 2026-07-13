@@ -11,6 +11,20 @@ import type {
   ProjectModule,
 } from "@/lib/data";
 import type { UsageInfo } from "@/lib/workspace-data";
+import type { DocumentSettings } from "@/lib/settings/types";
+
+/** إعدادات عامة آمنة تصل لمكونات العميل — لا إعدادات داخلية ولا أسرار. */
+export interface WorkspacePublicSettings {
+  whatsappNumber: string;
+  upgradeMessageText: string;
+  activationTimeText: string;
+  upgradeCtaText: string;
+}
+export interface WorkspaceFeatureFlags {
+  feedbackEnabled: boolean;
+  assistantEnabled: boolean;
+  documentExportEnabled: boolean;
+}
 
 export interface WorkspaceDataValue {
   requirements: Requirement[];
@@ -29,6 +43,12 @@ export interface WorkspaceDataValue {
   authEnabled: boolean;
   /** The signed-in account, or null when auth is disabled. */
   user: { name: string; email: string } | null;
+  /** v2.2: إعدادات النظام العامة الآمنة (تواصل/نصوص CTA). */
+  publicSettings: WorkspacePublicSettings;
+  /** v2.2: إعدادات الوثائق — تمرَّر لبُناة BRD/SRS في العميل. */
+  docSettings: DocumentSettings;
+  /** v2.2: بوابات الخصائص (الحمايات الأمنية ليست منها). */
+  featureFlags: WorkspaceFeatureFlags;
 }
 
 const WorkspaceDataContext = React.createContext<WorkspaceDataValue | null>(null);

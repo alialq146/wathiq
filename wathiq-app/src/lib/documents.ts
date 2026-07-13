@@ -21,43 +21,58 @@ import {
 } from "./export";
 import {
   BRAND,
-  AI_DISCLOSURE,
-  NEEDS_INPUT,
-  NOT_AVAILABLE,
-  NOT_DEFINED,
   DOC_TYPES,
   type DocType,
 } from "./report-config";
+import { SETTINGS_DEFAULTS } from "./settings/defaults";
+import type { DocumentSettings } from "./settings/types";
 
 export interface DocOptions {
   detailed: boolean;
   scopeLabel?: string | null;
+  /** v2.2: إعدادات الوثائق من النظام — غيابها = defaults (السلوك التاريخي). */
+  docSettings?: DocumentSettings;
+}
+
+/** يحل الإعدادات مع ضمان بقاء عبارات النقص غير فارغة (منع اختراع البيانات). */
+function resolveDoc(opts: DocOptions): DocumentSettings {
+  const d = opts.docSettings ?? SETTINGS_DEFAULTS.documents;
+  const dflt = SETTINGS_DEFAULTS.documents;
+  return {
+    ...d,
+    needsInputText: d.needsInputText || dflt.needsInputText,
+    notAvailableText: d.notAvailableText || dflt.notAvailableText,
+    notDefinedText: d.notDefinedText || dflt.notDefinedText,
+  };
 }
 
 /* ---------------- مقاطع مشتركة ---------------- */
 
 const needs = (text: string) => `<p class="todo">${esc(text)}</p>`;
 
-function coverHTML(docType: DocType, ctx: ReportContext, opts: DocOptions): string {
+function coverHTML(docType: DocType, ctx: ReportContext, opts: DocOptions, ds: DocumentSettings): string {
   const p = ctx.project;
+  const issuer = ds.issuerName || BRAND.name;
   const rows = [
     ["المشروع", p?.name ?? "مساحة العمل"],
     p?.code ? ["كود المشروع", p.code] : null,
-    ["الجهة / العميل", p?.client || NOT_DEFINED],
-    ["تصنيف الوثيقة", "داخلي"],
+    ["الجهة / العميل", p?.client || ds.notDefinedText],
+    ["تصنيف الوثيقة", ds.classification || "داخلي"],
     ["تاريخ الإنشاء", today()],
-    ["معد الوثيقة", ctx.userName || NEEDS_INPUT],
-    ["رقم إصدار الوثيقة", "V1"],
+    ["معد الوثيقة", ctx.userName || ds.needsInputText],
+    ["رقم إصدار الوثيقة", ds.defaultDocVersion || "V1"],
     opts.scopeLabel ? ["نطاق الوثيقة", opts.scopeLabel] : null,
   ].filter(Boolean) as Array<[string, string]>;
   return `
   <section class="cover">
-    <div class="cover-brand"><span class="mark">و</span><span>${esc(BRAND.name)} <i>${esc(BRAND.latin)}</i></span></div>
+    <div class="cover-brand"><span class="mark">و</span><span>${esc(issuer)} <i>${esc(BRAND.latin)}</i></span></div>
     <h1>${esc(DOC_TYPES[docType].title)}</h1>
     <div class="cover-sub">${opts.detailed ? "نسخة تفصيلية" : "نسخة مختصرة"}</div>
     <table class="cover-meta">
       ${rows.map(([k, v]) => `<tr><td class="k">${esc(k)}</td><td>${esc(v)}</td></tr>`).join("")}
     </table>
+    ${ds.contactLine ? `<p class="muted" style="text-align:center">${esc(ds.contactLine)}</p>` : ""}
+    ${ds.confidentialityText ? `<p class="todo" style="margin-top:14px">${esc(ds.confidentialityText)}</p>` : ""}
   </section>`;
 }
 
@@ -93,13 +108,15 @@ function changeControlHTML(sectionNo: string): string {
   </section>`;
 }
 
-function closingHTML(docType: DocType, hasAI: boolean): string {
+function closingHTML(docType: DocType, hasAI: boolean, ds: DocumentSettings): string {
+  const closing = ds.footerTextOverride || DOC_TYPES[docType].closing;
+  const issuer = ds.issuerName || BRAND.name;
   return `
   <section class="closing">
-    <p>${esc(DOC_TYPES[docType].closing)}</p>
-    ${hasAI ? `<p class="muted">${esc(AI_DISCLOSURE)}</p>` : ""}
+    <p>${esc(closing)}</p>
+    ${hasAI && ds.aiDisclosureText ? `<p class="muted">${esc(ds.aiDisclosureText)}</p>` : ""}
   </section>
-  <div class="pfoot">${esc(BRAND.name)} · ${esc(BRAND.latin)} — ${esc(DOC_TYPES[docType].title)}</div>`;
+  ${ds.print.showFooter ? `<div class="pfoot">${esc(issuer)} · ${esc(BRAND.latin)} — ${esc(DOC_TYPES[docType].title)}</div>` : ""}`;
 }
 
 const reqBadges = (r: Requirement) =>
@@ -145,6 +162,10 @@ function modulesTableHTML(ctx: ReportContext, showEmptyLine: boolean): string {
    ============================================================ */
 
 export function buildBRDBody(ctx: ReportContext, opts: DocOptions): string {
+  const ds = resolveDoc(opts);
+  // تظليل مقصود لعبارات النقص بالقيم المحلولة — بقية الدالة كما هي.
+  const NEEDS_INPUT = ds.needsInputText;
+  const NOT_AVAILABLE = ds.notAvailableText;
   const s = computeStats(ctx);
   const hasAI = ctx.requirements.some((r) => r.analysis != null || r.confidence != null);
   const p = ctx.project;
@@ -215,8 +236,8 @@ export function buildBRDBody(ctx: ReportContext, opts: DocOptions): string {
         ? `<ul>${ctx.requirements.map((r) => `<li><span class="mono">${esc(r.id)}</span> ${esc(r.title)}</li>`).join("")}</ul>`
         : p?.projectScope ? "" : needs(NOT_AVAILABLE)
     }
-    <h4>خارج النطاق</h4>
-    ${p?.outOfScope ? `<p class="desc">${esc(p.outOfScope)}</p>` : needs("لم تُحدَّد عناصر خارج النطاق بعد — يوصى بتوثيقها صراحة لتجنب توسع النطاق.")}
+    ${ds.brd.outOfScope ? `<h4>خارج النطاق</h4>
+    ${p?.outOfScope ? `<p class="desc">${esc(p.outOfScope)}</p>` : needs("لم تُحدَّد عناصر خارج النطاق بعد — يوصى بتوثيقها صراحة لتجنب توسع النطاق.")}` : ""}
     <h4>وحدات المشروع</h4>
     ${modulesTableHTML(ctx, true)}
   </section>`;
@@ -316,24 +337,26 @@ export function buildBRDBody(ctx: ReportContext, opts: DocOptions): string {
     }
   </section>`;
 
+  // v2.2: أقسام قابلة للإخفاء من إعدادات النظام — المتطلبات التجارية
+  // والأسئلة المفتوحة جوهرية فلا مفتاح لها (وثيقة بلا متطلبات مضللة).
   return [
-    coverHTML("brd", ctx, opts),
+    coverHTML("brd", ctx, opts, ds),
     versionLogHTML("brd"),
-    execSummary,
+    ...(ds.brd.executiveSummary ? [execSummary] : []),
     definitions,
     background,
-    objectives,
-    scope,
-    stakeholders,
+    ...(ds.brd.goals ? [objectives] : []),
+    ...(ds.brd.scope ? [scope] : []),
+    ...(ds.brd.stakeholders ? [stakeholders] : []),
     bizReqs,
-    assumptionsHTML,
+    ...(ds.brd.assumptions ? [assumptionsHTML] : []),
     constraintsHTML,
-    risksHTML,
+    ...(ds.brd.risks ? [risksHTML] : []),
     success,
     questionsHTML,
-    changeControlHTML("١٣"),
-    approvalsHTML(),
-    closingHTML("brd", hasAI),
+    ...(ds.brd.changeLog ? [changeControlHTML("١٣")] : []),
+    ...(ds.brd.approvalTable ? [approvalsHTML()] : []),
+    closingHTML("brd", hasAI, ds),
   ].join("");
 }
 
@@ -386,6 +409,10 @@ function srsRequirementSection(r: Requirement, ctx: ReportContext, detailed: boo
 }
 
 export function buildSRSBody(ctx: ReportContext, opts: DocOptions): string {
+  const ds = resolveDoc(opts);
+  const NEEDS_INPUT = ds.needsInputText;
+  const NOT_AVAILABLE = ds.notAvailableText;
+  const NOT_DEFINED = ds.notDefinedText;
   const s = computeStats(ctx);
   const hasAI = ctx.requirements.some((r) => r.analysis != null || r.confidence != null);
   const p = ctx.project;
@@ -617,23 +644,23 @@ export function buildSRSBody(ctx: ReportContext, opts: DocOptions): string {
   </section>`;
 
   return [
-    coverHTML("srs", ctx, opts),
+    coverHTML("srs", ctx, opts, ds),
     versionLogHTML("srs"),
     intro,
-    overview,
-    environment,
-    designConstraintsHTML,
+    ...(ds.srs.overview ? [overview] : []),
+    ...(ds.srs.environment ? [environment] : []),
+    ...(ds.srs.constraints ? [designConstraintsHTML] : []),
     techAssumptionsHTML,
-    frsHTML,
-    nfrsHTML,
-    rulesHTML,
+    ...(ds.srs.functional ? [frsHTML] : []),
+    ...(ds.srs.nonFunctional ? [nfrsHTML] : []),
+    ...(ds.srs.businessRules ? [rulesHTML] : []),
     useCases,
     gaps,
     criteriaHTML,
-    rtm,
+    ...(ds.srs.rtm ? [rtm] : []),
     risksHTML,
     changeControlHTML("١٦"),
-    approvalsHTML(),
-    closingHTML("srs", hasAI),
+    ...(ds.srs.approvalTable ? [approvalsHTML()] : []),
+    closingHTML("srs", hasAI, ds),
   ].join("");
 }

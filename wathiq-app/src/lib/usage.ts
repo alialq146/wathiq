@@ -6,6 +6,7 @@
 
 import { prisma } from "./db";
 import { getPlan, type PlanId } from "./plans";
+import { resolvedAnalysisLimitFor } from "@/lib/settings";
 
 /* ---------------- model routing ---------------- */
 
@@ -80,7 +81,7 @@ export async function resolveQuota(userId: string): Promise<Quota | null> {
   }
 
   // Plan is the source of truth, unless an admin set a per-user override.
-  const limit = user.limitOverride ? user.analysisLimit : getPlan(user.plan).analysisLimit;
+  const limit = user.limitOverride ? user.analysisLimit : await resolvedAnalysisLimitFor(user.plan);
   return {
     plan: user.plan,
     count,
@@ -125,7 +126,7 @@ export async function reserveQuota(userId: string): Promise<QuotaReservation> {
     });
   }
 
-  const limit = user.limitOverride ? user.analysisLimit : getPlan(user.plan).analysisLimit;
+  const limit = user.limitOverride ? user.analysisLimit : await resolvedAnalysisLimitFor(user.plan);
 
   if (limit == null) {
     // بلا حد (ENTERPRISE): العداد يبقى إحصائيًا فقط.

@@ -456,3 +456,39 @@ model BillingSettings {
   createdAt               DateTime @default(now())
   updatedAt               DateTime @updatedAt
 }
+
+// ═══════════ إعدادات النظام المركزية (v2.2) ═══════════
+// صف singleton واحد؛ كل مجموعة إعدادات عمود JSON typed يُدمج فوق القيم
+// الافتراضية الآمنة في الكود (src/lib/settings/defaults.ts) — غياب السجل أو
+// الحقل يعني السلوك الافتراضي الحالي حرفيًا. لا أسرار هنا إطلاقًا:
+// المفاتيح (AI/DB/Session/Cron/Resend/بوابات الدفع) تبقى Environment Variables.
+model SystemSettings {
+  id               String   @id @default("singleton")
+  schemaVersion    Int      @default(1)
+  general          Json? // اسم المنصة، الفوتر، اللغة/المنطقة الزمنية…
+  contact          Json? // واتساب، بريد الدعم/المبيعات، نصوص الترقية/التجديد…
+  notifications    Json? // أيام تذكير الاشتراك وتفعيلاتها ونصوصها
+  documents        Json? // نصوص وأقسام BRD/SRS/التقرير والطباعة
+  plans            Json? // عرض وحدود الخطط (بسقوف صلبة في الكود)
+  assistant        Json? // مهام مساعد وثّق وحدودها (SUPER_ADMIN فقط)
+  features         Json? // Feature flags آمنة (التسجيل/الصيانة/Demo…)
+  updatedByAdminId String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+}
+
+// سجل تدقيق تغييرات الإعدادات — من عدّل، أي قسم، أي حقول، والقيم
+// القديمة/الجديدة مقصوصة بأمان (لا secrets ولا نصوص كاملة طويلة).
+model SettingsAuditLog {
+  id          String   @id @default(cuid())
+  adminId     String
+  section     String // GENERAL | CONTACT | NOTIFICATIONS | DOCUMENTS | PLANS | ASSISTANT | FEATURES | RESET
+  action      String // *_SETTINGS_UPDATED | SETTINGS_RESET_TO_DEFAULT
+  changedKeys Json? // ["platformName", ...]
+  diff        Json? // { key: { old, new } } — قيم مقصوصة
+  reason      String?
+  createdAt   DateTime @default(now())
+
+  @@index([section, createdAt])
+  @@index([createdAt])
+}

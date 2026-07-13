@@ -2,7 +2,8 @@ import { redirect } from "next/navigation";
 import { prisma, hasDatabase } from "@/lib/db";
 import { getSessionUser } from "@/lib/session";
 import { isAccountActive } from "@/lib/account";
-import { getPlan, projectLimitFor } from "@/lib/plans";
+import { getPlan } from "@/lib/plans";
+import { resolvedProjectLimitFor, resolvedAnalysisLimitFor, getContactSettings, getFeatureSettings } from "@/lib/settings";
 import { toCustomerInvoiceSummary, getCurrentSubscription, syncSubscriptionStatuses } from "@/lib/billing";
 import { trackEvent } from "@/lib/track";
 import { BillingClient } from "./BillingClient";
@@ -23,6 +24,9 @@ export default async function BillingPage() {
   const session = await getSessionUser();
   if (!session || session.uid === "owner") redirect("/login?next=/account/billing");
   if (!(await isAccountActive(session.uid))) redirect("/login?err=disabled");
+
+  // v2.2: خاصية الفوترة موقوفة → عودة لمساحة العمل (البيانات لا تُمس).
+  if (!(await getFeatureSettings()).billingEnabled) redirect("/");
 
   // v2.1: مزامنة حالات الاشتراك أولًا (انتهاء/تفعيل المجدول) قبل القراءة.
   await syncSubscriptionStatuses(session.uid);
@@ -52,7 +56,8 @@ export default async function BillingPage() {
   await trackEvent({ eventName: "billing_page_viewed", userId: user.id, plan: user.plan });
 
   const plan = getPlan(user.plan);
-  const analysisLimit = user.limitOverride ? user.analysisLimit : plan.analysisLimit;
+  const contact = await getContactSettings();
+  const analysisLimit = user.limitOverride ? user.analysisLimit : await resolvedAnalysisLimitFor(user.plan);
 
   // بطاقة الاشتراك الرئيسية: الحالي (ACTIVE) إن وُجد، وإلا آخر سجل ذي معنى
   // (منتهي/ملغي/موقوف) — كي يرى العميل المنتهي بطاقته وتنبيه التجديد كما في v2.0.
@@ -62,6 +67,11 @@ export default async function BillingPage() {
   return (
     <BillingClient
       user={{ name: user.name, email: user.email, plan: user.plan, planName: plan.name }}
+      contact={{
+        whatsappNumber: contact.whatsappNumber,
+        renewalMessageText: contact.renewalMessageText,
+        renewalCtaText: contact.renewalCtaText,
+      }}
       subscription={
         displaySub
           ? {
@@ -103,7 +113,7 @@ export default async function BillingPage() {
         analysisLimit: analysisLimit ?? null,
         resetDate: user.resetDate?.toISOString() ?? null,
         projectCount,
-        projectLimit: projectLimitFor(user.plan),
+        projectLimit: await resolvedProjectLimitFor(user.plan),
       }}
       invoices={invoices.map(toCustomerInvoiceSummary)}
       profile={{

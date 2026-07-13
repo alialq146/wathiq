@@ -1,3 +1,5 @@
+import { notFound } from "next/navigation";
+import { getFeatureSettings } from "@/lib/settings";
 import { buildBRDBody } from "@/lib/documents";
 import { SAMPLE_CONTEXT } from "@/lib/sample-project";
 import { SampleDocShell } from "@/components/samples/SampleDocShell";
@@ -8,7 +10,11 @@ export const metadata = {
 };
 
 // نموذج ثابت: لا قاعدة بيانات ولا ذكاء اصطناعي — يُبنى وقت البناء ويُخدم كصفحة عامة.
-export default function SampleBRDPage() {
+export const revalidate = 300;
+
+export default async function SampleBRDPage() {
+  // v2.2: بوابة صفحات النماذج من إعدادات النظام (تحديث كل 5 دقائق).
+  if (!(await getFeatureSettings()).samplesEnabled) notFound();
   const bodyHtml = buildBRDBody(SAMPLE_CONTEXT, { detailed: true });
   return (
     <SampleDocShell

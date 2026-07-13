@@ -1,13 +1,15 @@
 import { LegalShell } from "@/components/legal/LegalShell";
+import { getContactSettings } from "@/lib/settings";
 
 export const metadata = {
   title: "سياسة الخصوصية · وثّق",
   description: "سياسة خصوصية منصة وثّق لتحليل المتطلبات بالذكاء الاصطناعي.",
 };
 
-export default function PrivacyPage() {
+export default async function PrivacyPage() {
   return (
     <LegalShell
+      supportEmail={(await getContactSettings()).supportEmail}
       title="سياسة الخصوصية"
       updated="٧ يوليو ٢٠٢٦"
       intro="تحرص منصة وثّق على حماية خصوصيتك. توضّح هذه السياسة بصدق ما نجمعه من بيانات وكيف نستخدمها ونحميها، وما يفعله الذكاء الاصطناعي وما لا يفعله."

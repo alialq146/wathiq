@@ -1,6 +1,7 @@
 import Image from "next/image";
 import { Icon } from "@/components/ds";
 import { PLANS, PLAN_ORDER, whatsappUpgradeLink, type Plan } from "@/lib/plans";
+import { getSystemSettings } from "@/lib/settings";
 import { TrackedUpgradeLink } from "./TrackedUpgradeLink";
 
 export const dynamic = "force-dynamic";
@@ -18,7 +19,13 @@ const PRICING_FAQS = [
   { q: "هل يتم الدفع داخل المنصة؟", a: "حاليًا تتم الترقية بالتواصل المباشر مع فريق وثّق، وسيتم دعم الدفع الإلكتروني لاحقًا." },
 ];
 
-export default function PricingPage() {
+export default async function PricingPage() {
+  // v2.2: صفحة الأسعار تقرأ إعدادات النظام مرة واحدة (cache مشتركة للطلب):
+  // عرض الخطط وحدودها من planSettings، ونصوص التواصل من contactSettings.
+  const settings = await getSystemSettings();
+  const contact = settings.contact;
+  const visiblePlans = PLAN_ORDER.filter((id) => settings.plans[id].visible)
+    .sort((a, b) => settings.plans[a].sortOrder - settings.plans[b].sortOrder);
   return (
     <div style={{ minHeight: "100vh", background: "var(--bg-app)" }}>
       <header
@@ -66,13 +73,18 @@ export default function PricingPage() {
         </div>
 
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(300px, 100%), 1fr))", gap: 20, alignItems: "stretch" }}>
-          {PLAN_ORDER.map((id) => (
-            <PlanCard key={id} plan={PLANS[id]} />
+          {visiblePlans.map((id) => (
+            <PlanCard
+              key={id}
+              plan={PLANS[id]}
+              ps={settings.plans[id]}
+              contact={{ whatsappNumber: contact.whatsappNumber, upgradeMessageText: contact.upgradeMessageText, activationTimeText: contact.activationTimeText, enterpriseCtaText: contact.enterpriseCtaText }}
+            />
           ))}
         </div>
 
         <p style={{ textAlign: "center", marginTop: 34, font: "13.5px/1.8 var(--font-sans)", color: "var(--text-muted)" }}>
-          يمكنك البدء بالخطة المجانية دون بطاقة ائتمانية. الترقية حاليًا بالتواصل المباشر، ويتم التفعيل خلال 24 ساعة عمل.
+          يمكنك البدء بالخطة المجانية دون بطاقة ائتمانية. {contact.activationTimeText}
           <br />
           <span style={{ color: "var(--text-subtle)", fontSize: 12.5 }}>جميع الباقات تشمل واجهة عربية كاملة (RTL) وعزلًا آمنًا لبياناتك.</span>
         </p>
@@ -117,8 +129,12 @@ export default function PricingPage() {
   );
 }
 
-function PlanCard({ plan }: { plan: Plan }) {
-  const recommended = plan.recommended;
+import type { PlanDisplaySettings } from "@/lib/settings/types";
+
+interface CardContact { whatsappNumber: string; upgradeMessageText: string; activationTimeText: string; enterpriseCtaText: string }
+
+function PlanCard({ plan, ps, contact }: { plan: Plan; ps: PlanDisplaySettings; contact: CardContact }) {
+  const recommended = ps.recommended;
   const dark = recommended;
   return (
     <div
@@ -140,21 +156,21 @@ function PlanCard({ plan }: { plan: Plan }) {
         </span>
       )}
       <div style={{ marginBottom: 6 }}>
-        <span style={{ font: "var(--weight-semibold) 18px/1 var(--font-sans)", color: dark ? "#fff" : "var(--text-strong)" }}>{plan.title}</span>
+        <span style={{ font: "var(--weight-semibold) 18px/1 var(--font-sans)", color: dark ? "#fff" : "var(--text-strong)" }}>{ps.title}</span>
         <span style={{ font: "11px var(--font-mono)", color: dark ? "rgba(255,255,255,.6)" : "var(--text-subtle)", marginInlineStart: 8 }}>{plan.tag}</span>
       </div>
       <p style={{ font: "13px/1.7 var(--font-sans)", color: dark ? "rgba(255,255,255,.75)" : "var(--text-muted)", margin: "0 0 4px" }}>
-        {plan.desc}
+        {ps.desc}
       </p>
       <div style={{ display: "flex", alignItems: "baseline", gap: 6, margin: "6px 0 2px" }}>
-        <span style={{ font: `var(--weight-bold) ${plan.price.length > 4 ? "22px" : "34px"}/1.1 var(--font-sans)`, color: dark ? "#fff" : "var(--navy-950)" }}>
-          {plan.price}
+        <span style={{ font: `var(--weight-bold) ${ps.price.length > 4 ? "22px" : "34px"}/1.1 var(--font-sans)`, color: dark ? "#fff" : "var(--navy-950)" }}>
+          {ps.price}
         </span>
-        <span style={{ font: "13px var(--font-sans)", color: dark ? "rgba(255,255,255,.75)" : "var(--text-muted)" }}>{plan.priceNote}</span>
+        <span style={{ font: "13px var(--font-sans)", color: dark ? "rgba(255,255,255,.75)" : "var(--text-muted)" }}>{ps.priceNote}</span>
       </div>
 
       <ul style={{ listStyle: "none", padding: 0, margin: "18px 0 0", display: "flex", flexDirection: "column", gap: 11, flex: 1 }}>
-        {plan.features.map((f) => (
+        {ps.features.map((f) => (
           <li key={f} style={{ display: "flex", alignItems: "flex-start", gap: 9, font: "14px/1.5 var(--font-sans)", color: dark ? "rgba(255,255,255,.92)" : "var(--text-body)" }}>
             <Icon name="check" size={16} color={dark ? "var(--teal-300)" : "var(--green-500)"} strokeWidth={2.5} />
             <span>{f}</span>
@@ -173,12 +189,12 @@ function PlanCard({ plan }: { plan: Plan }) {
           <a href="/signup" style={btn(false)}>ابدأ مجانًا</a>
         ) : (
           <>
-            <TrackedUpgradeLink href={whatsappUpgradeLink(plan.title)} plan={plan.id} style={btn(true)}>
+            <TrackedUpgradeLink href={whatsappUpgradeLink(ps.title, { number: contact.whatsappNumber, template: contact.upgradeMessageText })} plan={plan.id} style={btn(true)}>
               <Icon name="message-circle" size={17} color="#06231A" />
-              {plan.id === "PRO" ? "طلب الترقية عبر واتساب" : "تواصل معنا"}
+              {ps.ctaText || (plan.id === "PRO" ? "طلب الترقية عبر واتساب" : contact.enterpriseCtaText)}
             </TrackedUpgradeLink>
             <div style={{ marginTop: 9, font: "11.5px/1.6 var(--font-sans)", color: dark ? "rgba(255,255,255,.55)" : "var(--text-subtle)", textAlign: "center" }}>
-              الترقية حاليًا بالتواصل المباشر، ويتم التفعيل خلال 24 ساعة عمل.
+              {contact.activationTimeText}
             </div>
           </>
         )}

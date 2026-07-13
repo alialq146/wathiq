@@ -1,13 +1,15 @@
 import { LegalShell } from "@/components/legal/LegalShell";
+import { getContactSettings } from "@/lib/settings";
 
 export const metadata = {
   title: "شروط الاستخدام · وثّق",
   description: "شروط استخدام منصة وثّق لتحليل المتطلبات بالذكاء الاصطناعي.",
 };
 
-export default function TermsPage() {
+export default async function TermsPage() {
   return (
     <LegalShell
+      supportEmail={(await getContactSettings()).supportEmail}
       title="شروط الاستخدام"
       updated="٧ يوليو ٢٠٢٦"
       intro="باستخدامك لمنصة وثّق فإنك توافق على هذه الشروط. يُرجى قراءتها بعناية قبل استخدام الخدمة."

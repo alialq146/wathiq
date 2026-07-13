@@ -1533,6 +1533,9 @@ export function AdminClient({ initial, adminName, adminEmail }: { initial: Admin
           <span style={{ marginInlineStart: "auto", font: "12px var(--font-sans)", color: "var(--text-subtle)" }}>
             {adminName} · <span style={{ direction: "ltr", display: "inline-block" }}>{adminEmail}</span>
           </span>
+          <Link href="/admin/settings" style={{ font: "var(--weight-medium) 12.5px var(--font-sans)", color: "var(--text-strong)", textDecoration: "none", border: "1px solid var(--border-default)", borderRadius: "var(--radius-md)", padding: "5px 11px" }}>
+            ⚙︎ إعدادات النظام
+          </Link>
           <Link href="/" style={{ font: "var(--weight-medium) 12.5px var(--font-sans)", color: "var(--blue-600)", textDecoration: "none" }}>
             ← المنصة
           </Link>

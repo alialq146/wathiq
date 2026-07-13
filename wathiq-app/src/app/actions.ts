@@ -9,7 +9,7 @@ import { authEnabled } from "@/lib/auth";
 import { isAccountActive } from "@/lib/account";
 import { arReqCount } from "@/lib/arabic";
 import { trackEvent, type ProductEventName } from "@/lib/track";
-import { projectLimitFor } from "@/lib/plans";
+import { resolvedProjectLimitFor, getFeatureSettings } from "@/lib/settings";
 import type { RequirementStatus, PriorityLevel } from "@/components/ds";
 
 export interface RequirementInput {
@@ -582,7 +582,7 @@ export async function createProject(input: ProjectInput): Promise<ActionResult> 
   try {
     // Plan gate.
     const user = await prisma.user.findUnique({ where: { id: actor.uid }, select: { plan: true } });
-    const limit = projectLimitFor(user?.plan);
+    const limit = await resolvedProjectLimitFor(user?.plan);
     const count = await prisma.project.count({ where: { ownerId: actor.uid } });
     if (limit != null && count >= limit) return { ok: false, error: "plan-limit" };
 
@@ -849,6 +849,9 @@ export async function submitFeedback(input: FeedbackInput): Promise<ActionResult
   try {
     const actor = await requireActor();
     if (!actor || !actor.uid) return { ok: false, error: "unauthorized" };
+
+    // v2.2: بوابة خاصية الملاحظات — الرفض من الخادم (الإخفاء في الواجهة ليس حماية).
+    if (!(await getFeatureSettings()).feedbackEnabled) return { ok: false, error: "feature-disabled" };
 
     const message = (input.message ?? "").trim().slice(0, 2000);
     if (!message) return { ok: false, error: "empty-message" };

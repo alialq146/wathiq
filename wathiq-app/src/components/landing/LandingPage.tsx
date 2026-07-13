@@ -98,7 +98,15 @@ function CTA({
   );
 }
 
-export function LandingPage() {
+export interface LandingPublicSettings { supportEmail: string; phone: string; footerText: string }
+const LANDING_DEFAULTS: LandingPublicSettings = {
+  supportEmail: "wathiq.ai.app@gmail.com",
+  phone: "+966531800106",
+  footerText: "© 2026 وثّق · WATHIQ — جميع الحقوق محفوظة.",
+};
+
+export function LandingPage({ publicSettings }: { publicSettings?: LandingPublicSettings } = {}) {
+  const ps = publicSettings ?? LANDING_DEFAULTS;
   const rootRef = React.useRef<HTMLDivElement>(null);
   const [scrolled, setScrolled] = React.useState(false);
   const [menuOpen, setMenuOpen] = React.useState(false);
@@ -431,8 +439,8 @@ export function LandingPage() {
 
           <div className="wl-foot-col">
             <h4>تواصل معنا</h4>
-            <a href="mailto:wathiq.ai.app@gmail.com"><Icon name="mail" size={14} /> wathiq.ai.app@gmail.com</a>
-            <a href="tel:+966531800106" dir="ltr" style={{ textAlign: "start" }}><Icon name="phone" size={14} /> +966 53 180 0106</a>
+            {ps.supportEmail && <a href={`mailto:${ps.supportEmail}`}><Icon name="mail" size={14} /> {ps.supportEmail}</a>}
+            {ps.phone && <a href={`tel:${ps.phone.replace(/\s/g, "")}`} dir="ltr" style={{ textAlign: "start" }}><Icon name="phone" size={14} /> {ps.phone}</a>}
             <div className="wl-social">
               <a href="#" aria-label="LinkedIn"><Icon name="linkedin" size={17} /></a>
               <a href="#" aria-label="X"><Icon name="twitter" size={17} /></a>
@@ -441,7 +449,7 @@ export function LandingPage() {
           </div>
         </div>
         <div className="wl-wrap wl-foot-base">
-          <span>© 2026 وثّق · WATHIQ — جميع الحقوق محفوظة.</span>
+          <span>{ps.footerText}</span>
           <span>صُنع بالذكاء الاصطناعي · للجهات والشركات</span>
         </div>
       </footer>
