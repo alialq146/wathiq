@@ -69,7 +69,7 @@ function toProject(p: {
   domain: string | null; client: string | null; status: string; color: string | null; icon: string | null;
   projectIdea?: string | null; projectGoal?: string | null; targetUsers?: string | null;
   projectScope?: string | null; outOfScope?: string | null; relatedSystems?: string | null;
-  constraints?: string | null;
+  constraints?: string | null; brdApplicability?: string; srsApplicability?: string;
 }): Project {
   return {
     id: p.id, name: p.name, code: p.code, description: p.description,
@@ -78,6 +78,8 @@ function toProject(p: {
     targetUsers: p.targetUsers ?? null, projectScope: p.projectScope ?? null,
     outOfScope: p.outOfScope ?? null, relatedSystems: p.relatedSystems ?? null,
     constraints: p.constraints ?? null,
+    brdApplicability: p.brdApplicability ?? "REQUIRED",
+    srsApplicability: p.srsApplicability ?? "REQUIRED",
   };
 }
 

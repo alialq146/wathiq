@@ -49,7 +49,14 @@ export type ProductEventName =
   | "billing_settings_updated"
   // إعدادات النظام المركزية (v2.2)
   | "system_settings_viewed"
-  | "system_settings_updated";
+  | "system_settings_updated"
+  // مركز الجاهزية (v2.3)
+  | "readiness_viewed"
+  | "readiness_recalculated"
+  | "document_applicability_changed"
+  | "document_export_warned"
+  | "document_export_blocked"
+  | "document_export_denied_na";
 
 export interface TrackInput {
   eventName: ProductEventName;

@@ -24,6 +24,7 @@ export interface WorkspaceFeatureFlags {
   feedbackEnabled: boolean;
   assistantEnabled: boolean;
   documentExportEnabled: boolean;
+  readinessEnabled: boolean;
 }
 
 export interface WorkspaceDataValue {

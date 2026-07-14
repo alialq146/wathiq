@@ -9,6 +9,8 @@ import { RequirementsScreen } from "./RequirementsScreen";
 import { RequirementDetail, DetailRail } from "./RequirementDetailScreen";
 import { AnalysisScreen } from "./AnalysisScreen";
 import { StakeholdersScreen, RulesScreen, AuditScreen } from "./ContextScreens";
+import { ReadinessScreen } from "./ReadinessScreen";
+import { ExportDialog } from "./ExportDialog";
 import { ProjectFormDialog } from "./ProjectFormDialog";
 import {
   WorkspaceDataProvider,
@@ -66,6 +68,7 @@ const NAV_KEY = "wq-nav";
 export function WorkspaceClient({ data }: { data: WorkspaceDataValue }) {
   const router = useRouter();
   const [screen, setScreen] = React.useState<ScreenId | "detail">("overview");
+  const [readinessExportDoc, setReadinessExportDoc] = React.useState<"brd" | "srs" | null>(null);
   const [projectDialog, setProjectDialog] = React.useState(false);
   // نخزّن مُعرّف المتطلب فقط ونشتق الكائن من بيانات الخادم الطازجة كل تصيير —
   // فيتحدّث مؤشر الجودة والتحليل مباشرة بعد router.refresh() دون نسخة قديمة.
@@ -147,7 +150,7 @@ export function WorkspaceClient({ data }: { data: WorkspaceDataValue }) {
   let current: ScreenId = screen === "detail" ? "requirements" : screen;
 
   if (screen === "overview") {
-    main = <OverviewScreen onOpen={openReq} onNewAnalysis={() => openAnalysis("text")} onNewProject={() => setProjectDialog(true)} onGoToRequirements={() => setScreen("requirements")} />;
+    main = <OverviewScreen onOpen={openReq} onNewAnalysis={() => openAnalysis("text")} onNewProject={() => setProjectDialog(true)} onGoToRequirements={() => setScreen("requirements")} onOpenReadiness={() => setScreen("readiness")} />;
   } else if (screen === "requirements") {
     main = (
       <RequirementsScreen
@@ -179,6 +182,26 @@ export function WorkspaceClient({ data }: { data: WorkspaceDataValue }) {
       />
     );
     current = "requirements";
+  } else if (screen === "readiness") {
+    current = "readiness";
+    main = (
+      <ReadinessScreen
+        projectId={data.activeProject?.id ?? null}
+        onFix={(action) => {
+          if (action.startsWith("requirement:")) {
+            const id = action.slice("requirement:".length);
+            const target = data.requirements.find((r) => r.id === id) ?? null;
+            if (target) { openReq(target); return; }
+            setScreen("requirements");
+          } else if (action === "context") {
+            setScreen("overview"); // بطاقة سياق المشروع في النظرة العامة
+          } else {
+            setScreen("requirements");
+          }
+        }}
+        onExport={(doc) => setReadinessExportDoc(doc)}
+      />
+    );
   } else if (screen === "stakeholders") {
     current = "stakeholders";
     main = <StakeholdersScreen onOpen={openReq} />;
@@ -192,7 +215,7 @@ export function WorkspaceClient({ data }: { data: WorkspaceDataValue }) {
     current = screen as ScreenId;
     main = <PlaceholderScreen label={CONTEXT_LABELS[screen as ScreenId] as string} />;
   } else {
-    main = <OverviewScreen onOpen={openReq} onNewAnalysis={() => openAnalysis("text")} onNewProject={() => setProjectDialog(true)} onGoToRequirements={() => setScreen("requirements")} />;
+    main = <OverviewScreen onOpen={openReq} onNewAnalysis={() => openAnalysis("text")} onNewProject={() => setProjectDialog(true)} onGoToRequirements={() => setScreen("requirements")} onOpenReadiness={() => setScreen("readiness")} />;
   }
 
   return (
@@ -220,6 +243,13 @@ export function WorkspaceClient({ data }: { data: WorkspaceDataValue }) {
           }}
         />
       </div>
+      {/* v2.3: تصدير من شاشة الجاهزية بنوع الوثيقة المحدد */}
+      <ExportDialog
+        open={readinessExportDoc != null}
+        onClose={() => setReadinessExportDoc(null)}
+        filteredIds={null}
+        initialDocType={readinessExportDoc ?? undefined}
+      />
     </WorkspaceDataProvider>
   );
 }

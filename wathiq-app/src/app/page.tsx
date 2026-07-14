@@ -70,6 +70,7 @@ export default async function Page() {
           feedbackEnabled: settings.features.feedbackEnabled,
           assistantEnabled: settings.features.assistantEnabled,
           documentExportEnabled: settings.features.documentExportEnabled,
+          readinessEnabled: settings.readiness.enabled,
         },
       }}
     />

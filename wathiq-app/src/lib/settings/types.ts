@@ -146,6 +146,44 @@ export interface FeatureSettings {
   billingEmailsEnabled: boolean; // AND مع env — لا يستطيع تفعيل البريد بلا مزود
 }
 
+/* ───── مركز جاهزية المشروع والوثائق (v2.3) ───── */
+
+export type DocumentApplicability = "REQUIRED" | "OPTIONAL" | "NOT_APPLICABLE";
+export type MissingAnalysisPolicy = "note" | "important" | "block_export" | "ignore";
+export type ExportPolicy = "allow" | "warn" | "block_critical";
+export type ReadinessPlanAccess = "summary" | "full";
+
+export interface ReadinessWeights {
+  context: number; // اكتمال سياق المشروع
+  requirements: number; // اكتمال المتطلبات
+  quality: number; // جودة المتطلبات (من التحليلات المحفوظة)
+  acceptance: number; // معايير القبول وقابلية الاختبار
+  questions: number; // الأسئلة والمعلومات الناقصة
+  status: number; // حالة المتطلبات والاعتماد
+  docData: number; // بيانات الوثائق المطلوبة
+}
+
+export interface ReadinessSettings {
+  enabled: boolean;
+  brdReadinessEnabled: boolean;
+  srsReadinessEnabled: boolean;
+  /** عتبات التصنيف: جاهز ≥ readyMin، جاهز مع ملاحظات ≥ notesMin، يحتاج استكمال ≥ needsWorkMin. */
+  thresholds: { readyMin: number; notesMin: number; needsWorkMin: number };
+  /** الأوزان — مجموعها 100 (يتحقق الخادم). */
+  weights: ReadinessWeights;
+  missingAnalysisPolicy: MissingAnalysisPolicy;
+  requireAcceptanceCriteria: boolean; // اشتراط معايير القبول لكل متطلب
+  criticalNoCriteriaForCritical: boolean; // غياب المعايير عن متطلب حرج = نقص حرج
+  minQualityScore: number; // الحد الأدنى لاعتبار الجودة مقبولة
+  minApprovedPercent: number; // الحد الأدنى لنسبة المعتمد (0 = لا اشتراط)
+  minCriteriaPerRequirement: number;
+  exportPolicy: ExportPolicy; // سياسة تصدير الوثيقة المطلوبة عند وجود نواقص حرجة
+  planAccess: { FREE: ReadinessPlanAccess; PRO: ReadinessPlanAccess; ENTERPRISE: ReadinessPlanAccess };
+  freeMaxIssues: number; // حد الملاحظات المعروضة لخطة الملخص
+  defaultBrdApplicability: DocumentApplicability; // للمشاريع الجديدة
+  defaultSrsApplicability: DocumentApplicability;
+}
+
 export interface SystemSettingsShape {
   general: GeneralSettings;
   contact: ContactSettings;
@@ -154,11 +192,12 @@ export interface SystemSettingsShape {
   plans: PlanSettings;
   assistant: AssistantSettings;
   features: FeatureSettings;
+  readiness: ReadinessSettings;
 }
 
 export type SettingsSection = keyof SystemSettingsShape;
 export const SETTINGS_SECTIONS: SettingsSection[] = [
-  "general", "contact", "notifications", "documents", "plans", "assistant", "features",
+  "general", "contact", "notifications", "documents", "plans", "assistant", "features", "readiness",
 ];
 
 /** Subset عامة آمنة تُمرر لمكونات العميل — لا إعدادات داخلية ولا أسماء نماذج. */

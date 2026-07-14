@@ -7,7 +7,7 @@
 
 import type {
   SystemSettingsShape, GeneralSettings, ContactSettings, NotificationSettings,
-  DocumentSettings, PlanSettings, AssistantSettings, FeatureSettings,
+  DocumentSettings, PlanSettings, AssistantSettings, FeatureSettings, ReadinessSettings,
 } from "./types";
 
 /* ───── سقوف صلبة في الكود — النظام يستطيع التخفيض، لا التجاوز ─────
@@ -203,6 +203,26 @@ const FEATURES: FeatureSettings = {
   billingEmailsEnabled: true, // الفعلي = هذا AND BILLING_EMAIL_ENABLED (env)
 };
 
+const READINESS: ReadinessSettings = {
+  enabled: true,
+  brdReadinessEnabled: true,
+  srsReadinessEnabled: true,
+  thresholds: { readyMin: 90, notesMin: 75, needsWorkMin: 50 },
+  weights: { context: 15, requirements: 20, quality: 20, acceptance: 20, questions: 10, status: 10, docData: 5 },
+  missingAnalysisPolicy: "important",
+  requireAcceptanceCriteria: false,
+  criticalNoCriteriaForCritical: true,
+  minQualityScore: 60,
+  minApprovedPercent: 0,
+  minCriteriaPerRequirement: 1,
+  exportPolicy: "warn",
+  planAccess: { FREE: "summary", PRO: "full", ENTERPRISE: "full" },
+  freeMaxIssues: 5,
+  // REQUIRED للوثيقتين = سلوك المنصة الحالي (الوثيقتان متاحتان دائمًا).
+  defaultBrdApplicability: "REQUIRED",
+  defaultSrsApplicability: "REQUIRED",
+};
+
 export const SETTINGS_DEFAULTS: SystemSettingsShape = {
   general: GENERAL,
   contact: CONTACT,
@@ -211,6 +231,7 @@ export const SETTINGS_DEFAULTS: SystemSettingsShape = {
   plans: PLANS_DEFAULT,
   assistant: ASSISTANT,
   features: FEATURES,
+  readiness: READINESS,
 };
 
 export const SETTINGS_SCHEMA_VERSION = 1;

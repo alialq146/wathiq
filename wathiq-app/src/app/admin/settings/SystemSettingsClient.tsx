@@ -25,6 +25,7 @@ const CATEGORIES: Array<{ key: string; icon: string; label: string; desc: string
   { key: "plans", icon: "gem", label: "الخطط والباقات", desc: "أسماء وأسعار وحدود الخطط (بسقوف صلبة)." },
   { key: "assistant", icon: "sparkles", label: "مساعد وثّق", desc: "تفعيل المهام وحدودها — للأدمن فقط." },
   { key: "features", icon: "toggle-right", label: "خصائص النظام", desc: "التسجيل، الصيانة، Demo، وتفعيل الوحدات." },
+  { key: "readiness", icon: "target", label: "الجاهزية", desc: "مركز جاهزية المشروع والوثائق: الأوزان والعتبات والسياسات." },
   { key: "audit", icon: "history", label: "سجل التغييرات", desc: "من عدّل ماذا ومتى." },
 ];
 
@@ -182,7 +183,8 @@ export function SystemSettingsClient({ initial, meta }: { initial: SystemSetting
   /* ---------------- أقسام ---------------- */
 
   const g = settings.general, c = settings.contact, n = settings.notifications,
-        d = settings.documents, p = settings.plans, a = settings.assistant, f = settings.features;
+        d = settings.documents, p = settings.plans, a = settings.assistant, f = settings.features,
+        rd = settings.readiness;
 
   const renderGeneral = () => (
     <div style={cardStyle}>
@@ -429,6 +431,107 @@ export function SystemSettingsClient({ initial, meta }: { initial: SystemSetting
     </>
   );
 
+  const renderReadiness = () => {
+    const weightSum = Object.values(rd.weights).reduce((x, y) => x + y, 0);
+    const W: Array<[keyof typeof rd.weights, string]> = [
+      ["context", "اكتمال سياق المشروع"], ["requirements", "اكتمال المتطلبات"], ["quality", "جودة المتطلبات"],
+      ["acceptance", "معايير القبول"], ["questions", "الأسئلة والنواقص"], ["status", "الحالة والاعتماد"], ["docData", "بيانات الوثائق"],
+    ];
+    const selStyle: React.CSSProperties = { ...inputStyle };
+    return (
+      <>
+        <div style={cardStyle}>
+          {secHeader("مركز الجاهزية", "احتساب جاهزية المشروع والوثائق من البيانات المحفوظة — بلا ذكاء اصطناعي وبلا استهلاك حصة.")}
+          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            <Bool label="تفعيل مركز الجاهزية" value={rd.enabled} onChange={(v) => patch("readiness", { enabled: v })} help="عند الإيقاف تختفي الشاشة والبطاقة المختصرة ويُسمح بالتصدير دون فحص." />
+            <Bool label="جاهزية BRD" value={rd.brdReadinessEnabled} onChange={(v) => patch("readiness", { brdReadinessEnabled: v })} />
+            <Bool label="جاهزية SRS" value={rd.srsReadinessEnabled} onChange={(v) => patch("readiness", { srsReadinessEnabled: v })} />
+          </div>
+        </div>
+        <div style={cardStyle}>
+          {secHeader("الأوزان", "مجموع الأوزان يجب أن يساوي 100 — يتحقق الخادم قبل الحفظ.")}
+          <div className="ss-grid2" style={grid2}>
+            {W.map(([k, l]) => (
+              <Num key={k} label={l} value={rd.weights[k]} min={0} max={100} onChange={(v) => patch("readiness", { weights: { ...rd.weights, [k]: v } })} />
+            ))}
+          </div>
+          <div style={{ marginTop: 12, font: "var(--weight-semibold) 13px var(--font-sans)", color: weightSum === 100 ? "var(--green-600)" : "var(--red-600)" }}>
+            المجموع الحالي: {weightSum}% {weightSum === 100 ? "✓" : "— يجب أن يساوي 100%"}
+          </div>
+        </div>
+        <div style={cardStyle}>
+          {secHeader("العتبات والحدود", "تصنيف الدرجات: جاهز ≥ الأولى، جاهز مع ملاحظات ≥ الثانية، يحتاج استكمال ≥ الثالثة.")}
+          <div className="ss-grid2" style={grid2}>
+            <Num label="عتبة «جاهز للإصدار»" value={rd.thresholds.readyMin} min={1} max={100} onChange={(v) => patch("readiness", { thresholds: { ...rd.thresholds, readyMin: v } })} />
+            <Num label="عتبة «جاهز مع ملاحظات»" value={rd.thresholds.notesMin} min={1} max={100} onChange={(v) => patch("readiness", { thresholds: { ...rd.thresholds, notesMin: v } })} />
+            <Num label="عتبة «يحتاج استكمال»" value={rd.thresholds.needsWorkMin} min={1} max={100} onChange={(v) => patch("readiness", { thresholds: { ...rd.thresholds, needsWorkMin: v } })} />
+            <Num label="الحد الأدنى لجودة المتطلب" value={rd.minQualityScore} min={0} max={100} onChange={(v) => patch("readiness", { minQualityScore: v })} />
+            <Num label="الحد الأدنى لنسبة المعتمد (%)" value={rd.minApprovedPercent} min={0} max={100} onChange={(v) => patch("readiness", { minApprovedPercent: v })} help="0 = لا اشتراط." />
+            <Num label="الحد الأدنى لمعايير القبول لكل متطلب" value={rd.minCriteriaPerRequirement} min={0} max={10} onChange={(v) => patch("readiness", { minCriteriaPerRequirement: v })} />
+          </div>
+        </div>
+        <div style={cardStyle}>
+          {secHeader("السياسات", "")}
+          <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+            <div className="ss-grid2" style={grid2}>
+              <div>
+                <label style={lbl}>التعامل مع المتطلبات غير المحللة</label>
+                <select value={rd.missingAnalysisPolicy} onChange={(e) => patch("readiness", { missingAnalysisPolicy: e.target.value as typeof rd.missingAnalysisPolicy })} style={selStyle}>
+                  <option value="note">ملاحظة فقط</option>
+                  <option value="important">تحسين مهم</option>
+                  <option value="block_export">اشتراط للتصدير</option>
+                  <option value="ignore">تجاهل المحور</option>
+                </select>
+              </div>
+              <div>
+                <label style={lbl}>سياسة تصدير الوثيقة المطلوبة</label>
+                <select value={rd.exportPolicy} onChange={(e) => patch("readiness", { exportPolicy: e.target.value as typeof rd.exportPolicy })} style={selStyle}>
+                  <option value="allow">سماح دائمًا</option>
+                  <option value="warn">تحذير عند النواقص</option>
+                  <option value="block_critical">منع عند نقص حرج</option>
+                </select>
+              </div>
+              <div>
+                <label style={lbl}>BRD الافتراضية للمشاريع الجديدة</label>
+                <select value={rd.defaultBrdApplicability} onChange={(e) => patch("readiness", { defaultBrdApplicability: e.target.value as typeof rd.defaultBrdApplicability })} style={selStyle}>
+                  <option value="REQUIRED">مطلوبة</option><option value="OPTIONAL">اختيارية</option><option value="NOT_APPLICABLE">غير مطلوبة</option>
+                </select>
+              </div>
+              <div>
+                <label style={lbl}>SRS الافتراضية للمشاريع الجديدة</label>
+                <select value={rd.defaultSrsApplicability} onChange={(e) => patch("readiness", { defaultSrsApplicability: e.target.value as typeof rd.defaultSrsApplicability })} style={selStyle}>
+                  <option value="REQUIRED">مطلوبة</option><option value="OPTIONAL">اختيارية</option><option value="NOT_APPLICABLE">غير مطلوبة</option>
+                </select>
+              </div>
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 10, padding: "12px 14px", background: "var(--slate-50)", borderRadius: "var(--radius-md)", border: "1px solid var(--border-subtle)" }}>
+              <Bool label="اشتراط معايير القبول لكل متطلب" value={rd.requireAcceptanceCriteria} onChange={(v) => patch("readiness", { requireAcceptanceCriteria: v })} help="عند التفعيل يصبح غيابها نقصًا حرجًا." />
+              <Bool label="غياب المعايير عن متطلب حرج = نقص حرج" value={rd.criticalNoCriteriaForCritical} onChange={(v) => patch("readiness", { criticalNoCriteriaForCritical: v })} />
+            </div>
+          </div>
+        </div>
+        <div style={cardStyle}>
+          {secHeader("الظهور حسب الخطة", "الملخص = الدرجة والملاحظات المحدودة؛ الكامل = التفاصيل والوثائق والفلاتر.")}
+          <div className="ss-grid2" style={grid2}>
+            {(["FREE", "PRO", "ENTERPRISE"] as const).map((k) => (
+              <div key={k}>
+                <label style={lbl}>خطة {k}</label>
+                <select value={rd.planAccess[k]} onChange={(e) => patch("readiness", { planAccess: { ...rd.planAccess, [k]: e.target.value as "summary" | "full" } })} style={selStyle}>
+                  <option value="summary">ملخص</option>
+                  <option value="full">كامل</option>
+                </select>
+              </div>
+            ))}
+            <Num label="حد ملاحظات خطة الملخص" value={rd.freeMaxIssues} min={1} max={50} onChange={(v) => patch("readiness", { freeMaxIssues: v })} />
+          </div>
+          <div style={{ marginTop: 16 }}>
+            <SaveBar sec="readiness" sensitive="تغيير إعدادات الجاهزية يؤثر على الدرجات وسياسات التصدير لكل المشاريع. متابعة الحفظ؟" />
+          </div>
+        </div>
+      </>
+    );
+  };
+
   const renderFeatures = () => (
     <div style={cardStyle}>
       {secHeader("خصائص النظام", "بوابات تشغيلية آمنة — الحمايات الأمنية والملكية والحصة الذرية غير قابلة للإيقاف من هنا.")}
@@ -466,7 +569,7 @@ export function SystemSettingsClient({ initial, meta }: { initial: SystemSetting
 
   const SECTION_AR: Record<string, string> = {
     GENERAL: "المنصة", CONTACT: "التواصل", NOTIFICATIONS: "التذكيرات", DOCUMENTS: "الوثائق",
-    PLANS: "الخطط", ASSISTANT: "المساعد", FEATURES: "الخصائص",
+    PLANS: "الخطط", ASSISTANT: "المساعد", FEATURES: "الخصائص", READINESS: "الجاهزية",
   };
 
   const renderAudit = () => (
@@ -506,7 +609,7 @@ export function SystemSettingsClient({ initial, meta }: { initial: SystemSetting
   const CONTENT: Record<string, () => React.ReactNode> = {
     general: renderGeneral, contact: renderContact, billing: renderBilling,
     notifications: renderNotifications, documents: renderDocuments, plans: renderPlans,
-    assistant: renderAssistant, features: renderFeatures, audit: renderAudit,
+    assistant: renderAssistant, features: renderFeatures, readiness: renderReadiness, audit: renderAudit,
   };
 
   return (

@@ -3,6 +3,8 @@
 import React from "react";
 import { Button, Icon } from "@/components/ds";
 import { useWorkspaceData } from "./WorkspaceDataContext";
+import { checkDocumentExportAction, logDocumentExportAction } from "@/app/actions";
+import type { ExportCheck } from "@/lib/readiness";
 import { arReqCount } from "@/lib/arabic";
 import { trackClientEvent } from "@/app/actions";
 import {
@@ -24,6 +26,8 @@ export interface ExportDialogProps {
   onClose: () => void;
   /** Ids currently visible after search/filters — enables «النتائج الحالية فقط». */
   filteredIds?: string[] | null;
+  /** v2.3: نوع مستند مبدئي (يُستخدم عند الفتح من شاشة الجاهزية). */
+  initialDocType?: DocType;
 }
 
 type Fmt = "pdf" | "word" | "csv";
@@ -63,12 +67,23 @@ const groupLabel: React.CSSProperties = {
   margin: "4px 0 8px",
 };
 
-export function ExportDialog({ open, onClose, filteredIds }: ExportDialogProps) {
+export function ExportDialog({ open, onClose, filteredIds, initialDocType }: ExportDialogProps) {
   const { requirements, acceptanceCriteria, businessRules, openQuestions, activeProject, modules, user, docSettings, featureFlags } =
     useWorkspaceData();
 
   const exportDisabled = !featureFlags.documentExportEnabled;
-  const [docType, setDocType] = React.useState<DocType>("report");
+  // v2.3: قابلية تطبيق الوثائق — غير المطلوبة تُخفى من الخيارات (والخادم يرفضها أيضًا).
+  const brdApp = activeProject?.brdApplicability ?? "REQUIRED";
+  const srsApp = activeProject?.srsApplicability ?? "REQUIRED";
+  const docVisible = (t: DocType) =>
+    t === "report" ? true : t === "brd" ? brdApp !== "NOT_APPLICABLE" : srsApp !== "NOT_APPLICABLE";
+  const [gate, setGate] = React.useState<
+    | { phase: "idle" }
+    | { phase: "checking" }
+    | { phase: "warn"; check: ExportCheck }
+    | { phase: "blocked"; check: ExportCheck }
+  >({ phase: "idle" });
+  const [docType, setDocType] = React.useState<DocType>(initialDocType ?? "report");
   const [detailed, setDetailed] = React.useState(true);
   const [phase, setPhase] = React.useState<"idle" | "working" | "done">("idle");
   const [fmt, setFmt] = React.useState<Fmt>("pdf");
@@ -81,6 +96,8 @@ export function ExportDialog({ open, onClose, filteredIds }: ExportDialogProps) 
 
   React.useEffect(() => {
     if (!open) return;
+    if (initialDocType) setDocType(initialDocType);
+    setGate({ phase: "idle" });
     setScope(filterActive ? "filtered" : "all");
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
     window.addEventListener("keydown", onKey);
@@ -112,6 +129,27 @@ export function ExportDialog({ open, onClose, filteredIds }: ExportDialogProps) 
   const scopedIds = new Set(scopedReqs.map((r) => r.id));
 
   const run = () => {
+    // v2.3: BRD/SRS تمر بفحص جاهزية خادمي (قابلية التطبيق + السياسة) قبل البناء —
+    // «التصدير رغم ذلك» لا يعيد التحذير في العملية نفسها.
+    if ((docType === "brd" || docType === "srs") && activeProject && gate.phase === "idle") {
+      setGate({ phase: "checking" });
+      void (async () => {
+        try {
+          const res = await checkDocumentExportAction(activeProject.id, docType === "brd" ? "BRD" : "SRS");
+          if (!res.ok || !res.check) { setGate({ phase: "idle" }); doExport(null, false); return; }
+          const c = res.check;
+          if (!c.ok) { setGate({ phase: "blocked", check: c }); return; }
+          if (c.mode === "warn") { setGate({ phase: "warn", check: c }); return; }
+          setGate({ phase: "idle" });
+          doExport(c, false);
+        } catch { setGate({ phase: "idle" }); doExport(null, false); }
+      })();
+      return;
+    }
+    doExport(null, false);
+  };
+
+  const doExport = (check: ExportCheck | null, withWarnings: boolean) => {
     // البيانات مصدرها سياق مساحة العمل المُرشَّح في الخادم لمالكها —
     // لا يمكن أن تصل أي وثيقة لبيانات مستخدم أو مشروع آخر.
     setPhase("working");
@@ -145,6 +183,13 @@ export function ExportDialog({ open, onClose, filteredIds }: ExportDialogProps) 
       // حدث منتج (v1.9.11): يُسجَّل في الخادم بقائمة بيضاء — فشله لا يؤثر على التصدير.
       const evt = docType === "brd" ? "export_brd_created" : docType === "srs" ? "export_srs_created" : "export_report_created";
       void trackClientEvent(evt, { format: fmt, detailed, count: scopedReqs.length });
+      if ((docType === "brd" || docType === "srs") && activeProject) {
+        void logDocumentExportAction(activeProject.id, docType === "brd" ? "BRD" : "SRS", {
+          withWarnings,
+          score: check?.score ?? null,
+          criticalCount: check?.criticalCount ?? 0,
+        });
+      }
       setPhase("done");
       setTimeout(() => {
         setPhase("idle");
@@ -192,7 +237,7 @@ export function ExportDialog({ open, onClose, filteredIds }: ExportDialogProps) 
           <div>
             <div style={groupLabel}>نوع المستند</div>
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-              {(Object.keys(DOC_TYPES) as DocType[]).map((t) => {
+              {(Object.keys(DOC_TYPES) as DocType[]).filter(docVisible).map((t) => {
                 const on = docType === t;
                 return (
                   <button
@@ -210,6 +255,9 @@ export function ExportDialog({ open, onClose, filteredIds }: ExportDialogProps) 
                     <span>
                       <span style={{ display: "block", font: "var(--weight-semibold) 13.5px/1.4 var(--font-sans)", color: on ? "var(--blue-700)" : "var(--text-strong)" }}>
                         {DOC_TYPES[t].title}
+                        {((t === "brd" && brdApp === "OPTIONAL") || (t === "srs" && srsApp === "OPTIONAL")) && (
+                          <span style={{ marginInlineStart: 7, padding: "2px 8px", borderRadius: 999, background: "var(--slate-100)", color: "var(--text-muted)", font: "var(--weight-semibold) 10px var(--font-sans)", verticalAlign: "middle" }}>اختيارية</span>
+                        )}
                       </span>
                       <span style={{ display: "block", font: "11.5px/1.6 var(--font-sans)", color: "var(--text-muted)", marginTop: 2 }}>
                         {DOC_TYPES[t].desc}
@@ -311,10 +359,57 @@ export function ExportDialog({ open, onClose, filteredIds }: ExportDialogProps) 
         {/* Footer */}
         <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, padding: "14px 20px", borderTop: "1px solid var(--border-subtle)", background: "var(--slate-25)" }}>
           <Button variant="secondary" onClick={onClose}>إلغاء</Button>
+          {gate.phase === "warn" && (
+            <div role="alertdialog" aria-label="تحذير الجاهزية" style={{ border: "1px solid var(--amber-100)", background: "var(--amber-50)", borderRadius: "var(--radius-lg)", padding: "14px 16px" }}>
+              <div style={{ font: "var(--weight-bold) 13.5px/1.5 var(--font-sans)", color: "var(--text-strong)" }}>
+                جاهزية الوثيقة الحالية: {gate.check.score ?? "—"}%
+              </div>
+              <p style={{ font: "12.5px/1.7 var(--font-sans)", color: "var(--text-muted)", margin: "6px 0 0" }}>
+                {gate.check.criticalCount > 0
+                  ? `توجد ${gate.check.criticalCount} نواقص جوهرية قد تجعل الوثيقة غير مكتملة.`
+                  : "يمكنك التصدير، لكن يُنصح بمراجعة الملاحظات أولًا."}
+              </p>
+              {gate.check.topIssues.length > 0 && (
+                <ul style={{ margin: "8px 0 0", paddingInlineStart: 18, font: "12px/1.7 var(--font-sans)", color: "var(--text-muted)" }}>
+                  {gate.check.topIssues.map((i, idx) => <li key={idx}>{i.title}</li>)}
+                </ul>
+              )}
+              {gate.check.applicability === "OPTIONAL" && (
+                <p style={{ font: "11.5px/1.6 var(--font-sans)", color: "var(--text-subtle)", margin: "8px 0 0" }}>هذه الوثيقة اختيارية ولا تؤثر على جاهزية المشروع العامة.</p>
+              )}
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 12 }}>
+                <button onClick={() => { const c = gate.check; setGate({ phase: "idle" }); doExport(c, true); }} style={{ height: 34, padding: "0 14px", borderRadius: "var(--radius-pill)", border: "none", background: "var(--primary)", color: "#fff", font: "var(--weight-semibold) 12.5px var(--font-sans)", cursor: "pointer" }}>التصدير رغم ذلك</button>
+                <button onClick={() => { setGate({ phase: "idle" }); onClose(); }} style={{ height: 34, padding: "0 14px", borderRadius: "var(--radius-pill)", border: "1px solid var(--border-default)", background: "var(--surface-card)", color: "var(--text-strong)", font: "var(--weight-medium) 12.5px var(--font-sans)", cursor: "pointer" }}>مراجعة النواقص</button>
+                <button onClick={() => setGate({ phase: "idle" })} style={{ height: 34, padding: "0 12px", borderRadius: "var(--radius-pill)", border: "none", background: "transparent", color: "var(--text-subtle)", font: "12.5px var(--font-sans)", cursor: "pointer" }}>إلغاء</button>
+              </div>
+            </div>
+          )}
+          {gate.phase === "blocked" && (
+            <div role="alertdialog" aria-label="التصدير غير متاح" style={{ border: "1px solid var(--red-100)", background: "var(--red-50)", borderRadius: "var(--radius-lg)", padding: "14px 16px" }}>
+              <div style={{ font: "var(--weight-bold) 13.5px/1.5 var(--font-sans)", color: "var(--red-600)" }}>
+                {gate.check.reason === "not-applicable"
+                  ? "هذه الوثيقة غير مفعلة لهذا المشروع."
+                  : "لا يمكن إصدار الوثيقة لوجود نواقص حرجة."}
+              </div>
+              <p style={{ font: "12.5px/1.7 var(--font-sans)", color: "var(--text-muted)", margin: "6px 0 0" }}>
+                {gate.check.reason === "not-applicable"
+                  ? "يمكنك تفعيلها من إعدادات الوثائق والمخرجات عند الحاجة."
+                  : `توجد ${gate.check.criticalCount} نواقص حرجة يجب معالجتها قبل الإصدار (سياسة المنصة).`}
+              </p>
+              {gate.check.topIssues.length > 0 && (
+                <ul style={{ margin: "8px 0 0", paddingInlineStart: 18, font: "12px/1.7 var(--font-sans)", color: "var(--text-muted)" }}>
+                  {gate.check.topIssues.map((i, idx) => <li key={idx}>{i.title}</li>)}
+                </ul>
+              )}
+              <button onClick={() => setGate({ phase: "idle" })} style={{ marginTop: 12, height: 34, padding: "0 14px", borderRadius: "var(--radius-pill)", border: "1px solid var(--border-default)", background: "var(--surface-card)", color: "var(--text-strong)", font: "var(--weight-medium) 12.5px var(--font-sans)", cursor: "pointer" }}>حسنًا</button>
+            </div>
+          )}
+
+
           <Button
             variant="primary"
             onClick={run}
-            disabled={scopedReqs.length === 0 || phase === "working"}
+            disabled={scopedReqs.length === 0 || phase === "working" || gate.phase === "checking" || gate.phase === "warn" || gate.phase === "blocked"}
             iconStart={<Icon name={phase === "working" ? "loader-circle" : phase === "done" ? "check" : "download"} size={15} style={phase === "working" ? { animation: "wq-spin 0.7s linear infinite" } : undefined} />}
           >
             {phase === "working" ? "جاري تجهيز المستند..." : phase === "done" ? "تم تجهيز المستند بنجاح" : "إنشاء المستند"}

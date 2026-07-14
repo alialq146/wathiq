@@ -90,6 +90,13 @@ model Project {
   relatedSystems String?
   constraints    String?
 
+  // الوثائق والمخرجات (v2.3): REQUIRED | OPTIONAL | NOT_APPLICABLE.
+  // ليست Boolean عمدًا — الاختيارية تبقى ظاهرة بلا أثر على الجاهزية،
+  // وغير المطلوبة تُخفى كليًا (منطقيًا فقط؛ لا حذف بيانات أبدًا).
+  // الافتراضي REQUIRED للوثيقتين = سلوك المنصة قبل v2.3 حرفيًا.
+  brdApplicability String @default("REQUIRED")
+  srsApplicability String @default("REQUIRED")
+
   @@index([ownerId])
 }
 
@@ -472,6 +479,7 @@ model SystemSettings {
   plans            Json? // عرض وحدود الخطط (بسقوف صلبة في الكود)
   assistant        Json? // مهام مساعد وثّق وحدودها (SUPER_ADMIN فقط)
   features         Json? // Feature flags آمنة (التسجيل/الصيانة/Demo…)
+  readiness        Json? // مركز جاهزية المشروع والوثائق (v2.3)
   updatedByAdminId String?
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
@@ -491,4 +499,45 @@ model SettingsAuditLog {
 
   @@index([section, createdAt])
   @@index([createdAt])
+}
+
+
+// ═══════════ مركز جاهزية المشروع والوثائق (v2.3) ═══════════
+// لقطة الجاهزية — سجل تاريخي خفيف (النتيجة تُحسب دائمًا من البيانات الحية؛
+// اللقطة للتتبع وعرض «آخر احتساب» بلا إعادة حساب عند كل فتح).
+// درجات BRD/SRS تكون null عندما تكون الوثيقة غير مطلوبة — لا صفر أبدًا.
+model ReadinessSnapshot {
+  id                   String   @id @default(cuid())
+  projectId            String
+  ownerId              String
+  overallScore         Int
+  brdScore             Int?
+  srsScore             Int?
+  criticalIssuesCount  Int      @default(0)
+  importantIssuesCount Int      @default(0)
+  optionalIssuesCount  Int      @default(0)
+  calculationVersion   Int      @default(1)
+  settingsVersion      Int      @default(1) // schemaVersion لإعدادات النظام وقت الحساب
+  issues               Json? // [{ code, severity, scope, entityType, entityId, count }] — مقصوصة، لا نصوص متطلبات
+  calculatedAt         DateTime @default(now())
+  createdAt            DateTime @default(now())
+
+  @@index([projectId, calculatedAt])
+  @@index([ownerId])
+}
+
+// سجل تصدير الوثائق مع الجاهزية — من صدّر ماذا وبأي درجة وبأي تحذيرات.
+model ReadinessExportLog {
+  id                  String   @id @default(cuid())
+  projectId           String
+  userId              String
+  documentType        String // BRD | SRS
+  readinessScore      Int?
+  criticalIssuesCount Int      @default(0)
+  exportedWithWarnings Boolean @default(false)
+  blocked             Boolean  @default(false) // محاولة مُنعت (سياسة block)
+  exportedAt          DateTime @default(now())
+
+  @@index([projectId, exportedAt])
+  @@index([userId])
 }

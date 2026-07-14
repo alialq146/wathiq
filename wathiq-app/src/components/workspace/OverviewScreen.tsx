@@ -16,6 +16,8 @@ export interface OverviewScreenProps {
   onNewAnalysis?: () => void;
   onNewProject?: () => void;
   onGoToRequirements?: () => void;
+  /** v2.3: فتح شاشة جاهزية المشروع. */
+  onOpenReadiness?: () => void;
 }
 
 /* Compact plan + usage card for the dashboard. */
@@ -164,8 +166,8 @@ const STATUS_META = [
 
 /* Project overview — BA-specific readiness view, computed from the user's
    real data. Shows an onboarding empty state for brand-new workspaces. */
-export function OverviewScreen({ onOpen, onNewAnalysis, onNewProject, onGoToRequirements }: OverviewScreenProps) {
-  const { requirements, acceptanceCriteria, usage, activeProject } = useWorkspaceData();
+export function OverviewScreen({ onOpen, onNewAnalysis, onNewProject, onGoToRequirements, onOpenReadiness }: OverviewScreenProps) {
+  const { requirements, acceptanceCriteria, usage, activeProject, featureFlags } = useWorkspaceData();
 
   const total = requirements.length;
   const projectName = activeProject?.name ?? "مساحة العمل";
@@ -515,10 +517,66 @@ export function OverviewScreen({ onOpen, onNewAnalysis, onNewProject, onGoToRequ
         </Card>
       </div>
 
+      {/* v2.3: بطاقة جاهزية المشروع المختصرة — تظهر فقط عند تفعيل الميزة */}
+      {featureFlags.readinessEnabled && activeProject && (
+        <div style={{ marginTop: 20 }}>
+          <ReadinessMiniCard projectId={activeProject.id} onOpen={onOpenReadiness} />
+        </div>
+      )}
+
       {/* سياق المشروع ووحداته (v1.9.9) — اختياريان بالكامل */}
       <div id="project-context-anchor" style={{ marginTop: 20 }}>
         <ProjectContextSection />
       </div>
     </div>
+  );
+}
+
+/* بطاقة الجاهزية المختصرة — تحميل كسول من الخادم (لا AI ولا استهلاك حصة). */
+function ReadinessMiniCard({ projectId, onOpen }: { projectId: string; onOpen?: () => void }) {
+  const [state, setState] = React.useState<{ score: number; label: string; critical: number; important: number } | null | "error">(null);
+  React.useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        const { getProjectReadiness } = await import("@/app/actions");
+        const res = await getProjectReadiness(projectId);
+        if (!alive) return;
+        if (res.ok && res.result) {
+          setState({ score: res.result.overallScore, label: res.result.statusLabel, critical: res.result.counts.critical, important: res.result.counts.important });
+        } else setState("error");
+      } catch { if (alive) setState("error"); }
+    })();
+    return () => { alive = false; };
+  }, [projectId]);
+
+  if (state === "error") return null; // الميزة معطلة أو خطأ — لا ضوضاء في النظرة العامة
+  return (
+    <Card>
+      <div style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
+        <span style={{ width: 40, height: 40, borderRadius: "var(--radius-md)", background: "var(--teal-50)", display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
+          <Icon name="target" size={19} color="var(--teal-600)" />
+        </span>
+        <div style={{ flex: 1, minWidth: 200 }}>
+          {state === null ? (
+            <div style={{ height: 34, borderRadius: 8, background: "var(--slate-100)", maxWidth: 280 }} />
+          ) : (
+            <>
+              <div style={{ font: "var(--weight-bold) 15px/1.3 var(--font-sans)", color: "var(--text-strong)" }}>
+                جاهزية المشروع: {state.score}% — {state.label}
+              </div>
+              <div style={{ font: "12px/1.6 var(--font-sans)", color: "var(--text-muted)", marginTop: 3 }}>
+                {state.critical + state.important > 0
+                  ? `يوجد ${state.critical + state.important} إجراءً مهمًا قبل اكتمال المشروع${state.critical ? ` (${state.critical} منها حرج)` : ""}.`
+                  : "لا توجد نواقص جوهرية — عمل ممتاز."}
+              </div>
+            </>
+          )}
+        </div>
+        <button onClick={onOpen} style={{ height: 36, padding: "0 16px", borderRadius: "var(--radius-pill)", border: "none", background: "var(--primary)", color: "#fff", font: "var(--weight-semibold) 12.5px var(--font-sans)", cursor: "pointer" }}>
+          عرض الجاهزية
+        </button>
+      </div>
+    </Card>
   );
 }

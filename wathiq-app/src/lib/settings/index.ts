@@ -64,6 +64,7 @@ async function readMerged(): Promise<SystemSettingsShape> {
       plans: mergeOverDefaults(SETTINGS_DEFAULTS.plans, row?.plans),
       assistant: mergeOverDefaults(SETTINGS_DEFAULTS.assistant, row?.assistant),
       features: mergeOverDefaults(SETTINGS_DEFAULTS.features, row?.features),
+      readiness: mergeOverDefaults(SETTINGS_DEFAULTS.readiness, row?.readiness),
     };
     g.__wathiqSettingsCache = { value, at: Date.now() };
     return value;
@@ -89,6 +90,7 @@ export const getDocumentSettings = async () => (await getSystemSettings()).docum
 export const getPlanSettings = async () => (await getSystemSettings()).plans;
 export const getAssistantSettings = async () => (await getSystemSettings()).assistant;
 export const getFeatureSettings = async () => (await getSystemSettings()).features;
+export const getReadinessSettings = async () => (await getSystemSettings()).readiness;
 
 /** Subset عامة آمنة لتمريرها إلى مكونات العميل — لا إعدادات داخلية. */
 export async function getPublicSettings(): Promise<PublicSettings> {
@@ -345,6 +347,54 @@ const normalizers: Record<SettingsSection, Norm> = {
     };
   },
 
+  readiness: (i, b) => {
+    const r = b.readiness;
+    const APP = ["REQUIRED", "OPTIONAL", "NOT_APPLICABLE"];
+    const app = (v: unknown, dflt: string) => (typeof v === "string" && APP.includes(v) ? v : dflt);
+    const pol = (v: unknown, allowed: string[], dflt: string) => (typeof v === "string" && allowed.includes(v) ? v : dflt);
+    const w = isObj(i.weights) ? i.weights : {};
+    const weights = {
+      context: intIn(w.context, 0, 100, r.weights.context),
+      requirements: intIn(w.requirements, 0, 100, r.weights.requirements),
+      quality: intIn(w.quality, 0, 100, r.weights.quality),
+      acceptance: intIn(w.acceptance, 0, 100, r.weights.acceptance),
+      questions: intIn(w.questions, 0, 100, r.weights.questions),
+      status: intIn(w.status, 0, 100, r.weights.status),
+      docData: intIn(w.docData, 0, 100, r.weights.docData),
+    };
+    // تحقق خادمي صارم: مجموع الأوزان = 100 (لا اعتماد على الواجهة).
+    const sum = Object.values(weights).reduce((a, x) => a + x, 0);
+    if (sum !== 100) return { error: "weights-sum-invalid" };
+    const t = isObj(i.thresholds) ? i.thresholds : {};
+    const readyMin = intIn(t.readyMin, 1, 100, r.thresholds.readyMin);
+    const notesMin = intIn(t.notesMin, 1, 100, r.thresholds.notesMin);
+    const needsWorkMin = intIn(t.needsWorkMin, 1, 100, r.thresholds.needsWorkMin);
+    if (!(readyMin > notesMin && notesMin > needsWorkMin)) return { error: "thresholds-invalid" };
+    const pa = isObj(i.planAccess) ? i.planAccess : {};
+    return {
+      enabled: bool(i.enabled, r.enabled),
+      brdReadinessEnabled: bool(i.brdReadinessEnabled, r.brdReadinessEnabled),
+      srsReadinessEnabled: bool(i.srsReadinessEnabled, r.srsReadinessEnabled),
+      thresholds: { readyMin, notesMin, needsWorkMin },
+      weights,
+      missingAnalysisPolicy: pol(i.missingAnalysisPolicy, ["note", "important", "block_export", "ignore"], r.missingAnalysisPolicy),
+      requireAcceptanceCriteria: bool(i.requireAcceptanceCriteria, r.requireAcceptanceCriteria),
+      criticalNoCriteriaForCritical: bool(i.criticalNoCriteriaForCritical, r.criticalNoCriteriaForCritical),
+      minQualityScore: intIn(i.minQualityScore, 0, 100, r.minQualityScore),
+      minApprovedPercent: intIn(i.minApprovedPercent, 0, 100, r.minApprovedPercent),
+      minCriteriaPerRequirement: intIn(i.minCriteriaPerRequirement, 0, 10, r.minCriteriaPerRequirement),
+      exportPolicy: pol(i.exportPolicy, ["allow", "warn", "block_critical"], r.exportPolicy),
+      planAccess: {
+        FREE: pol(pa.FREE, ["summary", "full"], r.planAccess.FREE),
+        PRO: pol(pa.PRO, ["summary", "full"], r.planAccess.PRO),
+        ENTERPRISE: pol(pa.ENTERPRISE, ["summary", "full"], r.planAccess.ENTERPRISE),
+      },
+      freeMaxIssues: intIn(i.freeMaxIssues, 1, 50, r.freeMaxIssues),
+      defaultBrdApplicability: app(i.defaultBrdApplicability, r.defaultBrdApplicability),
+      defaultSrsApplicability: app(i.defaultSrsApplicability, r.defaultSrsApplicability),
+    };
+  },
+
   features: (i, b) => ({
     publicRegistrationEnabled: bool(i.publicRegistrationEnabled, b.features.publicRegistrationEnabled),
     maintenanceMode: bool(i.maintenanceMode, b.features.maintenanceMode),
@@ -385,6 +435,7 @@ const SECTION_ACTION: Record<SettingsSection, string> = {
   plans: "PLAN_SETTINGS_UPDATED",
   assistant: "ASSISTANT_SETTINGS_UPDATED",
   features: "FEATURE_SETTINGS_UPDATED",
+  readiness: "READINESS_SETTINGS_UPDATED",
 };
 
 export async function updateSystemSettings(input: {

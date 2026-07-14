@@ -13,6 +13,7 @@ export type ScreenId =
   | "overview"
   | "requirements"
   | "analysis"
+  | "readiness"
   | "stakeholders"
   | "rules"
   | "audit";
@@ -124,6 +125,8 @@ export function AppShell({ current, onNavigate, onNewAnalysis, onNewProject, sea
     { id: "overview", label: "نظرة عامة", icon: "layout-dashboard" },
     { id: "requirements", label: "المتطلبات", icon: "clipboard-list", count: requirements.length },
     { id: "analysis", label: "تحليل وثّق", icon: "sparkles" },
+    // v2.3: مركز الجاهزية — يظهر فقط عند تفعيل الميزة من إعدادات النظام.
+    ...(featureFlags.readinessEnabled ? [{ id: "readiness", label: "جاهزية المشروع", icon: "target" } as NavEntry] : []),
   ];
   const meta: NavEntry[] = [
     { id: "stakeholders", label: "أصحاب المصلحة", icon: "users" },

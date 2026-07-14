@@ -28,8 +28,22 @@ const box: React.CSSProperties = {
 };
 
 function blank(): ProjectInput {
-  return { name: "", code: "", description: "", domain: "", client: "", status: "active", color: COLORS[0], icon: "" };
+  return { name: "", code: "", description: "", domain: "", client: "", status: "active", color: COLORS[0], icon: "", brdApplicability: "REQUIRED", srsApplicability: "REQUIRED" };
 }
+
+/** خيارات «ما الوثائق التي يحتاجها هذا المشروع؟» عند الإنشاء — بسيطة بلا مصطلحات تقنية. */
+const DOC_PRESETS: Array<{ key: string; label: string; brd: string; srs: string }> = [
+  { key: "both", label: "BRD وSRS معًا", brd: "REQUIRED", srs: "REQUIRED" },
+  { key: "brd", label: "BRD فقط", brd: "REQUIRED", srs: "NOT_APPLICABLE" },
+  { key: "srs", label: "SRS فقط", brd: "NOT_APPLICABLE", srs: "REQUIRED" },
+  { key: "later", label: "سأحدد لاحقًا", brd: "OPTIONAL", srs: "OPTIONAL" },
+];
+const APP_OPTIONS: Array<{ v: string; l: string }> = [
+  { v: "REQUIRED", l: "مطلوبة" },
+  { v: "OPTIONAL", l: "اختيارية" },
+  { v: "NOT_APPLICABLE", l: "غير مطلوبة" },
+];
+const NA_CONFIRM = "سيتم إخفاء هذه الوثيقة من المشروع ولن تؤثر على جاهزيته. لن يتم حذف بياناتها السابقة، ويمكنك تفعيلها مرة أخرى لاحقًا.";
 
 export interface ProjectFormDialogProps {
   open: boolean;
@@ -55,6 +69,8 @@ export function ProjectFormDialog({ open, mode, initial, onClose, onSaved }: Pro
         name: initial.name, code: initial.code, description: initial.description ?? "",
         domain: initial.domain ?? "", client: initial.client ?? "", status: initial.status,
         color: initial.color ?? COLORS[0], icon: initial.icon ?? "",
+        brdApplicability: initial.brdApplicability ?? "REQUIRED",
+        srsApplicability: initial.srsApplicability ?? "REQUIRED",
       });
     } else {
       setForm(blank());
@@ -189,6 +205,49 @@ export function ProjectFormDialog({ open, mode, initial, onClose, onSaved }: Pro
                     ))}
                   </div>
                 </div>
+              </div>
+
+              {/* ═ الوثائق والمخرجات (v2.3) ═ */}
+              <div>
+                <label style={label}>الوثائق والمخرجات</label>
+                {mode === "create" ? (
+                  <>
+                    <div style={{ font: "11.5px/1.6 var(--font-sans)", color: "var(--text-subtle)", marginBottom: 8 }}>ما الوثائق التي يحتاجها هذا المشروع؟ يمكنك تغييرها لاحقًا من تعديل المشروع.</div>
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                      {DOC_PRESETS.map((pz) => {
+                        const on = form.brdApplicability === pz.brd && form.srsApplicability === pz.srs;
+                        return (
+                          <button key={pz.key} onClick={() => setForm((f) => ({ ...f, brdApplicability: pz.brd, srsApplicability: pz.srs }))} style={{
+                            padding: "10px 12px", borderRadius: "var(--radius-md)", textAlign: "start", cursor: "pointer",
+                            border: `1.5px solid ${on ? "var(--teal-400)" : "var(--border-default)"}`,
+                            background: on ? "var(--teal-50)" : "var(--surface-card)",
+                            font: `var(--weight-${on ? "semibold" : "medium"}) 12.5px var(--font-sans)`,
+                            color: on ? "var(--teal-700)" : "var(--text-strong)",
+                          }}>{pz.label}</button>
+                        );
+                      })}
+                    </div>
+                  </>
+                ) : (
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                    {([["brdApplicability", "وثيقة متطلبات الأعمال BRD"], ["srsApplicability", "وثيقة متطلبات النظام SRS"]] as const).map(([k, l]) => (
+                      <div key={k}>
+                        <div style={{ font: "11.5px var(--font-sans)", color: "var(--text-subtle)", marginBottom: 5 }}>{l}</div>
+                        <select
+                          value={form[k] ?? "REQUIRED"}
+                          onChange={(e) => {
+                            const v = e.target.value;
+                            if (v === "NOT_APPLICABLE" && form[k] !== "NOT_APPLICABLE" && !confirm(NA_CONFIRM)) return;
+                            set(k, v);
+                          }}
+                          style={box}
+                        >
+                          {APP_OPTIONS.map((o) => <option key={o.v} value={o.v}>{o.l}</option>)}
+                        </select>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
 
               {error && (

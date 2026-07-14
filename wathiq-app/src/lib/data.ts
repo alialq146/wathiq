@@ -77,6 +77,9 @@ export interface Project {
   outOfScope?: string | null;
   relatedSystems?: string | null;
   constraints?: string | null;
+  /** الوثائق والمخرجات (v2.3): REQUIRED | OPTIONAL | NOT_APPLICABLE. */
+  brdApplicability?: string;
+  srsApplicability?: string;
 }
 
 /** وحدة مشروع (اختيارية) لتنظيم متطلبات المشاريع الكبيرة. */

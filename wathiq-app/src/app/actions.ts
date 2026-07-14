@@ -9,7 +9,7 @@ import { authEnabled } from "@/lib/auth";
 import { isAccountActive } from "@/lib/account";
 import { arReqCount } from "@/lib/arabic";
 import { trackEvent, type ProductEventName } from "@/lib/track";
-import { resolvedProjectLimitFor, getFeatureSettings } from "@/lib/settings";
+import { resolvedProjectLimitFor, getFeatureSettings, getReadinessSettings } from "@/lib/settings";
 import type { RequirementStatus, PriorityLevel } from "@/components/ds";
 
 export interface RequirementInput {
@@ -504,7 +504,14 @@ export interface ProjectInput {
   status: string; // draft | active | completed
   color: string;
   icon: string;
+  /** v2.3: الوثائق والمخرجات — غيابها = الافتراضي من إعدادات النظام. */
+  brdApplicability?: string;
+  srsApplicability?: string;
 }
+
+const DOC_APPLICABILITIES = ["REQUIRED", "OPTIONAL", "NOT_APPLICABLE"] as const;
+const docApp = (v: unknown, dflt: string): string =>
+  typeof v === "string" && (DOC_APPLICABILITIES as readonly string[]).includes(v) ? v : dflt;
 
 /** Create a project — plan-gated (FREE = one project). */
 /** إضافة سؤال مفتوح (يدويًا أو باعتماد اقتراح من مساعد وثّق). */
@@ -589,6 +596,8 @@ export async function createProject(input: ProjectInput): Promise<ActionResult> 
     const code = input.code.trim() || `PRJ-${String(count + 1).padStart(4, "0")}`;
     const status = ["draft", "active", "completed"].includes(input.status) ? input.status : "active";
 
+    // v2.3: الوثائق والمخرجات — اختيار المستخدم أو الافتراضي من إعدادات النظام.
+    const readinessCfg = await getReadinessSettings();
     const project = await prisma.project.create({
       data: {
         ownerId: actor.uid,
@@ -601,6 +610,8 @@ export async function createProject(input: ProjectInput): Promise<ActionResult> 
         color: input.color.trim() || null,
         icon: input.icon.trim() || null,
         order: count,
+        brdApplicability: docApp(input.brdApplicability, readinessCfg.defaultBrdApplicability),
+        srsApplicability: docApp(input.srsApplicability, readinessCfg.defaultSrsApplicability),
       },
     });
 
@@ -640,8 +651,16 @@ export async function updateProject(id: string, input: ProjectInput): Promise<Ac
         status,
         color: input.color.trim() || null,
         icon: input.icon.trim() || null,
+        // v2.3: الوثائق والمخرجات — إخفاء منطقي فقط، لا حذف بيانات أبدًا.
+        brdApplicability: docApp(input.brdApplicability, target.brdApplicability),
+        srsApplicability: docApp(input.srsApplicability, target.srsApplicability),
       },
     });
+    const brdNew = docApp(input.brdApplicability, target.brdApplicability);
+    const srsNew = docApp(input.srsApplicability, target.srsApplicability);
+    if (brdNew !== target.brdApplicability || srsNew !== target.srsApplicability) {
+      await trackEvent({ eventName: "document_applicability_changed", userId: actor.uid, projectId: id, metadata: { brd: brdNew, srs: srsNew } });
+    }
     revalidatePath("/");
     return { ok: true };
   } catch (err) {
@@ -981,6 +1000,167 @@ export async function saveBillingProfile(input: BillingProfileInput): Promise<Ac
     return { ok: true };
   } catch (err) {
     console.error("[saveBillingProfile]", err);
+    return { ok: false, error: "server" };
+  }
+}
+
+/* ════════════════ مركز جاهزية المشروع والوثائق (v2.3) ════════════════ */
+
+import {
+  calculateProjectReadiness,
+  checkDocumentExport,
+  type ReadinessResult,
+  type ExportCheck,
+} from "@/lib/readiness";
+import { getReadinessSettings as getReadinessCfg } from "@/lib/settings";
+
+export interface ReadinessResponse {
+  ok: boolean;
+  error?: string;
+  result?: ReadinessResult;
+  /** true عند تقليم النتيجة حسب الخطة (FREE = ملخص). */
+  limited?: boolean;
+}
+
+/**
+ * جاهزية المشروع — حساب خادمي كامل (ملكية + خطة + إعدادات):
+ * لا يستدعي أي ذكاء اصطناعي ولا يستهلك حصة المستخدم إطلاقًا.
+ * FREE (حسب الإعدادات): الدرجة والملخص وعدد محدود من الملاحظات فقط.
+ */
+export async function getProjectReadiness(
+  projectId: string,
+  opts: { recalculate?: boolean } = {}
+): Promise<ReadinessResponse> {
+  if (!hasDatabase()) return { ok: false, error: "no-db" };
+  const actor = await requireActor();
+  if (!actor || !actor.uid) return { ok: false, error: "unauthorized" };
+  if (typeof projectId !== "string" || !projectId) return { ok: false, error: "bad-request" };
+
+  const cfg = await getReadinessCfg();
+  if (!cfg.enabled) return { ok: false, error: "feature-disabled" };
+
+  const result = await calculateProjectReadiness(projectId, actor.uid, { snapshot: opts.recalculate === true });
+  if (!result) return { ok: false, error: "not-found" };
+
+  await trackEvent({
+    eventName: opts.recalculate ? "readiness_recalculated" : "readiness_viewed",
+    userId: actor.uid, projectId,
+    metadata: { score: result.overallScore, critical: result.counts.critical },
+  });
+
+  // تقليم حسب الخطة — في الخادم لا الواجهة (لا يمكن تزويره من العميل).
+  const user = await prisma.user.findUnique({ where: { id: actor.uid }, select: { plan: true } });
+  const plan = (user?.plan === "PRO" || user?.plan === "ENTERPRISE" ? user.plan : "FREE") as "FREE" | "PRO" | "ENTERPRISE";
+  if (cfg.planAccess[plan] === "summary") {
+    return {
+      ok: true,
+      limited: true,
+      result: {
+        ...result,
+        issues: result.issues.slice(0, cfg.freeMaxIssues),
+        axes: result.axes.map((a) => ({ ...a, issues: [] })),
+        documents: { brd: null, srs: null },
+      },
+    };
+  }
+  return { ok: true, result };
+}
+
+/** تغيير حالة وثائق المشروع (مطلوبة/اختيارية/غير مطلوبة) — لا حذف بيانات أبدًا. */
+export async function updateProjectDocuments(
+  projectId: string,
+  input: { brdApplicability?: string; srsApplicability?: string }
+): Promise<ActionResult> {
+  if (!hasDatabase()) return { ok: false, error: "no-db" };
+  const actor = await requireActor();
+  if (!actor || !actor.uid) return { ok: false, error: "unauthorized" };
+
+  try {
+    const project = await prisma.project.findFirst({
+      where: { id: projectId, ownerId: actor.uid },
+      select: { id: true, name: true, brdApplicability: true, srsApplicability: true },
+    });
+    if (!project) return { ok: false, error: "not-found" };
+
+    const brd = docApp(input.brdApplicability, project.brdApplicability);
+    const srs = docApp(input.srsApplicability, project.srsApplicability);
+    if (brd === project.brdApplicability && srs === project.srsApplicability) return { ok: true };
+
+    await prisma.project.update({ where: { id: project.id }, data: { brdApplicability: brd, srsApplicability: srs } });
+
+    const AR: Record<string, string> = { REQUIRED: "مطلوبة", OPTIONAL: "اختيارية", NOT_APPLICABLE: "غير مطلوبة" };
+    const changes: string[] = [];
+    if (brd !== project.brdApplicability) changes.push(`BRD: ${AR[brd]}`);
+    if (srs !== project.srsApplicability) changes.push(`SRS: ${AR[srs]}`);
+    await logAudit(actor, null, "project_updated", `تحديث الوثائق والمخرجات — ${changes.join("، ")}.`, undefined, project.id);
+    await trackEvent({
+      eventName: "document_applicability_changed", userId: actor.uid, projectId: project.id,
+      metadata: { brd, srs },
+    });
+    revalidatePath("/");
+    return { ok: true };
+  } catch (err) {
+    console.error("[updateProjectDocuments]", err);
+    return { ok: false, error: "server" };
+  }
+}
+
+/**
+ * فحص تصدير وثيقة (BRD/SRS) — خادمي بالكامل: قابلية التطبيق + السياسة +
+ * الجاهزية. الوثيقة غير المطلوبة تُرفض هنا حتى لو تجاوز أحدهم إخفاء الزر.
+ */
+export async function checkDocumentExportAction(
+  projectId: string,
+  docType: string
+): Promise<{ ok: boolean; error?: string; check?: ExportCheck }> {
+  if (!hasDatabase()) return { ok: false, error: "no-db" };
+  const actor = await requireActor();
+  if (!actor || !actor.uid) return { ok: false, error: "unauthorized" };
+  if (docType !== "BRD" && docType !== "SRS") return { ok: false, error: "bad-request" };
+
+  const check = await checkDocumentExport(projectId, actor.uid, docType);
+  if (!check) return { ok: false, error: "not-found" };
+
+  if (check.reason === "not-applicable") {
+    await trackEvent({ eventName: "document_export_denied_na", userId: actor.uid, projectId, metadata: { docType } });
+  } else if (check.reason === "blocked") {
+    await trackEvent({ eventName: "document_export_blocked", userId: actor.uid, projectId, metadata: { docType, score: check.score, critical: check.criticalCount } });
+    try {
+      await prisma.readinessExportLog.create({
+        data: { projectId, userId: actor.uid, documentType: docType, readinessScore: check.score, criticalIssuesCount: check.criticalCount, exportedWithWarnings: false, blocked: true },
+      });
+    } catch { /* سجل تتبعي */ }
+  }
+  return { ok: true, check };
+}
+
+/** تسجيل تصدير وثيقة تم فعليًا (مع أو بدون تحذيرات) — يُستدعى بعد التصدير. */
+export async function logDocumentExportAction(
+  projectId: string,
+  docType: string,
+  info: { withWarnings: boolean; score: number | null; criticalCount: number }
+): Promise<ActionResult> {
+  if (!hasDatabase()) return { ok: false, error: "no-db" };
+  const actor = await requireActor();
+  if (!actor || !actor.uid) return { ok: false, error: "unauthorized" };
+  if (docType !== "BRD" && docType !== "SRS") return { ok: false, error: "bad-request" };
+
+  try {
+    const owned = await prisma.project.findFirst({ where: { id: projectId, ownerId: actor.uid }, select: { id: true } });
+    if (!owned) return { ok: false, error: "not-found" };
+    await prisma.readinessExportLog.create({
+      data: {
+        projectId, userId: actor.uid, documentType: docType,
+        readinessScore: info.score, criticalIssuesCount: Math.max(0, Math.trunc(info.criticalCount)),
+        exportedWithWarnings: info.withWarnings === true, blocked: false,
+      },
+    });
+    if (info.withWarnings) {
+      await trackEvent({ eventName: "document_export_warned", userId: actor.uid, projectId, metadata: { docType, score: info.score } });
+    }
+    return { ok: true };
+  } catch (err) {
+    console.error("[logDocumentExportAction]", err);
     return { ok: false, error: "server" };
   }
 }
