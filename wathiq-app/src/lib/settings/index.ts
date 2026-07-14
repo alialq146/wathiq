@@ -397,6 +397,10 @@ const normalizers: Record<SettingsSection, Norm> = {
 
   features: (i, b) => ({
     publicRegistrationEnabled: bool(i.publicRegistrationEnabled, b.features.publicRegistrationEnabled),
+    projectCollaborationEnabled: bool(i.projectCollaborationEnabled, b.features.projectCollaborationEnabled),
+    projectAuditLogEnabled: bool(i.projectAuditLogEnabled, b.features.projectAuditLogEnabled),
+    optimisticConcurrencyEnabled: bool(i.optimisticConcurrencyEnabled, b.features.optimisticConcurrencyEnabled),
+    commentsEnabled: bool(i.commentsEnabled, b.features.commentsEnabled),
     maintenanceMode: bool(i.maintenanceMode, b.features.maintenanceMode),
     maintenanceMessage: str(i.maintenanceMessage, 500, b.features.maintenanceMessage) || b.features.maintenanceMessage,
     demoModeEnabled: bool(i.demoModeEnabled, b.features.demoModeEnabled),

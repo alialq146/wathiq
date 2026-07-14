@@ -192,6 +192,10 @@ const ASSISTANT: AssistantSettings = {
 
 const FEATURES: FeatureSettings = {
   publicRegistrationEnabled: true,
+  projectCollaborationEnabled: false, // مستقبلي — لا يعرض أي زر مشاركة الآن
+  projectAuditLogEnabled: true,
+  optimisticConcurrencyEnabled: true,
+  commentsEnabled: false, // مستقبلي
   maintenanceMode: false,
   maintenanceMessage: "المنصة تحت الصيانة حاليًا — نعود قريبًا. شكرًا لصبركم.",
   demoModeEnabled: true,

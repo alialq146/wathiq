@@ -54,6 +54,8 @@ export interface Requirement {
   source?: string | null; // مصدر المتطلب (عميل/اجتماع/وثيقة/بريد/ورشة عمل/أخرى)
   assignee?: string | null; // المسؤول عن المتطلب
   version?: number; // إصدار المتطلب (افتراضي 1)
+  /** v2.4: للتزامن التفاؤلي (ISO) — تُرسل مع التعديل ليرفض الخادم الكتابة فوق أحدث. */
+  updatedAt?: string;
   projectId?: string | null;
   moduleId?: string | null; // وحدة المشروع (اختيارية) — null = متطلب عام
   analysis?: RequirementAnalysis | null;

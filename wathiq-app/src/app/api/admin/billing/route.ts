@@ -5,6 +5,18 @@ import { processSubscriptionLifecycle, estimateMRR, formatMoney, daysLeft } from
 
 export const dynamic = "force-dynamic";
 
+const g = globalThis as { __wathiqLifecycleAt?: number; __wathiqLifecycleLast?: { expired: number; remindersCreated: number; overdueMarked: number } };
+async function throttledLifecycle() {
+  const now = Date.now();
+  if (g.__wathiqLifecycleAt && now - g.__wathiqLifecycleAt < 60_000 && g.__wathiqLifecycleLast) {
+    return g.__wathiqLifecycleLast;
+  }
+  const result = await processSubscriptionLifecycle().catch(() => ({ expired: 0, remindersCreated: 0, overdueMarked: 0 }));
+  g.__wathiqLifecycleAt = now;
+  g.__wathiqLifecycleLast = result;
+  return result;
+}
+
 /**
  * GET /api/admin/billing — لوحة «الاشتراكات والفواتير»: تُشغّل معالجة دورة
  * الحياة أولًا (انتهاء/تذكيرات/متأخرات — آمنة التكرار) ثم ترجع البطاقات
@@ -15,7 +27,9 @@ export async function GET(req: Request) {
   if (!admin) return NextResponse.json(ADMIN_FORBIDDEN, { status: 403 });
 
   // معالجة دورة الحياة عند فتح اللوحة — بديل Cron الآن وجاهزة له لاحقًا.
-  const lifecycle = await processSubscriptionLifecycle().catch(() => ({ expired: 0, remindersCreated: 0, overdueMarked: 0 }));
+  // v2.4 (أداء): خنق 60 ثانية لكل instance — إعادة تحميل اللوحة المتكررة كانت
+  // تعيد تشغيل كل استعلامات الدورة (idempotent لكنها ~6 استعلامات بلا داعٍ).
+  const lifecycle = await throttledLifecycle();
 
   const url = new URL(req.url);
   const invStatus = url.searchParams.get("invStatus") ?? "";

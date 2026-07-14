@@ -63,6 +63,7 @@ model AiUsage {
   @@index([projectId])
   @@index([requirementId])
   @@index([createdAt])
+  @@index([status, createdAt]) // v2.4: عدّ الحظر/الأخطاء في مدى زمني (الكوكبت)
 }
 
 /// A workspace/project. Requirements and analyses belong to exactly one.
@@ -137,6 +138,9 @@ model Requirement {
   moduleId      String? // وحدة المشروع (اختيارية) — null للمتطلبات العامة والقديمة
   analysis      Json?
   order         Int      @default(0)
+  // v2.4: للتزامن التفاؤلي — الواجهة ترسل النسخة التي فتحتها، والخادم يرفض
+  // الكتابة فوق تعديل أحدث (حماية تعارض خفيفة تمهيدًا للتعاون).
+  updatedAt     DateTime @default(now()) @updatedAt
 
   @@index([ownerId])
   @@index([projectId])
@@ -201,6 +205,7 @@ model AuditEvent {
 
   @@index([requirementId])
   @@index([createdAt])
+  @@index([action, createdAt]) // v2.4: عدّادات لوحة الإطلاق (action + مدى زمني)
   @@index([ownerId])
   @@index([projectId])
 }

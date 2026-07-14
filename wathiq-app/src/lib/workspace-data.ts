@@ -213,6 +213,7 @@ function mapEntities(
       source: (r.source as string | null) ?? null,
       assignee: (r.assignee as string | null) ?? null,
       version: (r.version as number | undefined) ?? 1,
+      updatedAt: r.updatedAt instanceof Date ? r.updatedAt.toISOString() : undefined,
       projectId: (r.projectId as string | null) ?? null,
       moduleId: (r.moduleId as string | null) ?? null,
       analysis: (r.analysis as RequirementAnalysis | null) ?? null,

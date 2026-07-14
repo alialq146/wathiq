@@ -546,6 +546,12 @@ export function SystemSettingsClient({ initial, meta }: { initial: SystemSetting
         <Bool label="تصدير الوثائق" value={f.documentExportEnabled} onChange={(v) => patch("features", { documentExportEnabled: v })} />
         <Bool label="نظام الفوترة" value={f.billingEnabled} onChange={(v) => patch("features", { billingEnabled: v })} />
         <Bool label="بريد الفوترة" value={f.billingEmailsEnabled} onChange={(v) => patch("features", { billingEmailsEnabled: v })} help="يعمل فقط مع BILLING_EMAIL_ENABLED ومزوّد بريد مهيأ في متغيرات البيئة." />
+        <div style={{ height: 1, background: "var(--border-subtle)", margin: "4px 0" }} />
+        <div style={{ font: "var(--weight-semibold) 12px var(--font-sans)", color: "var(--text-subtle)" }}>جاهزية التعاون (v2.4) — أعلام تحضيرية؛ فحوصات الملكية ليست قابلة للتعطيل</div>
+        <Bool label="سجل تعديلات المشروع" value={f.projectAuditLogEnabled} onChange={(v) => patch("features", { projectAuditLogEnabled: v })} />
+        <Bool label="حماية تعارض التعديلات (409)" value={f.optimisticConcurrencyEnabled} onChange={(v) => patch("features", { optimisticConcurrencyEnabled: v })} help="يرفض الحفظ فوق نسخة أحدث من المتطلب." />
+        <Bool label="مشاركة المشاريع (مستقبلي)" value={f.projectCollaborationEnabled} onChange={(v) => patch("features", { projectCollaborationEnabled: v })} help="لا يفعّل أي ميزة الآن — محجوز لنظام الأعضاء القادم." />
+        <Bool label="التعليقات (مستقبلي)" value={f.commentsEnabled} onChange={(v) => patch("features", { commentsEnabled: v })} />
         <SaveBar sec="features" sensitive="تغيير خصائص النظام قد يؤثر على وصول العملاء لوظائف المنصة. متابعة الحفظ؟" />
       </div>
     </div>

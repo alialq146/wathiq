@@ -34,6 +34,7 @@ const PRIORITY_OPTIONS: { v: PriorityLevel; l: string }[] = [
 ];
 
 const ERR: Record<string, string> = {
+  conflict: "تم تعديل هذا المتطلب منذ فتحه. راجع النسخة الأحدث قبل الحفظ.",
   "no-db": "التعديل يتطلب قاعدة بيانات — يعمل على الموقع المنشور فقط.",
   "duplicate-id": "رقم المتطلب مستخدم مسبقًا، اختر رقمًا آخر.",
   "missing-id": "أدخل رقم المتطلب.",
@@ -134,7 +135,8 @@ export function RequirementFormDialog({
   const submit = async () => {
     setSaving(true);
     setError(null);
-    const res = await saveRequirement(form, mode === "edit" ? initial?.id : undefined);
+    const payload = mode === "edit" ? { ...form, expectedUpdatedAt: initial?.updatedAt ?? null } : form;
+    const res = await saveRequirement(payload, mode === "edit" ? initial?.id : undefined);
     setSaving(false);
     if (res.ok) {
       onSaved();

@@ -135,6 +135,11 @@ export interface AssistantSettings {
 
 export interface FeatureSettings {
   publicRegistrationEnabled: boolean;
+  /** v2.4: جاهزية التعاون — أعلام مستقبلية لا تنشئ ميزة الآن (الملكية ليست Flag). */
+  projectCollaborationEnabled: boolean;
+  projectAuditLogEnabled: boolean;
+  optimisticConcurrencyEnabled: boolean;
+  commentsEnabled: boolean;
   maintenanceMode: boolean;
   maintenanceMessage: string;
   demoModeEnabled: boolean;

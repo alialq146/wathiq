@@ -10,6 +10,7 @@ import { isAccountActive } from "@/lib/account";
 import { arReqCount } from "@/lib/arabic";
 import { trackEvent, type ProductEventName } from "@/lib/track";
 import { resolvedProjectLimitFor, getFeatureSettings, getReadinessSettings } from "@/lib/settings";
+import { scopeWhere, requireProjectAccess } from "@/lib/access";
 import type { RequirementStatus, PriorityLevel } from "@/components/ds";
 
 export interface RequirementInput {
@@ -28,6 +29,8 @@ export interface RequirementInput {
   source?: string | null;
   assignee?: string | null;
   version?: number | null;
+  /** v2.4: التزامن التفاؤلي — النسخة (ISO) التي فتحها المستخدم؛ الخادم يرفض الكتابة فوق أحدث. */
+  expectedUpdatedAt?: string | null;
   moduleId?: string | null;
 }
 
@@ -84,8 +87,10 @@ async function requireActor(): Promise<Actor | null> {
  * open/owner mode (uid null) everything is reachable (single-tenant).
  */
 // شرط الملكية المُلحق بكل استعلام كتابة/قراءة حساس — يضمن عزل بيانات كل مستخدم.
+// v2.4: يفوَّض إلى طبقة الوصول المركزية (lib/access) — توسيع التعاون لاحقًا
+// يحدث هناك فقط (scopeWhere + getProjectAccess) دون تعديل هذه المسارات.
 function ownedBy(uid: string | null) {
-  return uid ? { ownerId: uid } : {};
+  return scopeWhere(uid);
 }
 
 /**
@@ -206,6 +211,19 @@ export async function saveRequirement(
         where: { id: originalId, ...ownedBy(actor.uid) },
       });
       if (!target) return { ok: false, error: "not-found" };
+
+      // v2.4: تزامن تفاؤلي خفيف — إذا فتح المستخدم نسخة قديمة وعُدّلت في
+      // الخلفية، نرفض الحفظ فوقها بصمت (409 دلاليًا). قابل للإيقاف من
+      // الإعدادات، والغياب (طلبات قديمة/استيراد) لا يفعّل الفحص.
+      if (input.expectedUpdatedAt) {
+        const feats = await getFeatureSettings();
+        if (feats.optimisticConcurrencyEnabled) {
+          const expected = new Date(input.expectedUpdatedAt).getTime();
+          if (Number.isFinite(expected) && target.updatedAt.getTime() > expected + 1000) {
+            return { ok: false, error: "conflict" };
+          }
+        }
+      }
 
       // سجل التغييرات: نقارن الحقول المهمة ونكتب وصفًا مفهومًا لكل تغيير،
       // مع رفع الإصدار تلقائيًا عند تغيّر المحتوى إن لم يرفعه المستخدم بنفسه.
@@ -661,6 +679,8 @@ export async function updateProject(id: string, input: ProjectInput): Promise<Ac
     if (brdNew !== target.brdApplicability || srsNew !== target.srsApplicability) {
       await trackEvent({ eventName: "document_applicability_changed", userId: actor.uid, projectId: id, metadata: { brd: brdNew, srs: srsNew } });
     }
+    // v2.4: تسجيل تعديل بيانات المشروع (كان الفجوة الوحيدة في سجل التعديلات).
+    await logAudit(actor, null, "project_updated", `تعديل بيانات المشروع «${input.name.trim()}».`, undefined, id);
     revalidatePath("/");
     return { ok: true };
   } catch (err) {
@@ -675,8 +695,8 @@ export async function setActiveProject(id: string): Promise<ActionResult> {
   const actor = await requireActor();
   if (!actor || !actor.uid) return { ok: false, error: "unauthorized" };
   try {
-    const p = await prisma.project.findFirst({ where: { id, ownerId: actor.uid }, select: { id: true } });
-    if (!p) return { ok: false, error: "not-found" };
+    const access = await requireProjectAccess(id, actor.uid, "view");
+    if (!access) return { ok: false, error: "not-found" };
     const store = await cookies();
     store.set(PROJECT_COOKIE, id, { httpOnly: false, sameSite: "lax", path: "/", maxAge: 60 * 60 * 24 * 365 });
     revalidatePath("/");
@@ -733,9 +753,10 @@ export async function saveProjectContext(
   try {
     const actor = await requireActor();
     if (!actor) return { ok: false, error: "unauthorized" };
-    // أمان: لا تعديل لسياق مشروع لا يملكه المستخدم.
-    const project = await prisma.project.findFirst({ where: { id: projectId, ...ownedBy(actor.uid) }, select: { id: true } });
-    if (!project) return { ok: false, error: "not-found" };
+    // أمان: لا تعديل لسياق مشروع بلا صلاحية تحرير — عبر طبقة الوصول المركزية.
+    const access = await requireProjectAccess(projectId, actor.uid, "edit");
+    if (!access) return { ok: false, error: "not-found" };
+    const project = { id: projectId };
 
     await prisma.project.update({
       where: { id: project.id },
@@ -771,9 +792,10 @@ export async function createProjectModule(
   try {
     const actor = await requireActor();
     if (!actor) return { ok: false, error: "unauthorized" };
-    // أمان: الوحدة تُنشأ فقط داخل مشروع يملكه المستخدم.
-    const project = await prisma.project.findFirst({ where: { id: projectId, ...ownedBy(actor.uid) }, select: { id: true } });
-    if (!project) return { ok: false, error: "not-found" };
+    // أمان: الوحدة تُنشأ فقط بصلاحية تحرير على المشروع (طبقة الوصول المركزية).
+    const access = await requireProjectAccess(projectId, actor.uid, "edit");
+    if (!access) return { ok: false, error: "not-found" };
+    const project = { id: projectId };
 
     const max = await prisma.projectModule.aggregate({ where: { projectId: project.id }, _max: { order: true } });
     await prisma.projectModule.create({
@@ -1146,8 +1168,8 @@ export async function logDocumentExportAction(
   if (docType !== "BRD" && docType !== "SRS") return { ok: false, error: "bad-request" };
 
   try {
-    const owned = await prisma.project.findFirst({ where: { id: projectId, ownerId: actor.uid }, select: { id: true } });
-    if (!owned) return { ok: false, error: "not-found" };
+    const access = await requireProjectAccess(projectId, actor.uid, "export");
+    if (!access) return { ok: false, error: "not-found" };
     await prisma.readinessExportLog.create({
       data: {
         projectId, userId: actor.uid, documentType: docType,
