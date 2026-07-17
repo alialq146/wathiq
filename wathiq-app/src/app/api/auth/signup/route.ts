@@ -29,7 +29,9 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: false, error: "bad-request" });
   }
 
-  const name = typeof body.name === "string" ? body.name.trim() : "";
+  // v2.5: حد أعلى للاسم يمنع الإدخال المُسيء (120 حرفًا سخيّة لأي اسم حقيقي).
+  const nameRaw = typeof body.name === "string" ? body.name.trim() : "";
+  const name = nameRaw.length > 120 ? nameRaw.slice(0, 120) : nameRaw;
   const email = typeof body.email === "string" ? body.email.trim().toLowerCase() : "";
   const password = typeof body.password === "string" ? body.password : "";
 

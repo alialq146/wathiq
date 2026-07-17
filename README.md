@@ -7,7 +7,21 @@
 
 `Next.js` · `React` · `TypeScript` · `Arabic-first / RTL`
 
+**الإصدار الحالي · Current version: `v2.5.0`**
+
 </div>
+
+---
+
+## 📌 الحالة والوثائق · Status & Documentation
+
+> **وثّق اليوم منصّة SaaS كاملة للإنتاج** (مصادقة، مشاريع، تحليل بالذكاء الاصطناعي، جاهزية، تصدير BRD/SRS، فوترة، لوحة أدمن، إعدادات مركزية) — وليست نماذج تصميم. القسم القصصي أدناه يوثّق أصل المشروع من حزمة تصميم؛ للحالة الفعلية والوثائق التقنية ابدأ من هنا:
+
+- 🚦 **[`wathiq-app/docs/CURRENT_STATUS.md`](./wathiq-app/docs/CURRENT_STATUS.md)** — **ابدأ من هنا** (نقطة الانطلاق لأي مهندس/وكيل جديد).
+- 🏗️ [`docs/ARCHITECTURE.md`](./wathiq-app/docs/ARCHITECTURE.md) · 🗄️ [`DATABASE_SCHEMA.md`](./wathiq-app/docs/DATABASE_SCHEMA.md) · 🔐 [`ACCESS_CONTROL.md`](./wathiq-app/docs/ACCESS_CONTROL.md) · 🛡️ [`SECURITY.md`](./wathiq-app/docs/SECURITY.md)
+- ⚙️ [`OPERATIONS.md`](./wathiq-app/docs/OPERATIONS.md) · 🚀 [`DEPLOYMENT.md`](./wathiq-app/docs/DEPLOYMENT.md) · 🧭 [`ROADMAP.md`](./wathiq-app/docs/ROADMAP.md) · 🧩 [`DECISIONS/`](./wathiq-app/docs/DECISIONS)
+- 🤖 [`AGENTS.md`](./AGENTS.md) — دليل المساهمة للمهندسين ووكلاء الذكاء الاصطناعي.
+- 📜 [`CHANGELOG.md`](./CHANGELOG.md) · [`JOURNEY.md`](./JOURNEY.md) — سجلّ الإصدارات.
 
 ---
 
@@ -88,7 +102,9 @@ npm run dev      # http://localhost:3000
 
 ## ملاحظات
 
-- البيانات **تجريبية** لأن التصميم مبني على الوصف + الشعار فقط (لا منتج حقيقي أو Figma).
+> ⚠️ **القسم أعلاه تاريخي** (يصف نقطة البداية من حزمة التصميم). الحالة الفعلية اليوم في [`wathiq-app/docs/CURRENT_STATUS.md`](./wathiq-app/docs/CURRENT_STATUS.md).
+
+- البيانات كانت **تجريبية** في مرحلة التصميم الأولى؛ التطبيق الآن يعمل على قاعدة بيانات حقيقية (Postgres/Neon) مع مصادقة وعزل بيانات كامل.
 - الأيقونات: **Lucide**، والخطوط من **Google Fonts** (يمكن استضافتها محلياً لاحقاً).
 
 ---
@@ -170,7 +186,9 @@ npm run dev      # http://localhost:3000
 
 ## Notes
 
-- Data is **mock** — the design was built from a brief + logo only (no real product or Figma).
+> ⚠️ **The narrative above is historical** (it describes the design-bundle starting point). For the actual current state, see [`wathiq-app/docs/CURRENT_STATUS.md`](./wathiq-app/docs/CURRENT_STATUS.md).
+
+- Data was **mock** in the initial design phase; the app now runs on a real database (Postgres/Neon) with authentication and full data isolation.
 - Icons: **Lucide**; fonts via **Google Fonts** (can be self-hosted later).
 
 ---

@@ -103,7 +103,10 @@ export function esc(s: string): string {
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
+    .replace(/"/g, "&quot;")
+    // v2.5: تهريب علامة الاقتباس المفردة أيضًا — دفاع بالعمق لو وُضع نص
+    // مستخدم داخل خاصية مُقتبسة بمفردة في أي قالب مستقبلي.
+    .replace(/'/g, "&#39;");
 }
 
 export function today(): string {
@@ -510,7 +513,10 @@ function triggerDownload(blob: Blob, filename: string): void {
 }
 
 function csvCell(v: string | number | null | undefined): string {
-  const s = v == null ? "" : String(v);
+  let s = v == null ? "" : String(v);
+  // أمان (v2.5): تحييد حقن الصيغ في Excel/Sheets — أي خلية تبدأ بـ = + - @
+  // أو محرف تحكم قد تُنفَّذ كصيغة عند الفتح؛ نسبقها بـ ' لإبطالها.
+  if (/^[=+\-@\t\r]/.test(s)) s = `'${s}`;
   return `"${s.replace(/"/g, '""')}"`;
 }
 

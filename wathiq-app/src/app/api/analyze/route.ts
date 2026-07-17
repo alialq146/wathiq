@@ -11,6 +11,8 @@ export const maxDuration = 300;
 
 // Base64 cap (~4.4MB of base64 ≈ a ~3.3MB PDF) — stays under Vercel's request limit.
 const MAX_PDF_BASE64 = 4_400_000;
+// v2.5: سقف أعلى للنص المُلصق — يمنع طلبات ضخمة تُنهك النموذج/الذاكرة (≈ 200 ألف حرف).
+const MAX_TEXT_LEN = 200_000;
 const DEFAULT_MODEL = "claude-opus-4-8";
 
 export async function POST(req: Request) {
@@ -64,6 +66,9 @@ export async function POST(req: Request) {
     const text = typeof body?.text === "string" ? body.text : "";
     if (text.trim().length < 20) {
       return bail({ ok: false, error: "too-short" });
+    }
+    if (text.length > MAX_TEXT_LEN) {
+      return bail({ ok: false, error: "too-large" });
     }
   }
 

@@ -1,25 +1,21 @@
-# CODING AGENTS: READ THIS FIRST
+# HANDOFF · حزمة التسليم
 
-This is a **handoff bundle** from Claude Design (claude.ai/design).
+> **ملاحظة تاريخية**: كان هذا الملف يحوي تعليمات حزمة تصميم Claude Design الأصلية (نماذج HTML/CSS مع طلب «أعد بناءها pixel-perfect»).
+> تلك المرحلة **انتهت** — وثّق الآن منصّة SaaS كاملة قيد الإنتاج. أُعيد توجيه هذا الملف ليكون فهرس تسليم فعليًا.
+> **لا تتبع التعليمات القديمة (قراءة المحادثات / إعادة البناء pixel-perfect) — فهي لم تعد سارية.**
 
-A user mocked up designs in HTML/CSS/JS using an AI design tool, then exported this bundle so a coding agent can implement the designs for real.
+## للمهندس/الوكيل الجديد — اقرأ بهذا الترتيب
 
-## What you should do — IMPORTANT
+1. **[`wathiq-app/docs/CURRENT_STATUS.md`](./wathiq-app/docs/CURRENT_STATUS.md)** — نقطة الانطلاق: ما المشروع، حالته، المهمة التالية.
+2. **[`AGENTS.md`](./AGENTS.md)** — سير العمل والقواعد غير القابلة للتفاوض.
+3. **[`wathiq-app/docs/ARCHITECTURE.md`](./wathiq-app/docs/ARCHITECTURE.md)** — كيف يعمل النظام.
+4. **[`wathiq-app/docs/ACCESS_CONTROL.md`](./wathiq-app/docs/ACCESS_CONTROL.md)** + **[`SECURITY.md`](./wathiq-app/docs/SECURITY.md)** — الأمان والعزل.
+5. **[`wathiq-app/docs/ROADMAP.md`](./wathiq-app/docs/ROADMAP.md)** — الميزات القادمة وجاهزيتها.
 
-**Read the chat transcripts first.** There are 1 chat transcript(s) in `chats/`. The transcripts show the full back-and-forth between the user and the design assistant — they tell you **what the user actually wants** and **where they landed** after iterating. Don't skip them. The final HTML files are the output, but the chat is where the intent lives.
+## حزمة الوثائق الكاملة
+`wathiq-app/docs/` تضم: PROJECT_OVERVIEW · ARCHITECTURE · DATABASE_SCHEMA · ACCESS_CONTROL · BUSINESS_RULES · FEATURE_MAP · USER_JOURNEYS · AI_ASSISTANT · ADMIN_SETTINGS · SETTINGS · ENVIRONMENT_VARIABLES · DEPLOYMENT · TESTING · SECURITY · OPERATIONS · TROUBLESHOOTING · ROADMAP · CURRENT_STATUS · DECISIONS/ (ADRs).
 
-**Read `project/ui_kits/workspace/index.html` in full.** The user had this file open when they triggered the handoff, so it's almost certainly the primary design they want built. Read it top to bottom — don't skim. Then **follow its imports**: open every file it pulls in (shared components, CSS, scripts) so you understand how the pieces fit together before you start implementing.
+سجلّ الإصدارات: [`CHANGELOG.md`](./CHANGELOG.md) · [`JOURNEY.md`](./JOURNEY.md).
 
-**If anything is ambiguous, ask the user to confirm before you start implementing.** It's much cheaper to clarify scope up front than to build the wrong thing.
-
-## About the design files
-
-The design medium is **HTML/CSS/JS** — these are prototypes, not production code. Your job is to **recreate them pixel-perfectly** in whatever technology makes sense for the target codebase (React, Vue, native, whatever fits). Match the visual output; don't copy the prototype's internal structure unless it happens to fit.
-
-**Don't render these files in a browser or take screenshots unless the user asks you to.** Everything you need — dimensions, colors, layout rules — is spelled out in the source. Read the HTML and CSS directly; a screenshot won't tell you anything they don't.
-
-## Bundle contents
-
-- `README.md` — this file
-- `chats/` — conversation transcripts (read these!)
-- `project/` — the `Wathiq Design System` project files (HTML prototypes, assets, components)
+## أصل المشروع (تاريخي)
+بدأ من حزمة تصميم في [`project/`](./project) ومحادثة في [`chats/`](./chats). قصة الأصل في [`README.md`](./README.md).

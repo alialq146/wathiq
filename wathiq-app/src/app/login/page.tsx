@@ -18,7 +18,10 @@ export default async function LoginPage({
   if (!authEnabled()) redirect("/");
 
   const { next, err } = await searchParams;
-  const target = next && next.startsWith("/") ? next : "/";
+  // أمان (v2.5): يجب أن يكون مسارًا داخليًا نسبيًا فقط — نرفض الروابط
+  // بروتوكولية-نسبية («//evil») والـ backslash («/\evil») لمنع Open Redirect.
+  const isSafeNext = typeof next === "string" && next.startsWith("/") && !next.startsWith("//") && !next.startsWith("/\\");
+  const target = isSafeNext ? next : "/";
   // حساب معطَّل أُعيد من مساحة العمل → نعرض سبب الإعادة بوضوح.
   const initialError =
     err === "disabled" ? "تم إيقاف هذا الحساب مؤقتًا. يرجى التواصل مع فريق وثّق للمساعدة." : undefined;

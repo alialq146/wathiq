@@ -125,27 +125,43 @@ async function logAudit(
 
 /* ---------------- requirements ---------------- */
 
+// v2.5: قوائم بيضاء للحالة والأولوية — أي قيمة من العميل خارجها تُطبَّع لقيمة
+// افتراضية آمنة بدل تخزينها كما هي (STATUS_AR/PRIORITY_AR هي مصدر الحقيقة).
+const VALID_STATUS = new Set(Object.keys(STATUS_AR));
+const VALID_PRIORITY = new Set(Object.keys(PRIORITY_AR));
+
+// v2.5: حدود طول دفاعية — تمنع تضخّم الصفوف وإساءة استخدام الحقول النصية.
+// القيم سخيّة بحيث لا تقطع أي إدخال شرعي، لكنها تسدّ الإدخال المُسيء.
+function cap(v: string, max: number): string {
+  return v.length > max ? v.slice(0, max) : v;
+}
+
 function clean(input: RequirementInput) {
+  const status: RequirementStatus = VALID_STATUS.has(input.status) ? input.status : "draft";
+  const priority: PriorityLevel = VALID_PRIORITY.has(input.priority) ? input.priority : "medium";
   return {
-    title: input.title.trim(),
-    description: input.description.trim(),
-    status: input.status,
-    priority: input.priority,
-    type: input.type?.trim() || null,
+    title: cap(input.title.trim(), 300),
+    description: cap(input.description.trim(), 8000),
+    status,
+    priority,
+    type: input.type?.trim() ? cap(input.type.trim(), 120) : null,
     confidence:
       input.confidence == null || Number.isNaN(input.confidence)
         ? null
         : Math.max(0, Math.min(100, Math.round(input.confidence))),
     criteria: Math.max(0, Math.round(input.criteria) || 0),
     openQuestions: Math.max(0, Math.round(input.openQuestions) || 0),
-    module: input.module.trim(),
-    stakeholders: input.stakeholders.map((s) => s.trim()).filter(Boolean),
-    notes: input.notes?.trim() || null,
-    source: input.source?.trim() || null,
-    assignee: input.assignee?.trim() || null,
+    module: cap(input.module.trim(), 200),
+    stakeholders: input.stakeholders
+      .map((s) => cap(s.trim(), 120))
+      .filter(Boolean)
+      .slice(0, 50),
+    notes: input.notes?.trim() ? cap(input.notes.trim(), 4000) : null,
+    source: input.source?.trim() ? cap(input.source.trim(), 200) : null,
+    assignee: input.assignee?.trim() ? cap(input.assignee.trim(), 200) : null,
     // الإصدار رقم بسيط يتحكم فيه المستخدم — لا يقل عن 1.
     version: Math.max(1, Math.round(Number(input.version)) || 1),
-    moduleId: input.moduleId?.trim() || null,
+    moduleId: input.moduleId?.trim() ? cap(input.moduleId.trim(), 200) : null,
   };
 }
 
@@ -299,7 +315,8 @@ export async function saveExtractedRequirements(
     const actor = await requireActor();
     if (!actor) return { ok: false, error: "unauthorized" };
     const projectId = await activeProjectId(actor.uid);
-    const max = await prisma.requirement.aggregate({ _max: { order: true } });
+    // v2.5: الترتيب ضمن نطاق المستخدم/المشروع نفسه (كان aggregate عالميًا).
+    const max = await prisma.requirement.aggregate({ _max: { order: true }, where: { ...ownedBy(actor.uid), ...(projectId ? { projectId } : {}) } });
     let order = (max._max.order ?? -1) + 1;
     let saved = 0;
     let skipped = 0;

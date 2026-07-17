@@ -1,21 +1,42 @@
 import { NextResponse } from "next/server";
+import { prisma, hasDatabase } from "@/lib/db";
 import { getWorkspaceData } from "@/lib/workspace-data";
 import { authEnabled } from "@/lib/auth";
 import { getSessionUser } from "@/lib/session";
+import { APP_VERSION } from "@/lib/version";
 
-// Lightweight verification endpoint: tells you whether the app is reading from
-// the database ("source": "database") or the built-in fallback ("fallback").
-// Open /api/health on any deployment to check.
+// نقطة فحص خفيفة للتشغيل: تُخبرك هل التطبيق يقرأ من قاعدة البيانات
+// ("source": "database") أم من البيانات الاحتياطية المدمجة ("fallback").
+// v2.5: صارت مسبارًا حقيقيًا — فحص اتصال DB صريح (SELECT 1) + الإصدار + طابع
+// زمني، بحيث تصلح للمراقبة الخارجية (uptime). الأعداد تبقى محجوبة عن غير
+// المسجَّلين، والحقول الأساسية (ok/db/version) آمنة للعرض العام دائمًا.
 export const dynamic = "force-dynamic";
 
 export async function GET() {
-  const data = await getWorkspaceData();
-  // أمان: في وضع الحسابات لا نعرض أعدادًا إجمالية عبر كل المستأجرين لزائر
-  // غير مسجَّل — تكفي حالة المصدر للمراقبة، والأعداد للمسجّلين فقط (نطاقهم).
-  const showCounts = !authEnabled() || Boolean(await getSessionUser());
+  // مسبار جاهزية DB مستقل عن منطق الـ fallback — أدق إشارة على صحة الاتصال.
+  let db: "up" | "down" | "absent" = "absent";
+  if (hasDatabase()) {
+    try {
+      await prisma.$queryRaw`SELECT 1`;
+      db = "up";
+    } catch {
+      db = "down";
+    }
+  }
+
+  // أمان: الأعداد تُحسب على نطاق المستخدم المسجَّل فقط — نمرّر uid إلى مُحمّل
+  // بيانات مساحة العمل (كان بلا نطاق فيُرجع إجماليات كل المستأجرين).
+  const session = authEnabled() ? await getSessionUser() : null;
+  const scopeId = session && session.uid !== "owner" ? session.uid : undefined;
+  const data = await getWorkspaceData(scopeId);
+  const showCounts = !authEnabled() || Boolean(session);
+
   return NextResponse.json({
-    ok: true,
+    ok: db !== "down",
+    db,
     source: data.source,
+    version: APP_VERSION,
+    time: new Date().toISOString(),
     ...(showCounts
       ? {
           counts: {

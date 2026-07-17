@@ -23,6 +23,15 @@ if (!url) {
 // Normalise so the Prisma CLI (which reads env("DATABASE_URL")) always works.
 const env = { ...process.env, DATABASE_URL: url };
 
+// v2.5 (H1): مخرج أمان تشغيلي. `prisma db push --accept-data-loss` يعمل في كل بناء
+// إنتاجي، وأي تغيير مخطّط مُدمِّر قد يُسقط بيانات الإنتاج. عند ضبط SKIP_DB_PUSH=1
+// يتخطّى هذا السكربت خطوة الدفع (والبذر) بالكامل، ما يسمح بإطلاق آمن حين يُدار
+// المخطّط يدويًا/بمراجعة. الافتراضي بلا المتغيّر يبقى كما كان (توافق خلفي كامل).
+if (process.env.SKIP_DB_PUSH === "1" || process.env.SKIP_DB_PUSH === "true") {
+  console.log("[db-setup] SKIP_DB_PUSH set — skipping schema push & seed (managed manually).");
+  process.exit(0);
+}
+
 try {
   console.log("[db-setup] Pushing schema…");
   execSync("prisma db push --skip-generate --accept-data-loss", { stdio: "inherit", env });
