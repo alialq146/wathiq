@@ -31,19 +31,39 @@ function addDay(from: Date): Date {
 }
 
 /**
- * إعادة ضبط كسولة وآمنة للتزامن: `updateMany` مشروط على انقضاء النافذة، فلا
- * تُعاد الضبط مرتين (من يفوز count=1، والباقي count=0 يتجاهل). المنحة الشهرية
- * تُلتقط لقطةً هنا فقط، فتعديل الباقة في منتصف الشهر يسري في الشهر التالي.
+ * إعادة ضبط كسولة وآمنة للتزامن. تحسين v2.6.1: نقرأ حدّي النافذتين أولًا، ولا
+ * نُصدر أي كتابة إلا إذا انقضت نافذةٌ فعلًا — فالحالة الشائعة (لم تنقضِ) تصبح
+ * قراءةً واحدة بلا كتابة (كانت كتابتين على كل حجز = تضخّم كتابة).
+ *
+ * الذرّية محفوظة: عند الانقضاء يبقى الشرط `aiCreditsPeriodEnd ≤ now` داخل
+ * `updateMany` نفسه، فلا يُعاد الضبط مرتين تحت التزامن (أول معاملة تدفع الحدّ
+ * للأمام ⇒ count=1، والمتزامنة معها لم يعُد شرطها ينطبق ⇒ count=0 تتجاهل).
+ * القراءة المسبقة اختصارٌ فقط: إن قالت «لم تنقضِ» فهي لم تنقضِ (تخطّي آمن)؛ وإن
+ * قالت «انقضت» يتحقق الشرط الذرّي مجددًا وقت الكتابة. المنحة الشهرية تُلتقط
+ * لقطةً هنا، فتعديل الباقة في منتصف الشهر يسري في الشهر التالي.
  */
 async function ensureWindows(userId: string, monthlyGrant: number, now: Date): Promise<void> {
-  await prisma.user.updateMany({
-    where: { id: userId, OR: [{ aiCreditsPeriodEnd: null }, { aiCreditsPeriodEnd: { lte: now } }] },
-    data: { aiCreditsGranted: monthlyGrant, aiCreditsUsed: 0, aiCreditsPeriodEnd: addMonth(now) },
+  const u = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { aiCreditsPeriodEnd: true, aiCreditsDayEnd: true },
   });
-  await prisma.user.updateMany({
-    where: { id: userId, OR: [{ aiCreditsDayEnd: null }, { aiCreditsDayEnd: { lte: now } }] },
-    data: { aiCreditsDayUsed: 0, aiCreditsDayEnd: addDay(now) },
-  });
+  if (!u) return;
+  const monthlyExpired = u.aiCreditsPeriodEnd == null || u.aiCreditsPeriodEnd <= now;
+  const dailyExpired = u.aiCreditsDayEnd == null || u.aiCreditsDayEnd <= now;
+  if (!monthlyExpired && !dailyExpired) return; // الشائع: لا كتابة إطلاقًا
+
+  if (monthlyExpired) {
+    await prisma.user.updateMany({
+      where: { id: userId, OR: [{ aiCreditsPeriodEnd: null }, { aiCreditsPeriodEnd: { lte: now } }] },
+      data: { aiCreditsGranted: monthlyGrant, aiCreditsUsed: 0, aiCreditsPeriodEnd: addMonth(now) },
+    });
+  }
+  if (dailyExpired) {
+    await prisma.user.updateMany({
+      where: { id: userId, OR: [{ aiCreditsDayEnd: null }, { aiCreditsDayEnd: { lte: now } }] },
+      data: { aiCreditsDayUsed: 0, aiCreditsDayEnd: addDay(now) },
+    });
+  }
 }
 
 /* ---------------- المحفظة (للعرض) ---------------- */
@@ -205,13 +225,18 @@ export interface CommitInput {
   executionMs?: number | null;
 }
 
-/** يثبّت الخصم بعد نجاح العملية ويسجّل الأرقام الفعلية. النقاط محجوزة مسبقًا. */
-export async function commitCredits(input: CommitInput): Promise<void> {
-  await prisma.$transaction(async (tx) => {
+/**
+ * يثبّت الخصم بعد نجاح العملية ويسجّل الأرقام الفعلية. النقاط محجوزة مسبقًا.
+ * Idempotent وآمن للتزامن: الانتقال يتم عبر `updateMany WHERE status="RESERVED"`
+ * (compare-and-set يأخذ قفل الصف) — لا `findUnique` غير قافلة كحارس، فلا يثبّت
+ * مسارٌ عمليةً استرجعها/ثبّتها آخرُ في نفس اللحظة. يُعيد true إن ثبّت فعلًا.
+ */
+export async function commitCredits(input: CommitInput): Promise<boolean> {
+  return prisma.$transaction(async (tx) => {
     const op = await tx.aiOperation.findUnique({ where: { id: input.operationId } });
-    if (!op || op.status !== "RESERVED") return; // Idempotent: نهائي مسبقًا
-    await tx.aiOperation.update({
-      where: { id: op.id },
+    if (!op || op.status !== "RESERVED") return false; // مسار سريع؛ الحارس الحقيقي أدناه
+    const claimed = await tx.aiOperation.updateMany({
+      where: { id: op.id, status: "RESERVED" }, // ذرّي: أول معاملة فقط تفوز
       data: {
         status: "COMMITTED",
         creditsCommitted: op.creditsReserved,
@@ -224,20 +249,39 @@ export async function commitCredits(input: CommitInput): Promise<void> {
         endedAt: new Date(),
       },
     });
+    if (claimed.count === 0) return false; // فاز غيرنا بالحالة — لا قيد مزدوج
     const w = await tx.user.findUnique({ where: { id: op.userId }, select: { aiCreditsUsed: true } });
     await tx.aiLedgerEntry.create({
       data: { operationId: op.id, userId: op.userId, entryType: "COMMIT", credits: op.creditsReserved, balanceUsed: w?.aiCreditsUsed ?? 0 },
     });
     // المحفظة لا تتغيّر عند التثبيت — النقاط خُصمت وقت الحجز.
+    return true;
   });
 }
 
-/** يعيد النقاط للمحفظة عند فشل تقني/مهلة. `failed` يميّز الفشل عن الاسترجاع اليدوي. */
-export async function refundCredits(operationId: string, reason: string, opts?: { failed?: boolean }): Promise<void> {
-  await prisma.$transaction(async (tx) => {
+/**
+ * يعيد النقاط للمحفظة عند فشل تقني/مهلة/حجز يتيم. `failed` يميّز الفشل التقني عن
+ * الاسترجاع/الاسترداد. Idempotent وآمن للتزامن: الانتقال يتم أولًا عبر
+ * `updateMany WHERE status="RESERVED"` (compare-and-set يأخذ قفل الصف)، ولا
+ * تُعدَّل المحفظة/السجل إلا للمعاملة الفائزة (count=1). فمنظّفان متزامنان أو
+ * تسابق فشل/مهلة لا يسترجعان النقاط مرتين. يُعيد true إن استرجع فعلًا.
+ */
+export async function refundCredits(operationId: string, reason: string, opts?: { failed?: boolean }): Promise<boolean> {
+  return prisma.$transaction(async (tx) => {
     const op = await tx.aiOperation.findUnique({ where: { id: operationId } });
-    if (!op || op.status !== "RESERVED") return; // Idempotent
+    if (!op || op.status !== "RESERVED") return false; // مسار سريع؛ الحارس الحقيقي أدناه
     const c = op.creditsReserved;
+    // الانتقال الذرّي أولًا: من يفوز به وحده يعيد النقاط ويكتب القيد.
+    const claimed = await tx.aiOperation.updateMany({
+      where: { id: op.id, status: "RESERVED" },
+      data: {
+        status: opts?.failed ? "FAILED" : "REFUNDED",
+        creditsRefunded: c,
+        errorMessage: reason.slice(0, 300),
+        endedAt: new Date(),
+      },
+    });
+    if (claimed.count === 0) return false; // فاز غيرنا — لا استرجاع مزدوج
     await tx.user.updateMany({
       where: { id: op.userId },
       data: { aiCreditsUsed: { decrement: c }, aiCreditsDayUsed: { decrement: c } },
@@ -246,18 +290,10 @@ export async function refundCredits(operationId: string, reason: string, opts?: 
     await tx.user.updateMany({ where: { id: op.userId, aiCreditsUsed: { lt: 0 } }, data: { aiCreditsUsed: 0 } });
     await tx.user.updateMany({ where: { id: op.userId, aiCreditsDayUsed: { lt: 0 } }, data: { aiCreditsDayUsed: 0 } });
     const w = await tx.user.findUnique({ where: { id: op.userId }, select: { aiCreditsUsed: true } });
-    await tx.aiOperation.update({
-      where: { id: op.id },
-      data: {
-        status: opts?.failed ? "FAILED" : "REFUNDED",
-        creditsRefunded: c,
-        errorMessage: reason.slice(0, 300),
-        endedAt: new Date(),
-      },
-    });
     await tx.aiLedgerEntry.create({
       data: { operationId: op.id, userId: op.userId, entryType: "REFUND", credits: c, balanceUsed: w?.aiCreditsUsed ?? 0, reason: reason.slice(0, 120) },
     });
+    return true;
   });
 }
 

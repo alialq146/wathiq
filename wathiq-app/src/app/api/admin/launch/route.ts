@@ -6,7 +6,7 @@ export const dynamic = "force-dynamic";
 
 /**
  * GET /api/admin/launch — «لوحة الإطلاق»: مؤشرات آخر 7 و30 يومًا من الجداول
- * الداخلية فقط (User/Project/AuditEvent/AiUsage/ProductEvent/UserFeedback).
+ * الداخلية فقط (User/Project/AuditEvent/AiOperation/ProductEvent/UserFeedback).
  * لا أسرار ولا محتوى متطلبات — عناوين وأعداد وحالات فقط.
  */
 export async function GET() {

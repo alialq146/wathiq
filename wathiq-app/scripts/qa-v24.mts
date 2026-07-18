@@ -7,8 +7,8 @@ const out: { n: string; ok: boolean; d?: string }[] = [];
 const check = (n: string, ok: boolean, d = "") => { out.push({ n, ok, d }); console.log(`${ok ? "✅" : "❌"} ${n}${d ? ` — ${d}` : ""}`); };
 
 async function main() {
-  const owner = await prisma.user.create({ data: { email: `qa-ac-${Date.now()}@w.local`, name: "AC", plan: "PRO", passwordHash: "x", analysisLimit: 50 }, select: { id: true } });
-  const other = await prisma.user.create({ data: { email: `qa-ac2-${Date.now()}@w.local`, name: "AC2", plan: "PRO", passwordHash: "x", analysisLimit: 50 }, select: { id: true } });
+  const owner = await prisma.user.create({ data: { email: `qa-ac-${Date.now()}@w.local`, name: "AC", plan: "PRO", passwordHash: "x" }, select: { id: true } });
+  const other = await prisma.user.create({ data: { email: `qa-ac2-${Date.now()}@w.local`, name: "AC2", plan: "PRO", passwordHash: "x" }, select: { id: true } });
   const project = await prisma.project.create({ data: { ownerId: owner.id, name: "مشروع وصول", code: "AC-1" }, select: { id: true } });
 
   /* طبقة الوصول */

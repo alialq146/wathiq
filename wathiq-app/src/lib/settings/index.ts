@@ -177,6 +177,10 @@ export async function getResolvedAiSettings(): Promise<AiSettings> {
     timeoutMs: clampInt(a.timeoutMs, 1000, HARD_CEILINGS.aiTimeoutMsMax),
     retryCount: clampInt(a.retryCount, 0, HARD_CEILINGS.aiRetryCountMax),
     costRates: a.costRates,
+    // الحد الأدنى 10 دقائق: أعلى بأمان من أقصى مهلة طلب (5 دقائق) + إعادات
+    // المحاولة، فلا يُسترجع حجزٌ لا يزال قيد التنفيذ فعليًا.
+    reservationTimeoutMinutes: clampInt(a.reservationTimeoutMinutes, 10, HARD_CEILINGS.reservationTimeoutMinutesMax),
+    reservationCleanupBatchSize: clampInt(a.reservationCleanupBatchSize, 1, HARD_CEILINGS.reservationCleanupBatchSizeMax),
   };
 }
 
@@ -428,6 +432,8 @@ const normalizers: Record<SettingsSection, Norm> = {
       timeoutMs: intIn(i.timeoutMs, 1000, HARD_CEILINGS.aiTimeoutMsMax, b.ai.timeoutMs),
       retryCount: intIn(i.retryCount, 0, HARD_CEILINGS.aiRetryCountMax, b.ai.retryCount),
       costRates: isObj(i.costRates) ? (i.costRates as PlainObject) : (b.ai.costRates as unknown as PlainObject),
+      reservationTimeoutMinutes: intIn(i.reservationTimeoutMinutes, 10, HARD_CEILINGS.reservationTimeoutMinutesMax, b.ai.reservationTimeoutMinutes),
+      reservationCleanupBatchSize: intIn(i.reservationCleanupBatchSize, 1, HARD_CEILINGS.reservationCleanupBatchSizeMax, b.ai.reservationCleanupBatchSize),
     };
   },
 

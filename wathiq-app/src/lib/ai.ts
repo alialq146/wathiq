@@ -90,8 +90,8 @@ const DEFAULT_MODEL = "claude-opus-4-8";
 
 
 /**
- * يستخرج JSON المنظم من رد النموذج مع أخطاء مصنّفة تظهر كما هي في AiUsage
- * ولوحة الأدمن (السبب الحقيقي بدل SyntaxError غامضة):
+ * يستخرج JSON المنظم من رد النموذج مع أخطاء مصنّفة تُسجَّل في سجل العمليات
+ * (AiOperation.errorMessage) وتظهر في لوحة الأدمن (السبب الحقيقي بدل SyntaxError غامضة):
  * - ai_response_truncated  → الرد انقطع عند حد الرموز (max_tokens).
  * - ai_response_parse_error → رد مكتمل لكنه ليس JSON صالحًا.
  * - ai_empty_response       → لا يوجد محتوى نصي في الرد.

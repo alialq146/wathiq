@@ -92,16 +92,26 @@ actual library functions, clean up, and exit non-zero on failure.
 
 | Script | Covers |
 |--------|--------|
-| `scripts/qa-v22.mts` | System-settings service: defaults/parity, validation & hard ceilings, cache + invalidation, audit, reminder offsets, plan limits |
+| `scripts/qa-credits.mts` | AI accounting core: entitlements, atomic reserve (10/30 concurrency), idempotency (double-click = one charge), commit/refund, daily limit, insufficient credits, disabled account, override, rejected logging (19) |
+| `scripts/qa-reaper.mts` | Orphaned-RESERVED reaper (refund, idempotent re-run, two concurrent reapers = one refund each, no double refund), status transitions, window resets (no-reset-before-expiry, monthly, daily), concurrency at reset boundary (19) |
+| `scripts/qa-operation.mts` | `runAiOperation` orchestrator via a **deterministic provider mock**: success→commit (tokens/cost), failure→refund, double-click→duplicate, entitlement/credit rejection, unmetered path (18) |
+| `scripts/qa-settings.mts` | Settings normalization: hard ceilings, negatives, excessive credits, invalid task keys, malformed arrays, reaper-config floors/caps, fallback to defaults (18) |
+| `scripts/qa-billing.mts` | Billing↔credits: grant is a SET (repeated activation never accumulates), override precedence, expiry→FREE grant, sync idempotency (10) |
+| `scripts/qa-http.mts` | HTTP guards on `/api/analyze` against a live server: unauthenticated (307 middleware), missing idempotency key, disabled account, insufficient credits, provider-failure→refund, duplicate key (9). Needs `WATHIQ_TEST_URL` + a running server + a (fake) `ANTHROPIC_API_KEY` |
 | `scripts/qa-v23.mts` | Readiness engine (pure unit) + full DB scenarios, document applicability, export gating, weight re-normalization, ownership isolation |
 | `scripts/qa-v24.mts` | Access layer (owner-only), optimistic concurrency condition, collaboration feature-flag defaults |
 
-Example:
+Example (service-level suites — need `DATABASE_URL` + `SKIP_DB_PUSH=1`):
 
 ```bash
 cd wathiq-app
-npx tsx scripts/qa-v23.mts
+DATABASE_URL=... SKIP_DB_PUSH=1 npx tsx scripts/qa-credits.mts
+DATABASE_URL=... SKIP_DB_PUSH=1 npx tsx scripts/qa-reaper.mts
+# HTTP suite: start the server first (with a fake ANTHROPIC_API_KEY), then:
+WATHIQ_TEST_URL=http://localhost:3111 DATABASE_URL=... npx tsx scripts/qa-http.mts
 ```
+
+> **Real-provider success path is NOT covered by these suites** — they use a deterministic mock. See the manual test guide for verifying a real AI success against a live key.
 
 These are **regression checks for specific releases**, not a general suite, and are
 run manually — nothing invokes them automatically.
@@ -144,9 +154,10 @@ These do **not** exist yet — they are recommendations, in rough priority order
 3. **CSV-injection test** — assert `csvCell` (`lib/export.ts`) prefixes cells
    starting with `= + - @` / tab / CR, so exported spreadsheets can't execute
    formulas.
-4. **Quota-race test** — concurrent `POST /api/analyze` calls must never exceed the
-   plan limit (`reserveQuota` atomic `updateMany`), and failures must refund
-   (`releaseQuota`).
+4. **Credit-race test** — concurrent `POST /api/analyze` calls must never exceed the
+   credit grant (`reserveCredits` atomic `updateMany`), failures must refund, and
+   commit/refund transitions must be an atomic compare-and-set (no double refund
+   under concurrency). Covered by `qa-credits.mts` + `qa-reaper.mts`.
 5. **Readiness invariants** — weights-sum-100 validation, threshold ordering, and
    `clampScore` (no NaN / negatives / >100) as property tests.
 6. **Billing lifecycle** — single-ACTIVE invariant, atomic activation rollback,

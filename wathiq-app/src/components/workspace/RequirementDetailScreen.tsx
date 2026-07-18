@@ -1054,10 +1054,13 @@ function RequirementAnalysisPanel({ req, connected }: { req: Requirement; connec
     setSuccessMsg(null);
     setTaskResult(null);
     try {
+      // مفتاح Idempotency فريد لكل محاولة — إلزامي للمحاسبة (يمنع الخصم المزدوج).
+      const idempotencyKey =
+        globalThis.crypto?.randomUUID?.() ?? `k-${Date.now()}-${Math.round(performance.now() * 1000)}`;
       const res = await fetch("/api/analyze-requirement", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(task ? { id: req.id, task } : { id: req.id }),
+        body: JSON.stringify(task ? { id: req.id, task, idempotencyKey } : { id: req.id, idempotencyKey }),
       });
       const data = await res.json();
       if (data.ok && data.task) {
@@ -1068,16 +1071,23 @@ function RequirementAnalysisPanel({ req, connected }: { req: Requirement; connec
         setSuccessMsg("تم تحديث نتائج مساعد وثّق بنجاح.");
         openQualityTab();
         router.refresh();
-      } else if (data.error === "limit") {
+      } else if (data.error === "insufficient-credits" || data.error === "daily-limit") {
         setLimited(true);
       } else {
-        setError(
-          data.error === "no-key"
-            ? "ميزة التحليل غير مفعّلة في هذا الموقع بعد — تواصل مع مسؤول المنصة."
-            : data.error === "no-db"
-            ? "التحليل يتطلب قاعدة بيانات — يعمل على الموقع المنشور فقط."
-            : "تعذر تشغيل مساعد وثّق. حاول مرة أخرى."
-        );
+        const MSG: Record<string, string> = {
+          "no-key": "ميزة التحليل غير مفعّلة في هذا الموقع بعد — تواصل مع مسؤول المنصة.",
+          "no-db": "التحليل يتطلب قاعدة بيانات — يعمل على الموقع المنشور فقط.",
+          "task-disabled": "هذه الميزة غير متاحة في باقتك الحالية.",
+          "full-analysis-disabled": "التحليل الشامل غير متاح في باقتك — رقِّ باقتك لتفعيله.",
+          "level-disabled": "هذا المستوى من التحليل غير متاح في باقتك.",
+          "persona-disabled": "هذا النمط غير متاح في باقتك.",
+          "per-request-limit": "تكلفة هذه العملية تتجاوز الحد المسموح للعملية الواحدة في باقتك.",
+          "assistant-disabled": "مساعد وثّق معطَّل حاليًا في المنصة.",
+          unauthorized: "انتهت جلستك أو حسابك غير مفعّل — سجّل الدخول مجددًا.",
+          "account-disabled": "حسابك غير مفعّل — تواصل مع الدعم.",
+          duplicate: "هذا التحليل قيد المعالجة بالفعل — انتظر النتيجة قليلًا.",
+        };
+        setError(MSG[data.error as string] ?? "تعذر تشغيل مساعد وثّق. حاول مرة أخرى.");
       }
     } catch {
       // انقطاع الشبكة أو تجاوز مهلة الخادم (التحليلات الطويلة) — أعد المحاولة.
@@ -1100,7 +1110,7 @@ function RequirementAnalysisPanel({ req, connected }: { req: Requirement; connec
     return (
       <div style={{ ...cardStyle, padding: 18, textAlign: "center", display: "flex", flexDirection: "column", alignItems: "center", gap: 8 }}>
         <Icon name="sparkles" size={22} color="var(--teal-600)" />
-        <div style={{ font: "var(--weight-bold) 15px/1.4 var(--font-sans)", color: "var(--text-strong)" }}>وصلت إلى حد التحليلات في خطتك الحالية</div>
+        <div style={{ font: "var(--weight-bold) 15px/1.4 var(--font-sans)", color: "var(--text-strong)" }}>نفد رصيد نقاطك في باقتك الحالية</div>
         <p style={{ font: "12.5px/1.6 var(--font-sans)", color: "var(--text-muted)", margin: 0 }}>
           يمكنك الترقية للحصول على مساحة أكبر للمشاريع والتحليلات المتقدمة.
         </p>

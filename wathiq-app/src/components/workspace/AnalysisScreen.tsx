@@ -77,6 +77,15 @@ export function AnalysisScreen({ initialMode = "text" }: { initialMode?: "text" 
     "no-key": "ميزة التحليل غير مفعّلة في هذا الموقع بعد — تواصل مع مسؤول المنصة.",
     "too-short": "النص قصير جدًا — الصق وثيقة متطلبات أطول.",
     "too-large": "حجم الملف كبير جدًا — استخدم ملفًا أصغر من ٣ ميغابايت.",
+    // امتيازات الباقة (لا تُذكر أي أسماء نماذج/مزوّد).
+    "task-disabled": "هذه الميزة غير متاحة في باقتك الحالية.",
+    "full-analysis-disabled": "التحليل الشامل غير متاح في باقتك — رقِّ باقتك لتفعيله.",
+    "level-disabled": "هذا المستوى من التحليل غير متاح في باقتك.",
+    "persona-disabled": "هذا النمط غير متاح في باقتك.",
+    "per-request-limit": "تكلفة هذه العملية تتجاوز الحد المسموح للعملية الواحدة في باقتك.",
+    unauthorized: "انتهت جلستك أو حسابك غير مفعّل — سجّل الدخول مجددًا.",
+    "account-disabled": "حسابك غير مفعّل — تواصل مع الدعم.",
+    duplicate: "هذا التحليل قيد المعالجة بالفعل — انتظر النتيجة قليلًا.",
     failed: "تعذّر التحليل. حاول مرة أخرى.",
     network: "تعذّر الاتصال بالخادم. تأكد من اتصالك وحاول مجددًا.",
   };
@@ -100,8 +109,12 @@ export function AnalysisScreen({ initialMode = "text" }: { initialMode?: "text" 
     }, 700);
 
     try {
+      // مفتاح Idempotency فريد لكل محاولة — إلزامي للمحاسبة (يمنع الخصم المزدوج
+      // عند إعادة الإرسال/تعثّر الشبكة). المحاسبة على الخادم بحتة.
+      const idempotencyKey =
+        globalThis.crypto?.randomUUID?.() ?? `k-${Date.now()}-${Math.round(performance.now() * 1000)}`;
       const payload =
-        mode === "pdf" && pdf ? { pdf: pdf.data, filename: pdf.name } : { text };
+        mode === "pdf" && pdf ? { pdf: pdf.data, filename: pdf.name, idempotencyKey } : { text, idempotencyKey };
       const res = await fetch("/api/analyze", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -114,7 +127,8 @@ export function AnalysisScreen({ initialMode = "text" }: { initialMode?: "text" 
         setActive(STEPS.length);
         setResult(data.result as AnalysisResult);
         setPhase("done");
-      } else if (data.error === "limit") {
+      } else if (data.error === "insufficient-credits" || data.error === "daily-limit") {
+        // نفاد الرصيد/الحد اليومي → نفس تجربة «الحد» (رسالة الترقية).
         setLimited(true);
         setPhase("error");
       } else {
@@ -392,10 +406,10 @@ export function AnalysisScreen({ initialMode = "text" }: { initialMode?: "text" 
               <Icon name="sparkles" size={24} color="var(--teal-600)" />
             </span>
             <div style={{ font: "var(--weight-bold) 18px/1.4 var(--font-sans)", color: "var(--text-strong)" }}>
-              وصلت إلى حد التحليلات في خطتك الحالية
+              نفد رصيد نقاطك في باقتك الحالية
             </div>
             <p style={{ font: "14px/1.7 var(--font-sans)", color: "var(--text-muted)", maxWidth: 440, margin: 0 }}>
-              يمكنك الترقية للحصول على مساحة أكبر للمشاريع والتحليلات المتقدمة.
+              يتجدّد الرصيد شهريًا، أو رقِّ باقتك للحصول على رصيد أكبر وتحليلات متقدمة.
             </p>
             <div style={{ display: "flex", gap: 10, flexWrap: "wrap", justifyContent: "center", marginTop: 12 }}>
               <a

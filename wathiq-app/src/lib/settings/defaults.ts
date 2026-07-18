@@ -24,6 +24,8 @@ export const HARD_CEILINGS = {
   outputTokensMax: 12000, // أقصى حد إخراج لأي مهمة/مستوى
   aiTimeoutMsMax: 300_000, // أقصى مهلة (Fluid Compute 300s)
   aiRetryCountMax: 5,
+  reservationTimeoutMinutesMax: 1440, // أقصى مهلة لاعتبار الحجز يتيمًا (24 ساعة)
+  reservationCleanupBatchSizeMax: 1000, // أقصى دفعة لمنظّف الحجوزات اليتيمة
   reminderDaysMax: 60,
   textMax: 1000, // أقصى طول نص إعداد عام
   longTextMax: 4000, // النصوص الطويلة (تعليمات/سرية)
@@ -240,6 +242,8 @@ const AI: AiSettings = {
   fallbackModel: "claude-haiku-4-5-20251001",
   timeoutMs: 120_000,
   retryCount: 1,
+  reservationTimeoutMinutes: 30, // آمن: أعلى بكثير من أقصى مهلة طلب (5 دقائق)
+  reservationCleanupBatchSize: 100,
   // أسعار تقديرية (دولار/ألف رمز) لحساب التكلفة الداخلية فقط.
   costRates: {
     "claude-haiku-4-5-20251001": { in: 0.001, out: 0.005 },

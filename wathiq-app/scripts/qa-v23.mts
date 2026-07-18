@@ -85,8 +85,8 @@ async function unit() {
 }
 
 async function integration() {
-  const owner = await prisma.user.create({ data: { email: `qa-rd-${Date.now()}@wathiq.local`, name: "QA rd", plan: "PRO", passwordHash: "x", analysisLimit: 50 }, select: { id: true } });
-  const other = await prisma.user.create({ data: { email: `qa-rd2-${Date.now()}@wathiq.local`, name: "QA rd2", plan: "PRO", passwordHash: "x", analysisLimit: 50 }, select: { id: true } });
+  const owner = await prisma.user.create({ data: { email: `qa-rd-${Date.now()}@wathiq.local`, name: "QA rd", plan: "PRO", passwordHash: "x" }, select: { id: true } });
+  const other = await prisma.user.create({ data: { email: `qa-rd2-${Date.now()}@wathiq.local`, name: "QA rd2", plan: "PRO", passwordHash: "x" }, select: { id: true } });
   const project = await prisma.project.create({
     data: { ownerId: owner.id, name: "مشروع الجاهزية", code: "RDY-1", description: "وصف المشروع", projectGoal: "هدف واضح", projectScope: "نطاق", targetUsers: "مستخدمون", client: "جهة", brdApplicability: "REQUIRED", srsApplicability: "OPTIONAL" },
     select: { id: true },

@@ -15,8 +15,6 @@ export interface Plan {
   price: string; // display price
   priceNote: string;
   recommended?: boolean;
-  /** Max AI analyses; null = custom/unlimited. */
-  analysisLimit: number | null;
   /** Max projects; null = unlimited. */
   projectLimit: number | null;
   features: string[];
@@ -33,7 +31,6 @@ export const PLANS: Record<PlanId, Plan> = {
     tag: "Free",
     price: "0",
     priceNote: "ريال",
-    analysisLimit: 3,
     projectLimit: 1,
     features: [
       "مشروع واحد",
@@ -56,7 +53,6 @@ export const PLANS: Record<PlanId, Plan> = {
     price: "149",
     priceNote: "ريال / شهريًا",
     recommended: true,
-    analysisLimit: 50,
     projectLimit: null,
     features: [
       "حتى ٥٠ تحليل ذكاء اصطناعي شهريًا",
@@ -79,7 +75,6 @@ export const PLANS: Record<PlanId, Plan> = {
     tag: "Business / Enterprise",
     price: "تواصل معنا",
     priceNote: "للفرق والمؤسسات",
-    analysisLimit: null,
     projectLimit: null,
     features: [
       "عدد تحليلات مخصص",
@@ -98,11 +93,6 @@ export const PLAN_ORDER: PlanId[] = ["FREE", "PRO", "ENTERPRISE"];
 
 export function getPlan(id: string | null | undefined): Plan {
   return PLANS[(id as PlanId) ?? "FREE"] ?? PLANS.FREE;
-}
-
-/** The analysis quota for a plan (falls back to the plan default). */
-export function analysisLimitFor(plan: string | null | undefined): number | null {
-  return getPlan(plan).analysisLimit;
 }
 
 /** The project quota for a plan. */

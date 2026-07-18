@@ -28,7 +28,7 @@ function rangeStart(range: string): Date | null {
 
 /**
  * GET /api/admin/usage?page&range&status&model&plan&q
- * Paginated AiUsage log (metadata only) + aggregates for the same filter.
+ * Paginated AiOperation log (metadata only) + aggregates for the same filter.
  * status may be one of STATUSES or "ERRORS" (= all non-success).
  */
 export async function GET(req: Request) {

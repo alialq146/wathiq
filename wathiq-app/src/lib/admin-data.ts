@@ -124,10 +124,13 @@ export interface AdminHealthData {
   db: "healthy" | "down";
   environment: string;
   appVersion: string;
-  counts: { users: number; projects: number; requirements: number; aiUsage: number };
+  counts: { users: number; projects: number; requirements: number; aiOperations: number };
   lastAi: string | null;
   lastSuccess: string | null;
   lastFailed: string | null;
+  // منظّف الحجوزات اليتيمة (v2.6.1): معلّقة الآن (RESERVED أقدم من المهلة) + ما استُرجع تلقائيًا.
+  stuckReservations: number;
+  orphanRefunds: number;
   env: {
     databaseUrl: boolean;
     anthropicKey: boolean;
@@ -200,13 +203,13 @@ async function attachUsers(
 
 export async function getAdminHealth(): Promise<AdminHealthData> {
   let db: "healthy" | "down" = "healthy";
-  let counts = { users: 0, projects: 0, requirements: 0, aiUsage: 0 };
+  let counts = { users: 0, projects: 0, requirements: 0, aiOperations: 0 };
   let lastAi: Date | null = null;
   let lastSuccess: Date | null = null;
   let lastFailed: Date | null = null;
   try {
     await prisma.$queryRaw`SELECT 1`;
-    const [users, projects, requirements, aiUsage, a, s, f] = await Promise.all([
+    const [users, projects, requirements, aiOperations, a, s, f] = await Promise.all([
       prisma.user.count(),
       prisma.project.count(),
       prisma.requirement.count(),
@@ -215,7 +218,7 @@ export async function getAdminHealth(): Promise<AdminHealthData> {
       prisma.aiOperation.findFirst({ where: { status: "COMMITTED" }, orderBy: { createdAt: "desc" }, select: { createdAt: true } }),
       prisma.aiOperation.findFirst({ where: { status: "FAILED" }, orderBy: { createdAt: "desc" }, select: { createdAt: true } }),
     ]);
-    counts = { users, projects, requirements, aiUsage };
+    counts = { users, projects, requirements, aiOperations };
     lastAi = a?.createdAt ?? null;
     lastSuccess = s?.createdAt ?? null;
     lastFailed = f?.createdAt ?? null;
@@ -238,6 +241,19 @@ export async function getAdminHealth(): Promise<AdminHealthData> {
       ? await prisma.aiOperation.count({ where: { status: "FAILED", createdAt: { gte: startOfToday() } } }).catch(() => 0)
       : 0;
 
+  // منظّف الحجوزات اليتيمة: كم عمليةً RESERVED تجاوزت المهلة (معلّقة، بانتظار
+  // التنظيف)، وكم استُرجع تلقائيًا سابقًا (errorMessage = سبب اليتم).
+  let stuckReservations = 0;
+  let orphanRefunds = 0;
+  if (db === "healthy") {
+    const { reservationTimeoutMinutes } = await getResolvedAiSettings();
+    const cutoff = new Date(Date.now() - reservationTimeoutMinutes * 60_000);
+    [stuckReservations, orphanRefunds] = await Promise.all([
+      prisma.aiOperation.count({ where: { status: "RESERVED", startedAt: { lt: cutoff } } }).catch(() => 0),
+      prisma.aiOperation.count({ where: { status: "REFUNDED", errorMessage: "orphaned-reservation-timeout" } }).catch(() => 0),
+    ]);
+  }
+
   const [models, credits] = await Promise.all([planModelMap(), planCreditMap()]);
 
   return {
@@ -248,6 +264,8 @@ export async function getAdminHealth(): Promise<AdminHealthData> {
     lastAi: iso(lastAi),
     lastSuccess: iso(lastSuccess),
     lastFailed: iso(lastFailed),
+    stuckReservations,
+    orphanRefunds,
     env,
     // توجيه النموذج إعداد خادمي (لا يُعرض للعميل النهائي) — يظهر للأدمن فقط.
     models: { free: models.FREE, pro: models.PRO, enterprise: models.ENTERPRISE },
@@ -268,6 +286,11 @@ export async function getAdminHealth(): Promise<AdminHealthData> {
         hint: "راجع سجل الأخطاء: مفتاح Claude، أسماء النماذج، حجم الملفات، أو rate limits.",
       },
       { label: "لا أخطاء متكررة اليوم", ok: todayFailed < 3, hint: "٣ أخطاء أو أكثر اليوم — افحص تبويب الأخطاء." },
+      {
+        label: "لا حجوزات معلّقة",
+        ok: stuckReservations === 0,
+        hint: "حجوزات RESERVED تجاوزت المهلة — يسترجعها منظّف /api/cron/ai-reservation-cleanup. تأكد من ضبط CRON_SECRET وجدولة Vercel Cron.",
+      },
     ],
   };
 }

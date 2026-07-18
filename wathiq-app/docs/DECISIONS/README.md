@@ -18,3 +18,4 @@
 | [ADR-011](ADR-011-ai-optional.md) | الذكاء الاصطناعي اختياري |
 | [ADR-012](ADR-012-deterministic-brd-srs.md) | BRD/SRS توليد حتمي (SRS اختياري) |
 | [ADR-013](ADR-013-ai-credit-accounting.md) | محاسبة الذكاء الاصطناعي بالنقاط (Credit Ledger + Idempotency) |
+| [ADR-014](ADR-014-orphaned-reservation-reaper.md) | منظّف الحجوزات اليتيمة (Reaper + Cron مؤمّن) |

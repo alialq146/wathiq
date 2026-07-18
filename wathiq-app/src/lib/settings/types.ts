@@ -181,6 +181,10 @@ export interface AiSettings {
   timeoutMs: number; // مهلة الطلب
   retryCount: number; // عدد إعادات المحاولة (لا تُضاعف الخصم — Idempotency)
   costRates: Record<string, AiModelRate>; // نموذج → أسعار تقديرية (خادمي)
+  // منظّف الحجوزات اليتيمة: عملية RESERVED لم تُثبَّت/تُسترجع (تعطّل الخادم بين
+  // الحجز والتنفيذ) تبقى خاصمةً للرصيد؛ بعد هذه المهلة تُسترجع تلقائيًا.
+  reservationTimeoutMinutes: number; // عمر العملية RESERVED قبل اعتبارها يتيمة
+  reservationCleanupBatchSize: number; // أقصى عدد عمليات يعالجها المنظّف بكل تشغيل
 }
 
 export interface FeatureSettings {

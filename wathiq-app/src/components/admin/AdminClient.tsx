@@ -27,18 +27,18 @@ const shortModel = (m: string) =>
 
 /* ================= status/plan visual maps ================= */
 
+// حالات AiOperation (v2.6): RESERVED → COMMITTED | REFUNDED | FAILED | REJECTED.
 const STATUS_UI: Record<string, { label: string; bg: string; fg: string }> = {
-  SUCCESS: { label: "ناجح", bg: "var(--green-50)", fg: "var(--green-600)" },
+  COMMITTED: { label: "ناجح", bg: "var(--green-50)", fg: "var(--green-600)" },
+  RESERVED: { label: "قيد التنفيذ", bg: "var(--blue-50)", fg: "var(--blue-600)" },
+  REFUNDED: { label: "مُسترجع", bg: "var(--slate-100)", fg: "var(--slate-600)" },
   FAILED: { label: "فشل", bg: "var(--red-50)", fg: "var(--red-600)" },
-  BLOCKED_LIMIT: { label: "حد الباقة", bg: "var(--amber-50)", fg: "var(--amber-600)" },
-  BLOCKED_SIZE: { label: "حجم كبير", bg: "var(--amber-50)", fg: "var(--amber-600)" },
-  BLOCKED_AUTH: { label: "غير مصرّح", bg: "var(--red-50)", fg: "var(--red-600)" },
+  REJECTED: { label: "مرفوض", bg: "var(--amber-50)", fg: "var(--amber-600)" },
 };
+// تبويب الأخطاء يعرض FAILED (فشل المزود) وREJECTED (رفض حارس المحاسبة) فقط.
 const SEVERITY_OF: Record<string, { label: string; bg: string; fg: string }> = {
   FAILED: { label: "HIGH", bg: "var(--red-50)", fg: "var(--red-600)" },
-  BLOCKED_AUTH: { label: "MEDIUM", bg: "var(--amber-50)", fg: "var(--amber-600)" },
-  BLOCKED_LIMIT: { label: "LOW", bg: "var(--slate-100)", fg: "var(--slate-600)" },
-  BLOCKED_SIZE: { label: "LOW", bg: "var(--slate-100)", fg: "var(--slate-600)" },
+  REJECTED: { label: "LOW", bg: "var(--slate-100)", fg: "var(--slate-600)" },
 };
 const PLAN_UI: Record<string, { label: string; bg: string; fg: string }> = {
   FREE: { label: "مجاني", bg: "var(--slate-100)", fg: "var(--slate-600)" },
@@ -584,7 +584,7 @@ function ManageUserDialog({ user, onClose, onChanged }: { user: UserRow; onClose
                   <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(130px, 1fr))", gap: 10 }}>
                     <Kpi label="المشاريع" value={num(detail.projects.length)} />
                     <Kpi label="المتطلبات" value={num(detail.requirements)} />
-                    <Kpi label="تحليلات ناجحة" value={num(detail.usage.byStatus.SUCCESS ?? 0)} accent="var(--green-600)" />
+                    <Kpi label="عمليات ناجحة" value={num(detail.usage.byStatus.COMMITTED ?? 0)} accent="var(--green-600)" />
                     <Kpi label="تكلفة AI" value={usd(detail.usage.costUsd)} />
                   </div>
                   <div>
@@ -841,11 +841,11 @@ function UsageTab({ d }: { d: AdminOverviewData }) {
             </select>
             <select value={L.status} onChange={(e) => (L.setPage(1), L.setStatus(e.target.value))} style={selectFilter}>
               <option value="">كل الحالات</option>
-              <option value="SUCCESS">ناجح</option>
+              <option value="COMMITTED">ناجح</option>
+              <option value="RESERVED">قيد التنفيذ</option>
+              <option value="REFUNDED">مُسترجع</option>
               <option value="FAILED">فشل</option>
-              <option value="BLOCKED_LIMIT">حد الباقة</option>
-              <option value="BLOCKED_SIZE">حجم كبير</option>
-              <option value="BLOCKED_AUTH">غير مصرّح</option>
+              <option value="REJECTED">مرفوض</option>
             </select>
             <select value={L.plan} onChange={(e) => (L.setPage(1), L.setPlan(e.target.value))} style={selectFilter}>
               <option value="">كل الخطط</option>
@@ -902,23 +902,14 @@ const DIAG_HINTS: Array<{ match: (r: LogRow) => boolean; title: string; checks: 
     ],
   },
   {
-    match: (r) => r.status === "BLOCKED_LIMIT",
-    title: "محاولات محجوبة بحد الباقة — ماذا أفحص؟",
+    match: (r) => r.status === "REJECTED",
+    title: "عمليات مرفوضة قبل التنفيذ — ماذا أفحص؟",
     checks: [
-      "تحقق من analysisLimit وplan للمستخدم (تبويب المستخدمين).",
-      "تحقق من resetDate — هل تأخّرت إعادة التعيين الشهرية؟",
-      "هل يكرر المستخدم نفس التحليل؟ قد يحتاج ترقية.",
+      "تحقق من رصيد نقاط المستخدم (المتبقي = المنحة − المستخدَم) والتجاوز اليدوي في تبويب المستخدمين.",
+      "تحقق من امتيازات الخطة: هل المهمة/المستوى/الشخصية ضمن المسموح (allowedTasks/Levels/Personas)؟",
+      "تحقق من إعدادات «محاسبة الذكاء»: هل المهمة مفعّلة، وهل السقف اليومي/سقف العملية يمنع الطلب؟",
+      "تحقق من حالة الحساب — الحساب المعطَّل يُرفض طلبه.",
     ],
-  },
-  {
-    match: (r) => r.status === "BLOCKED_SIZE",
-    title: "ملفات كبيرة محجوبة — ماذا أفحص؟",
-    checks: ["الحد الحالي ≈ 3.3MB للـ PDF.", "هل الملفات المرفوضة قريبة من الحد؟ فكّر في رفع الحد للخطط المدفوعة."],
-  },
-  {
-    match: (r) => r.status === "BLOCKED_AUTH",
-    title: "أخطاء صلاحيات — ماذا أفحص؟",
-    checks: ["تحقق من الجلسة وWATHIQ_SESSION_SECRET.", "تحقق من ملكية projectId / requirementId.", "تحقق من role وحالة الحساب."],
   },
 ];
 
@@ -934,9 +925,8 @@ function ErrorsTab() {
     <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))", gap: 12 }}>
         <Kpi label="أخطاء (حسب الفلتر)" value={num(totalErr)} accent={totalErr > 0 ? "var(--red-600)" : "var(--green-600)"} />
-        <Kpi label="فشل API" value={num(by.FAILED ?? 0)} />
-        <Kpi label="محجوب — حد" value={num(by.BLOCKED_LIMIT ?? 0)} />
-        <Kpi label="محجوب — حجم" value={num(by.BLOCKED_SIZE ?? 0)} />
+        <Kpi label="فشل المزود" value={num(by.FAILED ?? 0)} />
+        <Kpi label="مرفوض (حدود/رصيد)" value={num(by.REJECTED ?? 0)} />
         <Kpi label="الأكثر شيوعًا" value={most ? (STATUS_UI[most[0]]?.label ?? most[0]) : "—"} />
         <Kpi label="آخر خطأ" value={L.data?.rows[0] ? when(L.data.rows[0].createdAt) : "—"} />
       </div>
@@ -1078,13 +1068,13 @@ function HealthCard({ title, state, detail }: { title: string; state: "ok" | "wa
 function HealthTab({ d }: { d: AdminOverviewData }) {
   const h = d.health;
   const aiOk = h.env.anthropicKey;
-  const trackingOk = h.counts.aiUsage > 0;
+  const trackingOk = h.counts.aiOperations > 0;
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(230px, 1fr))", gap: 12 }}>
         <HealthCard title="Database" state={h.db === "healthy" ? "ok" : "down"} detail={h.db === "healthy" ? "الاتصال بقاعدة البيانات يعمل." : "تعذر الاتصال بقاعدة البيانات — تحقق من DATABASE_URL."} />
         <HealthCard title="AI Config" state={aiOk ? "ok" : "down"} detail={aiOk ? "مفتاح Claude مضبوط والنماذج مُوجَّهة حسب الخطة." : "ANTHROPIC_API_KEY مفقود — التحليل متوقف."} />
-        <HealthCard title="Usage Tracking" state={trackingOk ? "ok" : "warn"} detail={trackingOk ? `آخر عملية: ${when(h.lastAi)}` : "لا سجلات AiUsage بعد — تأكد بعد أول تحليل."} />
+        <HealthCard title="Usage Tracking" state={trackingOk ? "ok" : "warn"} detail={trackingOk ? `آخر عملية: ${when(h.lastAi)}` : "لا عمليات ذكاء بعد — تأكد بعد أول تحليل."} />
         <HealthCard title="Auth Config" state={h.env.sessionSecret ? "ok" : "warn"} detail={h.env.sessionSecret ? "سر الجلسات مضبوط صراحةً." : "WATHIQ_SESSION_SECRET غير مضبوط — يُشتق سر بديل تلقائيًا، لكن يُفضَّل ضبطه."} />
       </div>
 
@@ -1092,10 +1082,12 @@ function HealthTab({ d }: { d: AdminOverviewData }) {
         <Kpi label="Users" value={num(h.counts.users)} />
         <Kpi label="Projects" value={num(h.counts.projects)} />
         <Kpi label="Requirements" value={num(h.counts.requirements)} />
-        <Kpi label="AiUsage rows" value={num(h.counts.aiUsage)} />
+        <Kpi label="عمليات AI" value={num(h.counts.aiOperations)} />
         <Kpi label="آخر عملية AI" value={when(h.lastAi)} />
         <Kpi label="آخر نجاح" value={when(h.lastSuccess)} accent="var(--green-600)" />
         <Kpi label="آخر فشل" value={when(h.lastFailed)} accent={h.lastFailed ? "var(--red-600)" : undefined} />
+        <Kpi label="حجوزات معلّقة" value={num(h.stuckReservations)} accent={h.stuckReservations > 0 ? "var(--amber-600)" : undefined} />
+        <Kpi label="مستردّة تلقائيًا (يتيمة)" value={num(h.orphanRefunds)} />
         <Kpi label="الإصدار · البيئة" value={`${h.appVersion} · ${h.environment}`} />
       </div>
 

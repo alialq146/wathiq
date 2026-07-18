@@ -49,8 +49,10 @@ npx next build              # يجب أن ينجح
 
 ## 6. المهام المجدولة
 
-- أنشئ Vercel Cron لـ `/api/cron/subscription-reminders` يمرّر `Authorization: Bearer <CRON_SECRET>`.
-- بلا `CRON_SECRET` يرد المسار 403 (آمن افتراضيًا).
+- **جدولتان في `vercel.json`** (Vercel Cron يرسل تلقائيًا `Authorization: Bearer <CRON_SECRET>` عند ضبط `CRON_SECRET`):
+  - `/api/cron/subscription-reminders` — دورة حياة الاشتراكات/التذكيرات.
+  - `/api/cron/ai-reservation-cleanup` — **منظّف الحجوزات اليتيمة** (v2.6.1): يسترجع نقاط عمليات `RESERVED` العالقة. مجدول يوميًا (`0 3 * * *` في `vercel.json` — متوافق مع كل الخطط؛ خطة Pro يمكنها رفع التردد إلى ساعي `0 * * * *`). المهلة/الدفعة قابلتان للتعديل من إعدادات «محاسبة الذكاء».
+- بلا `CRON_SECRET` ترد المسارات 403 (آمن افتراضيًا — لا تشغيل عام).
 
 ## 7. منح صلاحية مدير
 
