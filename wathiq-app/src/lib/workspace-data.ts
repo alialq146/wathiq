@@ -15,14 +15,37 @@ import {
   type ProjectModule,
   type RequirementAnalysis,
 } from "./data";
-import { resolvedAnalysisLimitFor } from "@/lib/settings";
+import { resolveEntitlements } from "@/lib/entitlements";
+import { getCreditWallet } from "@/lib/ai-credits";
 import type { RequirementStatus, PriorityLevel } from "@/components/ds";
 
+/** ملخص رصيد نقاط الذكاء الاصطناعي للعرض (v2.6). */
 export interface UsageInfo {
   plan: string;
-  analysisCount: number;
-  analysisLimit: number | null; // null = unlimited/custom
+  creditsUsed: number;
+  creditsGranted: number;
+  creditsBalance: number;
+  periodEnd: string | null;
   subscriptionStatus: string;
+}
+
+/** يبني ملخّص الرصيد من المحفظة (بعد إعادة الضبط الكسولة) + الامتيازات. */
+async function buildUsage(
+  userId: string,
+  plan: string,
+  override: number | null,
+  subscriptionStatus: string
+): Promise<UsageInfo> {
+  const ent = await resolveEntitlements({ plan, aiCreditsOverride: override });
+  const wallet = await getCreditWallet(userId, ent.monthlyCredits, ent.dailyCreditLimit);
+  return {
+    plan,
+    creditsUsed: wallet?.used ?? 0,
+    creditsGranted: wallet?.granted ?? ent.monthlyCredits,
+    creditsBalance: wallet?.balance ?? ent.monthlyCredits,
+    periodEnd: wallet?.periodEnd ?? null,
+    subscriptionStatus,
+  };
 }
 
 export interface WorkspaceData {
@@ -143,7 +166,7 @@ export async function getWorkspaceData(
       prisma.project.findMany({ where: { ownerId: userId }, orderBy: { order: "asc" } }),
       prisma.user.findUnique({
         where: { id: userId },
-        select: { plan: true, analysisCount: true, analysisLimit: true, subscriptionStatus: true, limitOverride: true },
+        select: { plan: true, subscriptionStatus: true, aiCreditsOverride: true },
       }),
     ]);
     const projects = projectsRaw.map(toProject);
@@ -172,14 +195,7 @@ export async function getWorkspaceData(
       projects,
       activeProject: active,
       modules: modulesRaw.map((m) => ({ id: m.id, projectId: m.projectId, name: m.name, description: m.description ?? null })),
-      usage: user
-        ? {
-            plan: user.plan,
-            analysisCount: user.analysisCount,
-            analysisLimit: user.limitOverride ? user.analysisLimit : await resolvedAnalysisLimitFor(user.plan),
-            subscriptionStatus: user.subscriptionStatus,
-          }
-        : null,
+      usage: user ? await buildUsage(userId, user.plan, user.aiCreditsOverride, user.subscriptionStatus) : null,
       source: "database",
     };
   } catch (err) {

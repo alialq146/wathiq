@@ -13,20 +13,87 @@ datasource db {
 }
 
 /// A registered account. Passwords are stored as scrypt hashes, never plain.
+///
+/// AI accounting (v2.6): the old single "analysis counter" is gone. Each user
+/// carries an AI-credit wallet — a monthly grant plus an optional daily window.
+/// The grant is snapshotted per period so mid-period plan edits apply next
+/// period. Balance = aiCreditsGranted − aiCreditsUsed. Reservations are atomic
+/// (see lib/ai/credits.ts); the append-only AiLedgerEntry is the audit trail.
 model User {
   id                 String    @id @default(cuid())
   name               String
   email              String    @unique
   passwordHash       String
-  plan               String    @default("FREE") // FREE | PRO | ENTERPRISE
-  analysisCount      Int       @default(0)
-  analysisLimit      Int       @default(3)
+  plan               String    @default("FREE") // FREE | PRO | ENTERPRISE (data-driven via settings.plans)
   subscriptionStatus String    @default("ACTIVE") // ACTIVE | INACTIVE | TRIALING | CANCELED | MANUAL
-  resetDate          DateTime? // when the monthly analysis counter resets
   role               String    @default("USER") // USER | ADMIN | SUPER_ADMIN — never self-assigned
   accountStatus      String    @default("ACTIVE") // ACTIVE | DISABLED
-  limitOverride      Boolean   @default(false) // true → analysisLimit is an admin-set custom cap
+  // ---- AI credit wallet ----
+  aiCreditsGranted   Int       @default(0) // this period's grant (snapshot at reset)
+  aiCreditsUsed      Int       @default(0) // reserved+committed, minus refunded, this period
+  aiCreditsPeriodEnd DateTime? // when the monthly grant resets (null = never granted yet)
+  aiCreditsDayUsed   Int       @default(0) // credits used within the current day window
+  aiCreditsDayEnd    DateTime? // when the daily window resets
+  aiCreditsOverride  Int? // admin per-user monthly grant override (null = plan default)
   createdAt          DateTime  @default(now())
+}
+
+/// One row per logical AI operation — the idempotency anchor and the rich,
+/// admin-reviewable record of every AI request (accounting + history).
+/// The status transitions RESERVED → COMMITTED | REFUNDED | FAILED | REJECTED.
+/// Provider-agnostic: `provider`/`model` are plain strings so the accounting
+/// layer never depends on any single AI vendor.
+model AiOperation {
+  id               String    @id @default(cuid())
+  idempotencyKey   String    @unique // double-click / retry safety — one op per key
+  userId           String
+  plan             String
+  projectId        String?
+  requirementId    String?
+  documentId       String?
+  taskKey          String // extract | full | improve | criteria | questions | ambiguity | risks
+  level            String // quick | standard | expert
+  persona          String // default | ba | consultant | qa | po | tech
+  provider         String // anthropic | openai | gemini | ...
+  model            String
+  creditsReserved  Int
+  creditsCommitted Int       @default(0)
+  creditsRefunded  Int       @default(0)
+  promptTokens     Int?
+  completionTokens Int?
+  estimatedCostUsd Float?
+  executionMs      Int?
+  status           String // RESERVED | COMMITTED | REFUNDED | FAILED | REJECTED
+  errorMessage     String?
+  retryOfId        String?
+  startedAt        DateTime  @default(now())
+  endedAt          DateTime?
+  createdAt        DateTime  @default(now())
+
+  @@index([userId, createdAt])
+  @@index([status, createdAt])
+  @@index([taskKey, createdAt])
+  @@index([plan, createdAt])
+  @@index([projectId])
+  @@index([requirementId])
+}
+
+/// Append-only credit ledger — the immutable accounting source of truth.
+/// One row per credit movement (RESERVE / COMMIT / REFUND). Never updated,
+/// never deleted; the User wallet counters are a materialized view of this.
+model AiLedgerEntry {
+  id          String   @id @default(cuid())
+  operationId String
+  userId      String
+  entryType   String // RESERVE | COMMIT | REFUND
+  credits     Int // positive magnitude of the movement
+  balanceUsed Int // aiCreditsUsed after this movement (point-in-time snapshot)
+  reason      String?
+  createdAt   DateTime @default(now())
+
+  @@index([operationId])
+  @@index([userId, createdAt])
+  @@index([entryType, createdAt])
 }
 
 /// رمز استعادة كلمة المرور — يُخزَّن كبصمة (hash) فقط، صالح ٦٠ دقيقة،
@@ -43,28 +110,7 @@ model PasswordResetToken {
   @@index([expiresAt])
 }
 
-/// One row per AI analysis attempt (success or blocked) — for cost/usage
-/// monitoring. Token/cost fields are nullable when the model omits usage.
-model AiUsage {
-  id            String   @id @default(cuid())
-  userId        String
-  projectId     String?
-  requirementId String?
-  documentId    String?
-  modelUsed     String
-  inputTokens   Int?
-  outputTokens  Int?
-  estimatedCost Float?
-  status        String // SUCCESS | FAILED | BLOCKED_LIMIT | BLOCKED_AUTH | BLOCKED_SIZE
-  errorMessage  String?
-  createdAt     DateTime @default(now())
-
-  @@index([userId])
-  @@index([projectId])
-  @@index([requirementId])
-  @@index([createdAt])
-  @@index([status, createdAt]) // v2.4: عدّ الحظر/الأخطاء في مدى زمني (الكوكبت)
-}
+// AiUsage (v2.5) أُزيل في v2.6 واستُبدل بـ AiOperation + AiLedgerEntry (محاسبة النقاط).
 
 /// A workspace/project. Requirements and analyses belong to exactly one.
 model Project {
@@ -482,7 +528,7 @@ model SystemSettings {
   notifications    Json? // أيام تذكير الاشتراك وتفعيلاتها ونصوصها
   documents        Json? // نصوص وأقسام BRD/SRS/التقرير والطباعة
   plans            Json? // عرض وحدود الخطط (بسقوف صلبة في الكود)
-  assistant        Json? // مهام مساعد وثّق وحدودها (SUPER_ADMIN فقط)
+  ai               Json? // محاسبة الذكاء الاصطناعي: المهام/النقاط/المستويات/الشخصيات/التوجيه (SUPER_ADMIN فقط)
   features         Json? // Feature flags آمنة (التسجيل/الصيانة/Demo…)
   readiness        Json? // مركز جاهزية المشروع والوثائق (v2.3)
   updatedByAdminId String?

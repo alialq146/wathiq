@@ -7,16 +7,23 @@
 
 import type {
   SystemSettingsShape, GeneralSettings, ContactSettings, NotificationSettings,
-  DocumentSettings, PlanSettings, AssistantSettings, FeatureSettings, ReadinessSettings,
+  DocumentSettings, PlanSettings, AiSettings, FeatureSettings, ReadinessSettings,
 } from "./types";
 
 /* ───── سقوف صلبة في الكود — النظام يستطيع التخفيض، لا التجاوز ─────
- * تُطبق في الخادم عند القراءة (resolve) وعند الحفظ (validation) معًا. */
+ * تُطبق في الخادم عند القراءة (resolve) وعند الحفظ (validation) معًا.
+ * حماية تكلفة الذكاء الاصطناعي: كل قيم النقاط/الرموز/المهلات مقصوصة هنا. */
 export const HARD_CEILINGS = {
-  analysisLimitMax: 1000, // أقصى حد تحليلات لأي خطة من النظام
   projectLimitMax: 500,
-  assistantTaskTokensMax: 1500, // أقصى tokens لمهمة مساعد (الافتراضي 500–700)
-  fullAnalysisTokensMax: 12000, // الافتراضي 8000
+  // AI accounting (v2.6)
+  monthlyCreditsMax: 1_000_000, // سقف أمان لمنحة أي خطة/تجاوز مستخدم
+  taskCreditMax: 1000, // أقصى تكلفة نقاط لمهمة واحدة
+  dailyCreditMax: 1_000_000,
+  perRequestCreditMax: 5000, // أقصى نقاط لعملية واحدة (بعد المضاعِف)
+  levelMultiplierMax: 10, // أقصى مضاعِف مستوى
+  outputTokensMax: 12000, // أقصى حد إخراج لأي مهمة/مستوى
+  aiTimeoutMsMax: 300_000, // أقصى مهلة (Fluid Compute 300s)
+  aiRetryCountMax: 5,
   reminderDaysMax: 60,
   textMax: 1000, // أقصى طول نص إعداد عام
   longTextMax: 4000, // النصوص الطويلة (تعليمات/سرية)
@@ -110,11 +117,10 @@ const PLANS_DEFAULT: PlanSettings = {
     visible: true,
     enabled: true,
     ctaText: "",
-    analysisLimit: 3,
     projectLimit: 1,
     features: [
       "مشروع واحد",
-      "٣ تحليلات ذكاء اصطناعي شهريًا",
+      "رصيد ذكاء اصطناعي شهري للتجربة",
       "رفع ملف PDF محدود",
       "إضافة متطلبات يدويًا",
       "عرض مؤشر الجودة ونقاط الغموض",
@@ -122,6 +128,13 @@ const PLANS_DEFAULT: PlanSettings = {
       "لوحة تحكم أساسية",
     ],
     sortOrder: 1,
+    monthlyCredits: 30,
+    dailyCreditLimit: 10,
+    perRequestCreditLimit: null,
+    fullAnalysisEnabled: false,
+    allowedTasks: ["extract", "improve", "criteria", "questions", "ambiguity"],
+    allowedLevels: ["quick"],
+    allowedPersonas: ["default"],
   },
   PRO: {
     displayName: "احترافي",
@@ -134,20 +147,26 @@ const PLANS_DEFAULT: PlanSettings = {
     visible: true,
     enabled: true,
     ctaText: "",
-    analysisLimit: 50,
     projectLimit: null,
     features: [
-      "حتى ٥٠ تحليل ذكاء اصطناعي شهريًا",
+      "رصيد ذكاء اصطناعي شهري أعلى",
       "مشاريع متعددة",
-      "رفع ملفات أكبر",
-      "تحليل أعمق لنقاط الغموض والنواقص",
+      "تحليل المتطلب بالكامل",
+      "مستويات تحليل متعددة (سريع/احترافي/خبير)",
+      "شخصيات تحليل متعددة",
       "توليد الأسئلة المقترحة للعميل",
       "إنشاء معايير قبول واضحة",
       "اقتراح تحسين صياغة المتطلبات",
       "سجل التحليلات",
-      "مناسبة لمحللي الأعمال ومدراء المشاريع",
     ],
     sortOrder: 2,
+    monthlyCredits: 400,
+    dailyCreditLimit: null,
+    perRequestCreditLimit: null,
+    fullAnalysisEnabled: true,
+    allowedTasks: ["extract", "full", "improve", "criteria", "questions", "ambiguity", "risks"],
+    allowedLevels: ["quick", "standard", "expert"],
+    allowedPersonas: ["default", "ba", "consultant", "qa", "po", "tech"],
   },
   ENTERPRISE: {
     displayName: "الأعمال",
@@ -160,33 +179,72 @@ const PLANS_DEFAULT: PlanSettings = {
     visible: true,
     enabled: true,
     ctaText: "",
-    analysisLimit: null,
     projectLimit: null,
     features: [
-      "عدد تحليلات مخصص",
+      "رصيد ذكاء اصطناعي مخصّص وعالٍ",
       "عدد مشاريع مخصص",
+      "كل مستويات وشخصيات التحليل",
       "إعدادات تحليل تناسب طبيعة الجهة",
       "دعم مباشر",
       "متابعة أعلى للاستخدام والتكلفة",
       "خيارات أمان وتخصيص حسب الاتفاق",
-      "مناسبة للجهات الحكومية، الشركات، ومكاتب إدارة المشاريع",
     ],
     sortOrder: 3,
+    // حتى الباقة المؤسسية لها منحة عالية لكن محدودة — حماية تكلفة الذكاء (تُرفع لكل عميل عبر تجاوز الأدمن).
+    monthlyCredits: 5000,
+    dailyCreditLimit: null,
+    perRequestCreditLimit: null,
+    fullAnalysisEnabled: true,
+    allowedTasks: ["extract", "full", "improve", "criteria", "questions", "ambiguity", "risks"],
+    allowedLevels: ["quick", "standard", "expert"],
+    allowedPersonas: ["default", "ba", "consultant", "qa", "po", "tech"],
   },
 };
 
-const ASSISTANT: AssistantSettings = {
-  // مطابق للحالي: المساعد متاح لكل الخطط (بوابة الحصة الذرية تبقى كما هي).
-  enabledForFree: true,
-  enabledForPro: true,
-  enabledForEnterprise: true,
-  fullAnalysisMaxTokens: 8000,
+/**
+ * محاسبة الذكاء الاصطناعي — كل الأرقام أمثلة قابلة للتعديل من الأدمن.
+ * تكلفة العملية = credits(المهمة) × multiplier(المستوى)، مقصوصة للسقوف.
+ * أسماء النماذج/المزوّدين إعداد خادمي (لا تُعرض للعميل النهائي أبدًا).
+ */
+const AI: AiSettings = {
   tasks: {
-    improve: { enabled: true, maxOutputTokens: 500, requiresPaidPlan: false, label: "تحسين الصياغة", description: "إعادة صياغة المتطلب بوضوح دون تغيير القصد." },
-    criteria: { enabled: true, maxOutputTokens: 700, requiresPaidPlan: false, label: "معايير القبول", description: "توليد معايير قبول قابلة للاختبار." },
-    questions: { enabled: true, maxOutputTokens: 600, requiresPaidPlan: false, label: "أسئلة العميل", description: "أسئلة لصاحب المصلحة تسد النواقص." },
-    ambiguity: { enabled: true, maxOutputTokens: 600, requiresPaidPlan: false, label: "كشف الغموض", description: "الكلمات الغامضة والمعلومات الناقصة." },
-    risks: { enabled: true, maxOutputTokens: 700, requiresPaidPlan: false, label: "المخاطر", description: "مخاطر مرتبطة بالمتطلب مع إجراءات تخفيف." },
+    extract: { enabled: true, credits: 3, maxOutputTokens: 8000, label: "استخراج المتطلبات" },
+    full: { enabled: true, credits: 8, maxOutputTokens: 3500, label: "تحليل المتطلب بالكامل" },
+    improve: { enabled: true, credits: 1, maxOutputTokens: 500, label: "تحسين الصياغة" },
+    criteria: { enabled: true, credits: 2, maxOutputTokens: 700, label: "معايير القبول" },
+    questions: { enabled: true, credits: 2, maxOutputTokens: 600, label: "أسئلة العميل" },
+    ambiguity: { enabled: true, credits: 2, maxOutputTokens: 600, label: "كشف الغموض" },
+    risks: { enabled: true, credits: 3, maxOutputTokens: 700, label: "المخاطر" },
+  },
+  levels: {
+    quick: { enabled: true, multiplier: 0.5, tokenMultiplier: 0.6, label: "مراجعة سريعة" },
+    standard: { enabled: true, multiplier: 1, tokenMultiplier: 1, label: "تحليل احترافي" },
+    expert: { enabled: true, multiplier: 2, tokenMultiplier: 1.5, label: "تحليل خبير" },
+  },
+  personas: {
+    default: { enabled: true, label: "افتراضي", systemHint: "" },
+    ba: { enabled: true, label: "محلل أعمال", systemHint: "حلّل من منظور محلل أعمال يركّز على وضوح المتطلب وقيمته." },
+    consultant: { enabled: true, label: "استشاري أعمال", systemHint: "حلّل من منظور استشاري يركّز على الفجوة بين الوضع الحالي والمستهدف." },
+    qa: { enabled: true, label: "ضمان الجودة", systemHint: "حلّل من منظور مختبِر يركّز على قابلية الاختبار والحالات الاستثنائية." },
+    po: { enabled: true, label: "مالك المنتج", systemHint: "حلّل من منظور مالك منتج يركّز على القيمة والأولوية وتجربة المستخدم." },
+    tech: { enabled: true, label: "مراجعة تقنية", systemHint: "حلّل من منظور تقني يركّز على التكاملات والبيانات والأداء والأمن." },
+  },
+  defaultProvider: "anthropic",
+  providers: ["anthropic"],
+  // توجيه النموذج خادمي بحت — قابل للتجاوز عبر متغيّرات البيئة AI_MODEL_{PLAN}.
+  modelRouting: {
+    FREE: "claude-haiku-4-5-20251001",
+    PRO: "claude-sonnet-5",
+    ENTERPRISE: "claude-opus-4-8",
+  },
+  fallbackModel: "claude-haiku-4-5-20251001",
+  timeoutMs: 120_000,
+  retryCount: 1,
+  // أسعار تقديرية (دولار/ألف رمز) لحساب التكلفة الداخلية فقط.
+  costRates: {
+    "claude-haiku-4-5-20251001": { in: 0.001, out: 0.005 },
+    "claude-sonnet-5": { in: 0.003, out: 0.015 },
+    "claude-opus-4-8": { in: 0.015, out: 0.075 },
   },
 };
 
@@ -233,7 +291,7 @@ export const SETTINGS_DEFAULTS: SystemSettingsShape = {
   notifications: NOTIFICATIONS,
   documents: DOCUMENTS,
   plans: PLANS_DEFAULT,
-  assistant: ASSISTANT,
+  ai: AI,
   features: FEATURES,
   readiness: READINESS,
 };

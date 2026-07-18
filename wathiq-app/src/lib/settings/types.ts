@@ -94,6 +94,10 @@ export interface DocumentSettings {
   print: { pageSize: "A4"; showLogo: boolean; showFooter: boolean };
 }
 
+/* ───── الباقات والامتيازات (Plans & Entitlements) ───── */
+
+export type PlanId = "FREE" | "PRO" | "ENTERPRISE";
+
 export interface PlanDisplaySettings {
   displayName: string;
   title: string;
@@ -106,10 +110,17 @@ export interface PlanDisplaySettings {
   enabled: boolean; // متاحة للترقية اليدوية
   ctaText: string;
   /** null = غير محدود/مخصص. تخضع لسقوف صلبة في الكود. */
-  analysisLimit: number | null;
   projectLimit: number | null;
   features: string[];
   sortOrder: number;
+  /* ---- امتيازات الذكاء الاصطناعي (Entitlements) ---- */
+  monthlyCredits: number; // منحة النقاط الشهرية
+  dailyCreditLimit: number | null; // سقف يومي اختياري (null = بلا سقف يومي)
+  perRequestCreditLimit: number | null; // أقصى نقاط لعملية واحدة (null = فقط تكلفة المهمة)
+  fullAnalysisEnabled: boolean; // «تحليل المتطلب بالكامل»
+  allowedTasks: AiTaskKey[]; // المهام المتاحة لهذه الباقة
+  allowedLevels: AiLevelKey[]; // مستويات التحليل المتاحة
+  allowedPersonas: AiPersonaKey[]; // الشخصيات المتاحة
 }
 export interface PlanSettings {
   FREE: PlanDisplaySettings;
@@ -117,20 +128,59 @@ export interface PlanSettings {
   ENTERPRISE: PlanDisplaySettings;
 }
 
-export type AssistantTaskKey = "improve" | "criteria" | "questions" | "ambiguity" | "risks";
-export interface AssistantTaskSettings {
+/* ───── محاسبة الذكاء الاصطناعي (AI accounting — v2.6) ───── */
+
+/** كل عمليات الذكاء الاصطناعي القابلة للمحاسبة. */
+export type AiTaskKey =
+  | "extract" // استخراج المتطلبات من مستند/PDF
+  | "full" // تحليل المتطلب بالكامل
+  | "improve" // تحسين الصياغة
+  | "criteria" // معايير القبول
+  | "questions" // أسئلة أصحاب المصلحة
+  | "ambiguity" // كشف الغموض والنواقص
+  | "risks"; // تحليل المخاطر
+
+export type AiLevelKey = "quick" | "standard" | "expert";
+export type AiPersonaKey = "default" | "ba" | "consultant" | "qa" | "po" | "tech";
+
+export interface AiTaskConfig {
   enabled: boolean;
-  maxOutputTokens: number; // يُقصّ إلى السقف الصلب في الكود
-  requiresPaidPlan: boolean;
+  credits: number; // التكلفة الأساسية بالنقاط (يُقصّ للسقف الصلب)
+  maxOutputTokens: number; // حد الإخراج (يُقصّ للسقف الصلب)
   label: string;
-  description: string;
 }
-export interface AssistantSettings {
-  enabledForFree: boolean;
-  enabledForPro: boolean;
-  enabledForEnterprise: boolean;
-  fullAnalysisMaxTokens: number; // يُقصّ إلى السقف الصلب
-  tasks: Record<AssistantTaskKey, AssistantTaskSettings>;
+export interface AiLevelConfig {
+  enabled: boolean;
+  multiplier: number; // مضاعِف التكلفة والعمق (يُقصّ للسقف الصلب)
+  tokenMultiplier: number; // مضاعِف حد الإخراج
+  label: string;
+}
+export interface AiPersonaConfig {
+  enabled: boolean;
+  label: string;
+  systemHint: string; // لمسة تُضاف لتعليمة النظام (لا تُكشف للعميل)
+}
+export interface AiModelRate {
+  in: number; // دولار لكل ألف رمز إدخال (لتقدير التكلفة فقط)
+  out: number; // دولار لكل ألف رمز إخراج
+}
+
+/**
+ * محاسبة الذكاء الاصطناعي — مستقلة عن أي مزوّد. كل الأرقام قابلة للتعديل من
+ * الأدمن دون تعديل كود. `modelRouting`/`costRates` تبقى في الخادم ولا تُكشف
+ * للعميل، ولا يُذكر اسم أي نموذج في الواجهة.
+ */
+export interface AiSettings {
+  tasks: Record<AiTaskKey, AiTaskConfig>;
+  levels: Record<AiLevelKey, AiLevelConfig>;
+  personas: Record<AiPersonaKey, AiPersonaConfig>;
+  defaultProvider: string; // مزوّد افتراضي (anthropic | openai | ...)
+  providers: string[]; // المزوّدون المتاحون
+  modelRouting: Record<PlanId, string>; // خطة → معرّف النموذج (خادمي)
+  fallbackModel: string; // نموذج بديل عند فشل الأساسي
+  timeoutMs: number; // مهلة الطلب
+  retryCount: number; // عدد إعادات المحاولة (لا تُضاعف الخصم — Idempotency)
+  costRates: Record<string, AiModelRate>; // نموذج → أسعار تقديرية (خادمي)
 }
 
 export interface FeatureSettings {
@@ -195,14 +245,14 @@ export interface SystemSettingsShape {
   notifications: NotificationSettings;
   documents: DocumentSettings;
   plans: PlanSettings;
-  assistant: AssistantSettings;
+  ai: AiSettings;
   features: FeatureSettings;
   readiness: ReadinessSettings;
 }
 
 export type SettingsSection = keyof SystemSettingsShape;
 export const SETTINGS_SECTIONS: SettingsSection[] = [
-  "general", "contact", "notifications", "documents", "plans", "assistant", "features", "readiness",
+  "general", "contact", "notifications", "documents", "plans", "ai", "features", "readiness",
 ];
 
 /** Subset عامة آمنة تُمرر لمكونات العميل — لا إعدادات داخلية ولا أسماء نماذج. */

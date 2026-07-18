@@ -60,7 +60,7 @@ export function OnboardingChecklist({
         activeProject.relatedSystems ||
         activeProject.constraints)
   );
-  const analyzed = (usage?.analysisCount ?? 0) > 0 || requirements.some((r) => r.analysis != null || r.confidence != null);
+  const analyzed = (usage?.creditsUsed ?? 0) > 0 || requirements.some((r) => r.analysis != null || r.confidence != null);
 
   const steps: StepDef[] = [
     { key: "project", label: "أنشئ مشروعك الأول", done: Boolean(activeProject), actionLabel: "ابدأ", onAction: onNewProject },

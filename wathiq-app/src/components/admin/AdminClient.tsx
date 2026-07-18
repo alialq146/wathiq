@@ -329,9 +329,10 @@ interface UserRow {
   role: string;
   accountStatus: string;
   subscriptionStatus: string;
-  analysisCount: number;
-  limit: number | null;
-  limitOverride: boolean;
+  creditsUsed: number;
+  creditsGranted: number;
+  creditsOverride: number | null;
+  periodEnd: string | null;
   projects: number;
   aiCalls: number;
   costUsd: number;
@@ -422,16 +423,16 @@ function UsersTab() {
                   </td>
                   <td style={td}>{num(u.projects)}</td>
                   <td style={td}>
-                    {num(u.analysisCount)}
-                    {u.limit != null && (
+                    {num(u.creditsUsed)}
+                    {u.creditsGranted > 0 && (
                       <div style={{ width: 70, marginTop: 5 }}>
-                        <Meter pct={(u.analysisCount / Math.max(1, u.limit)) * 100} color={u.analysisCount >= u.limit ? "var(--red-500)" : "var(--blue-500)"} />
+                        <Meter pct={(u.creditsUsed / Math.max(1, u.creditsGranted)) * 100} color={u.creditsUsed >= u.creditsGranted ? "var(--red-500)" : "var(--blue-500)"} />
                       </div>
                     )}
                   </td>
                   <td style={td}>
-                    {u.limit == null ? "غير محدود" : num(u.limit)}
-                    {u.limitOverride && <div style={{ font: "10px var(--font-sans)", color: "var(--amber-600)" }}>مخصص</div>}
+                    {num(u.creditsGranted)} نقطة
+                    {u.creditsOverride != null && <div style={{ font: "10px var(--font-sans)", color: "var(--amber-600)" }}>مخصص</div>}
                   </td>
                   <td style={td}>{when(u.lastActivity)}</td>
                   <td style={td}>{when(u.createdAt)}</td>
@@ -453,13 +454,14 @@ function UsersTab() {
 /* ---- user management dialog (plan / limit / counter / status / details) ---- */
 
 interface UserDetail {
-  user: UserRow & { resetDate: string | null };
+  user: UserRow;
   requirements: number;
   projects: Array<{ id: string; name: string; code: string; status: string; createdAt: string }>;
   usage: {
     byStatus: Record<string, number>;
     costUsd: number;
-    recent: Array<{ id: string; createdAt: string; status: string; modelUsed: string; inputTokens: number | null; outputTokens: number | null; estimatedCost: number | null; errorMessage: string | null }>;
+    creditsSpent?: number;
+    recent: Array<{ id: string; createdAt: string; status: string; taskKey?: string; level?: string; model: string; creditsCommitted?: number; promptTokens: number | null; completionTokens: number | null; estimatedCostUsd: number | null; errorMessage: string | null }>;
   };
 }
 
@@ -467,7 +469,7 @@ function ManageUserDialog({ user, onClose, onChanged }: { user: UserRow; onClose
   const [busy, setBusy] = React.useState<string | null>(null);
   const [msg, setMsg] = React.useState<string | null>(null);
   const [plan, setPlan] = React.useState(user.plan);
-  const [limit, setLimit] = React.useState(String(user.limit ?? ""));
+  const [limit, setLimit] = React.useState(String(user.creditsOverride ?? ""));
   const [detail, setDetail] = React.useState<UserDetail | null>(null);
   const [showDetail, setShowDetail] = React.useState(false);
 
@@ -541,21 +543,21 @@ function ManageUserDialog({ user, onClose, onChanged }: { user: UserRow; onClose
               </div>
 
               <div style={row}>
-                <span style={label}>عداد التحليلات</span>
-                <span style={{ font: "13px var(--font-sans)" }}>{num(user.analysisCount)} مستخدمة</span>
-                <SmallBtn disabled={busy !== null} onClick={() => act("reset-count")}>
-                  {busy === "reset-count" ? "جارٍ…" : "إعادة تعيين العداد"}
+                <span style={label}>رصيد النقاط</span>
+                <span style={{ font: "13px var(--font-sans)" }}>{num(user.creditsUsed)} من {num(user.creditsGranted)} مستخدمة</span>
+                <SmallBtn disabled={busy !== null} onClick={() => act("reset-credits")}>
+                  {busy === "reset-credits" ? "جارٍ…" : "تصفير الاستهلاك"}
                 </SmallBtn>
               </div>
 
               <div style={row}>
-                <span style={label}>حد مخصص</span>
-                <input value={limit} onChange={(e) => setLimit(e.target.value)} placeholder="مثال: 100" dir="ltr" style={{ ...inputStyle, width: 90 }} />
-                <SmallBtn disabled={busy !== null} onClick={() => act("set-limit", Number(limit))}>
-                  {busy === "set-limit" ? "جارٍ…" : "تطبيق الحد"}
+                <span style={label}>منحة مخصّصة</span>
+                <input value={limit} onChange={(e) => setLimit(e.target.value)} placeholder="مثال: 1000" dir="ltr" style={{ ...inputStyle, width: 90 }} />
+                <SmallBtn disabled={busy !== null} onClick={() => act("set-credits", Number(limit))}>
+                  {busy === "set-credits" ? "جارٍ…" : "تطبيق المنحة"}
                 </SmallBtn>
-                {user.limitOverride && (
-                  <SmallBtn disabled={busy !== null} onClick={() => act("clear-limit")}>إلغاء التخصيص (حد الخطة)</SmallBtn>
+                {user.creditsOverride != null && (
+                  <SmallBtn disabled={busy !== null} onClick={() => act("clear-credits")}>إلغاء التخصيص (منحة الخطة)</SmallBtn>
                 )}
               </div>
 
@@ -607,7 +609,8 @@ function ManageUserDialog({ user, onClose, onChanged }: { user: UserRow; onClose
                       detail.usage.recent.map((r) => (
                         <div key={r.id} style={{ display: "flex", gap: 8, alignItems: "center", padding: "6px 0", borderBottom: "1px solid var(--border-subtle)", font: "12px var(--font-sans)" }}>
                           <StatusBadge s={r.status} />
-                          <span style={{ fontFamily: "var(--font-mono)", fontSize: 11 }}>{shortModel(r.modelUsed)}</span>
+                          <span style={{ fontFamily: "var(--font-mono)", fontSize: 11 }}>{r.taskKey ?? shortModel(r.model)}</span>
+                          {typeof r.creditsCommitted === "number" && r.creditsCommitted > 0 && <span style={{ fontSize: 11, color: "var(--text-subtle)" }}>{r.creditsCommitted} نقطة</span>}
                           {r.errorMessage && <span style={{ color: "var(--red-600)", fontSize: 11, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 180 }}>{r.errorMessage}</span>}
                           <span style={{ marginInlineStart: "auto", color: "var(--text-subtle)", whiteSpace: "nowrap" }}>{when(r.createdAt)}</span>
                         </div>

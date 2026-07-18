@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { requireSuperAdmin, ADMIN_FORBIDDEN } from "@/lib/admin";
-import { getPlan } from "@/lib/plans";
 
 export const dynamic = "force-dynamic";
 
@@ -21,10 +20,10 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
       role: true,
       accountStatus: true,
       subscriptionStatus: true,
-      analysisCount: true,
-      analysisLimit: true,
-      limitOverride: true,
-      resetDate: true,
+      aiCreditsGranted: true,
+      aiCreditsUsed: true,
+      aiCreditsOverride: true,
+      aiCreditsPeriodEnd: true,
       createdAt: true,
     },
   });
@@ -37,9 +36,9 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
       take: 50,
       select: { id: true, name: true, code: true, status: true, createdAt: true },
     }),
-    prisma.aiUsage.groupBy({ by: ["status"], _count: true, where: { userId: id } }),
-    prisma.aiUsage.aggregate({ _sum: { estimatedCost: true }, where: { userId: id } }),
-    prisma.aiUsage.findMany({
+    prisma.aiOperation.groupBy({ by: ["status"], _count: true, where: { userId: id } }),
+    prisma.aiOperation.aggregate({ _sum: { estimatedCostUsd: true, creditsCommitted: true }, where: { userId: id } }),
+    prisma.aiOperation.findMany({
       where: { userId: id },
       orderBy: { createdAt: "desc" },
       take: 10,
@@ -47,10 +46,13 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
         id: true,
         createdAt: true,
         status: true,
-        modelUsed: true,
-        inputTokens: true,
-        outputTokens: true,
-        estimatedCost: true,
+        taskKey: true,
+        level: true,
+        model: true,
+        creditsCommitted: true,
+        promptTokens: true,
+        completionTokens: true,
+        estimatedCostUsd: true,
         errorMessage: true,
         projectId: true,
         requirementId: true,
@@ -65,16 +67,25 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
   return NextResponse.json({
     ok: true,
     user: {
-      ...user,
-      limit: user.limitOverride ? user.analysisLimit : getPlan(user.plan).analysisLimit,
-      resetDate: user.resetDate?.toISOString() ?? null,
+      id: user.id,
+      name: user.name,
+      email: user.email,
+      plan: user.plan,
+      role: user.role,
+      accountStatus: user.accountStatus,
+      subscriptionStatus: user.subscriptionStatus,
+      creditsUsed: user.aiCreditsUsed,
+      creditsGranted: user.aiCreditsGranted,
+      creditsOverride: user.aiCreditsOverride,
+      periodEnd: user.aiCreditsPeriodEnd?.toISOString() ?? null,
       createdAt: user.createdAt.toISOString(),
     },
     requirements: reqCount,
     projects: projects.map((p) => ({ ...p, createdAt: p.createdAt.toISOString() })),
     usage: {
       byStatus: statusMap,
-      costUsd: Math.round((cost._sum.estimatedCost ?? 0) * 100) / 100,
+      costUsd: Math.round((cost._sum.estimatedCostUsd ?? 0) * 100) / 100,
+      creditsSpent: cost._sum.creditsCommitted ?? 0,
       recent: recent.map((r) => ({
         ...r,
         createdAt: r.createdAt.toISOString(),

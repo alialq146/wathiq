@@ -5,8 +5,8 @@ import { requireSuperAdmin, ADMIN_FORBIDDEN } from "@/lib/admin";
 export const dynamic = "force-dynamic";
 
 const PAGE_SIZE = 20;
-const STATUSES = ["SUCCESS", "FAILED", "BLOCKED_LIMIT", "BLOCKED_AUTH", "BLOCKED_SIZE"];
-const ERROR_STATUSES = ["FAILED", "BLOCKED_LIMIT", "BLOCKED_AUTH", "BLOCKED_SIZE"];
+const STATUSES = ["RESERVED", "COMMITTED", "REFUNDED", "FAILED", "REJECTED"];
+const ERROR_STATUSES = ["FAILED", "REJECTED"];
 
 function rangeStart(range: string): Date | null {
   const d = new Date();
@@ -48,7 +48,7 @@ export async function GET(req: Request) {
   if (start) where.createdAt = { gte: start };
   if (status === "ERRORS") where.status = { in: ERROR_STATUSES };
   else if (STATUSES.includes(status)) where.status = status;
-  if (model) where.modelUsed = model;
+  if (model) where.model = model;
 
   // Plan / email filters resolve to user ids first (bounded query).
   if (plan || q) {
@@ -64,8 +64,8 @@ export async function GET(req: Request) {
   }
 
   const [total, rows, byStatus, cost, models] = await Promise.all([
-    prisma.aiUsage.count({ where }),
-    prisma.aiUsage.findMany({
+    prisma.aiOperation.count({ where }),
+    prisma.aiOperation.findMany({
       where,
       orderBy: { createdAt: "desc" },
       skip: (page - 1) * PAGE_SIZE,
@@ -77,17 +77,20 @@ export async function GET(req: Request) {
         projectId: true,
         requirementId: true,
         documentId: true,
-        modelUsed: true,
+        taskKey: true,
+        level: true,
+        model: true,
         status: true,
-        inputTokens: true,
-        outputTokens: true,
-        estimatedCost: true,
+        creditsCommitted: true,
+        promptTokens: true,
+        completionTokens: true,
+        estimatedCostUsd: true,
         errorMessage: true,
       },
     }),
-    prisma.aiUsage.groupBy({ by: ["status"], _count: true, where }),
-    prisma.aiUsage.aggregate({ _sum: { estimatedCost: true }, where }),
-    prisma.aiUsage.groupBy({ by: ["modelUsed"], _count: true, where }),
+    prisma.aiOperation.groupBy({ by: ["status"], _count: true, where }),
+    prisma.aiOperation.aggregate({ _sum: { estimatedCostUsd: true }, where }),
+    prisma.aiOperation.groupBy({ by: ["model"], _count: true, where }),
   ]);
 
   // Attach user email + plan for just this page's rows.
@@ -107,8 +110,8 @@ export async function GET(req: Request) {
     total,
     aggregates: {
       byStatus: statusMap,
-      costUsd: Math.round((cost._sum.estimatedCost ?? 0) * 100) / 100,
-      models: models.map((m) => ({ model: m.modelUsed, requests: m._count })).sort((a, b) => b.requests - a.requests),
+      costUsd: Math.round((cost._sum.estimatedCostUsd ?? 0) * 100) / 100,
+      models: models.map((m) => ({ model: m.model, requests: m._count })).sort((a, b) => b.requests - a.requests),
     },
     rows: rows.map((r) => ({
       id: r.id,
@@ -118,11 +121,14 @@ export async function GET(req: Request) {
       projectId: r.projectId,
       requirementId: r.requirementId,
       documentId: r.documentId,
-      model: r.modelUsed,
+      task: r.taskKey,
+      level: r.level,
+      model: r.model,
       status: r.status,
-      inputTokens: r.inputTokens,
-      outputTokens: r.outputTokens,
-      costUsd: r.estimatedCost,
+      credits: r.creditsCommitted,
+      inputTokens: r.promptTokens,
+      outputTokens: r.completionTokens,
+      costUsd: r.estimatedCostUsd,
       // Metadata only — never file/requirement content.
       errorMessage: r.errorMessage ? r.errorMessage.slice(0, 160) : null,
     })),

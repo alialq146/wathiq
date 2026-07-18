@@ -17,9 +17,14 @@ import { Prisma } from "@prisma/client";
 import { SETTINGS_DEFAULTS, SETTINGS_SCHEMA_VERSION, HARD_CEILINGS } from "./defaults";
 import type {
   SystemSettingsShape, SettingsSection, PublicSettings,
-  PlanDisplaySettings, AssistantTaskKey,
+  PlanDisplaySettings, AiSettings, AiTaskKey, AiLevelKey, AiPersonaKey, PlanId,
 } from "./types";
 import { SETTINGS_SECTIONS } from "./types";
+
+const AI_TASK_KEYS: AiTaskKey[] = ["extract", "full", "improve", "criteria", "questions", "ambiguity", "risks"];
+const AI_LEVEL_KEYS: AiLevelKey[] = ["quick", "standard", "expert"];
+const AI_PERSONA_KEYS: AiPersonaKey[] = ["default", "ba", "consultant", "qa", "po", "tech"];
+const PLAN_IDS: PlanId[] = ["FREE", "PRO", "ENTERPRISE"];
 
 export * from "./types";
 export { SETTINGS_DEFAULTS, HARD_CEILINGS } from "./defaults";
@@ -62,7 +67,7 @@ async function readMerged(): Promise<SystemSettingsShape> {
       notifications: mergeOverDefaults(SETTINGS_DEFAULTS.notifications, row?.notifications),
       documents: mergeOverDefaults(SETTINGS_DEFAULTS.documents, row?.documents),
       plans: mergeOverDefaults(SETTINGS_DEFAULTS.plans, row?.plans),
-      assistant: mergeOverDefaults(SETTINGS_DEFAULTS.assistant, row?.assistant),
+      ai: mergeOverDefaults(SETTINGS_DEFAULTS.ai, row?.ai),
       features: mergeOverDefaults(SETTINGS_DEFAULTS.features, row?.features),
       readiness: mergeOverDefaults(SETTINGS_DEFAULTS.readiness, row?.readiness),
     };
@@ -88,7 +93,7 @@ export const getContactSettings = async () => (await getSystemSettings()).contac
 export const getNotificationSettings = async () => (await getSystemSettings()).notifications;
 export const getDocumentSettings = async () => (await getSystemSettings()).documents;
 export const getPlanSettings = async () => (await getSystemSettings()).plans;
-export const getAssistantSettings = async () => (await getSystemSettings()).assistant;
+export const getAiSettings = async () => (await getSystemSettings()).ai;
 export const getFeatureSettings = async () => (await getSystemSettings()).features;
 export const getReadinessSettings = async () => (await getSystemSettings()).readiness;
 
@@ -113,35 +118,65 @@ export async function getPublicSettings(): Promise<PublicSettings> {
 
 const clampLimit = (v: number | null, max: number): number | null =>
   v === null ? null : Math.max(0, Math.min(Math.trunc(v), max));
+const clampInt = (v: number, min: number, max: number): number =>
+  Math.max(min, Math.min(Math.trunc(Number(v) || 0), max));
 
-/** خطة محلولة للاستخدام الخادمي — الحدود مقصوصة بالسقوف الصلبة دائمًا. */
-export async function getResolvedPlan(planId: string | null | undefined): Promise<PlanDisplaySettings & { id: "FREE" | "PRO" | "ENTERPRISE" }> {
+/** خطة محلولة للاستخدام الخادمي — الحدود والامتيازات مقصوصة بالسقوف الصلبة دائمًا. */
+export async function getResolvedPlan(planId: string | null | undefined): Promise<PlanDisplaySettings & { id: PlanId }> {
   const plans = await getPlanSettings();
-  const id = (planId === "PRO" || planId === "ENTERPRISE" ? planId : "FREE") as "FREE" | "PRO" | "ENTERPRISE";
+  const id = (planId === "PRO" || planId === "ENTERPRISE" ? planId : "FREE") as PlanId;
   const p = plans[id] ?? SETTINGS_DEFAULTS.plans[id];
   return {
     ...p,
     id,
-    analysisLimit: clampLimit(p.analysisLimit, HARD_CEILINGS.analysisLimitMax),
     projectLimit: clampLimit(p.projectLimit, HARD_CEILINGS.projectLimitMax),
+    monthlyCredits: clampInt(p.monthlyCredits, 0, HARD_CEILINGS.monthlyCreditsMax),
+    dailyCreditLimit: clampLimit(p.dailyCreditLimit, HARD_CEILINGS.dailyCreditMax),
+    perRequestCreditLimit: clampLimit(p.perRequestCreditLimit, HARD_CEILINGS.perRequestCreditMax),
   };
 }
 
-export async function resolvedAnalysisLimitFor(plan: string | null | undefined): Promise<number | null> {
-  return (await getResolvedPlan(plan)).analysisLimit;
-}
 export async function resolvedProjectLimitFor(plan: string | null | undefined): Promise<number | null> {
   return (await getResolvedPlan(plan)).projectLimit;
 }
 
-/** حد رموز مهمة المساعد — الإعداد يستطيع التخفيض فقط، السقف في الكود. */
-export async function assistantTaskBudget(task: AssistantTaskKey): Promise<{ enabled: boolean; requiresPaidPlan: boolean; maxTokens: number }> {
-  const a = await getAssistantSettings();
-  const t = a.tasks[task] ?? SETTINGS_DEFAULTS.assistant.tasks[task];
+/**
+ * إعدادات الذكاء الاصطناعي محلولةً بالسقوف الصلبة — المصدر الوحيد لأرقام
+ * المحاسبة (التكاليف/المضاعِفات/المهلات) بعد القص. يُقرأ منه محلّل الامتيازات.
+ */
+export async function getResolvedAiSettings(): Promise<AiSettings> {
+  const a = await getAiSettings();
+  const tasks = {} as AiSettings["tasks"];
+  for (const k of AI_TASK_KEYS) {
+    const t = a.tasks[k] ?? SETTINGS_DEFAULTS.ai.tasks[k];
+    tasks[k] = {
+      enabled: !!t.enabled,
+      credits: clampInt(t.credits, 0, HARD_CEILINGS.taskCreditMax),
+      maxOutputTokens: clampInt(t.maxOutputTokens, 100, HARD_CEILINGS.outputTokensMax),
+      label: t.label,
+    };
+  }
+  const levels = {} as AiSettings["levels"];
+  for (const k of AI_LEVEL_KEYS) {
+    const l = a.levels[k] ?? SETTINGS_DEFAULTS.ai.levels[k];
+    levels[k] = {
+      enabled: !!l.enabled,
+      multiplier: Math.max(0, Math.min(Number(l.multiplier) || 0, HARD_CEILINGS.levelMultiplierMax)),
+      tokenMultiplier: Math.max(0.1, Math.min(Number(l.tokenMultiplier) || 1, HARD_CEILINGS.levelMultiplierMax)),
+      label: l.label,
+    };
+  }
   return {
-    enabled: t.enabled,
-    requiresPaidPlan: t.requiresPaidPlan,
-    maxTokens: Math.min(Math.max(100, Math.trunc(t.maxOutputTokens)), HARD_CEILINGS.assistantTaskTokensMax),
+    tasks,
+    levels,
+    personas: a.personas,
+    defaultProvider: a.defaultProvider,
+    providers: a.providers,
+    modelRouting: a.modelRouting,
+    fallbackModel: a.fallbackModel,
+    timeoutMs: clampInt(a.timeoutMs, 1000, HARD_CEILINGS.aiTimeoutMsMax),
+    retryCount: clampInt(a.retryCount, 0, HARD_CEILINGS.aiRetryCountMax),
+    costRates: a.costRates,
   };
 }
 
@@ -188,6 +223,12 @@ const safeUrl = (v: unknown): string => {
 const digits = (v: unknown, max = 15): string => str(v, 20).replace(/[^0-9]/g, "").slice(0, max);
 const strArr = (v: unknown, maxItems: number, maxLen: number, dflt: string[]): string[] =>
   Array.isArray(v) ? v.filter((x): x is string => typeof x === "string").map((x) => x.trim().slice(0, maxLen)).filter(Boolean).slice(0, maxItems) : dflt;
+/** يقبل فقط قيمًا من مجموعة مسموحة (whitelist) وبلا تكرار — لامتيازات الباقة. */
+function subsetArr<T extends string>(v: unknown, allowed: readonly T[], dflt: T[]): T[] {
+  if (!Array.isArray(v)) return dflt;
+  const set = new Set(allowed as readonly string[]);
+  return [...new Set(v.filter((x): x is T => typeof x === "string" && set.has(x)))];
+}
 
 const T = HARD_CEILINGS.textMax;
 const LT = HARD_CEILINGS.longTextMax;
@@ -312,10 +353,17 @@ const normalizers: Record<SettingsSection, Norm> = {
         visible: bool(p.visible, base.visible),
         enabled: bool(p.enabled, base.enabled),
         ctaText: str(p.ctaText, 60, base.ctaText),
-        analysisLimit: nullableLimit(p.analysisLimit, HARD_CEILINGS.analysisLimitMax, base.analysisLimit),
         projectLimit: nullableLimit(p.projectLimit, HARD_CEILINGS.projectLimitMax, base.projectLimit),
         features: strArr(p.features, 15, 120, base.features),
         sortOrder: intIn(p.sortOrder, 1, 9, base.sortOrder),
+        // امتيازات الذكاء الاصطناعي
+        monthlyCredits: intIn(p.monthlyCredits, 0, HARD_CEILINGS.monthlyCreditsMax, base.monthlyCredits),
+        dailyCreditLimit: nullableLimit(p.dailyCreditLimit, HARD_CEILINGS.dailyCreditMax, base.dailyCreditLimit),
+        perRequestCreditLimit: nullableLimit(p.perRequestCreditLimit, HARD_CEILINGS.perRequestCreditMax, base.perRequestCreditLimit),
+        fullAnalysisEnabled: bool(p.fullAnalysisEnabled, base.fullAnalysisEnabled),
+        allowedTasks: subsetArr(p.allowedTasks, AI_TASK_KEYS, base.allowedTasks),
+        allowedLevels: subsetArr(p.allowedLevels, AI_LEVEL_KEYS, base.allowedLevels),
+        allowedPersonas: subsetArr(p.allowedPersonas, AI_PERSONA_KEYS, base.allowedPersonas),
       };
     }
     // لا يجوز إخفاء كل الخطط من صفحة الأسعار.
@@ -324,26 +372,62 @@ const normalizers: Record<SettingsSection, Norm> = {
     return out;
   },
 
-  assistant: (i, b) => {
+  ai: (i, b) => {
+    const num = (v: unknown, min: number, max: number, dflt: number): number => {
+      const n = Number(v);
+      return Number.isFinite(n) ? Math.max(min, Math.min(n, max)) : dflt;
+    };
     const tasksIn = isObj(i.tasks) ? i.tasks : {};
     const tasks: PlainObject = {};
-    for (const key of ["improve", "criteria", "questions", "ambiguity", "risks"] as const) {
+    for (const key of AI_TASK_KEYS) {
       const t = isObj(tasksIn[key]) ? (tasksIn[key] as PlainObject) : {};
-      const base = b.assistant.tasks[key];
+      const base = b.ai.tasks[key];
       tasks[key] = {
         enabled: bool(t.enabled, base.enabled),
-        maxOutputTokens: intIn(t.maxOutputTokens, 100, HARD_CEILINGS.assistantTaskTokensMax, base.maxOutputTokens),
-        requiresPaidPlan: bool(t.requiresPaidPlan, base.requiresPaidPlan),
+        credits: intIn(t.credits, 0, HARD_CEILINGS.taskCreditMax, base.credits),
+        maxOutputTokens: intIn(t.maxOutputTokens, 100, HARD_CEILINGS.outputTokensMax, base.maxOutputTokens),
         label: str(t.label, 60, base.label) || base.label,
-        description: str(t.description, 200, base.description),
       };
     }
+    const levelsIn = isObj(i.levels) ? i.levels : {};
+    const levels: PlainObject = {};
+    for (const key of AI_LEVEL_KEYS) {
+      const l = isObj(levelsIn[key]) ? (levelsIn[key] as PlainObject) : {};
+      const base = b.ai.levels[key];
+      levels[key] = {
+        enabled: bool(l.enabled, base.enabled),
+        multiplier: num(l.multiplier, 0, HARD_CEILINGS.levelMultiplierMax, base.multiplier),
+        tokenMultiplier: num(l.tokenMultiplier, 0.1, HARD_CEILINGS.levelMultiplierMax, base.tokenMultiplier),
+        label: str(l.label, 60, base.label) || base.label,
+      };
+    }
+    const personasIn = isObj(i.personas) ? i.personas : {};
+    const personas: PlainObject = {};
+    for (const key of AI_PERSONA_KEYS) {
+      const p = isObj(personasIn[key]) ? (personasIn[key] as PlainObject) : {};
+      const base = b.ai.personas[key];
+      personas[key] = {
+        enabled: bool(p.enabled, base.enabled),
+        label: str(p.label, 60, base.label) || base.label,
+        systemHint: str(p.systemHint, LT, base.systemHint),
+      };
+    }
+    // نماذج/أسعار خادمية — تبقى كما هي إن لم تُرسل (لا نسمح بمسحها بالخطأ).
+    const routingIn = isObj(i.modelRouting) ? i.modelRouting : {};
+    const modelRouting: PlainObject = {};
+    for (const pid of PLAN_IDS) modelRouting[pid] = str(routingIn[pid], 80, b.ai.modelRouting[pid]) || b.ai.modelRouting[pid];
+    const providers = strArr(i.providers, 12, 40, b.ai.providers);
     return {
-      enabledForFree: bool(i.enabledForFree, b.assistant.enabledForFree),
-      enabledForPro: bool(i.enabledForPro, b.assistant.enabledForPro),
-      enabledForEnterprise: bool(i.enabledForEnterprise, b.assistant.enabledForEnterprise),
-      fullAnalysisMaxTokens: intIn(i.fullAnalysisMaxTokens, 1000, HARD_CEILINGS.fullAnalysisTokensMax, b.assistant.fullAnalysisMaxTokens),
       tasks,
+      levels,
+      personas,
+      defaultProvider: str(i.defaultProvider, 40, b.ai.defaultProvider) || b.ai.defaultProvider,
+      providers: providers.length ? providers : b.ai.providers,
+      modelRouting,
+      fallbackModel: str(i.fallbackModel, 80, b.ai.fallbackModel) || b.ai.fallbackModel,
+      timeoutMs: intIn(i.timeoutMs, 1000, HARD_CEILINGS.aiTimeoutMsMax, b.ai.timeoutMs),
+      retryCount: intIn(i.retryCount, 0, HARD_CEILINGS.aiRetryCountMax, b.ai.retryCount),
+      costRates: isObj(i.costRates) ? (i.costRates as PlainObject) : (b.ai.costRates as unknown as PlainObject),
     };
   },
 
@@ -437,7 +521,7 @@ const SECTION_ACTION: Record<SettingsSection, string> = {
   notifications: "NOTIFICATION_SETTINGS_UPDATED",
   documents: "DOCUMENT_SETTINGS_UPDATED",
   plans: "PLAN_SETTINGS_UPDATED",
-  assistant: "ASSISTANT_SETTINGS_UPDATED",
+  ai: "AI_SETTINGS_UPDATED",
   features: "FEATURE_SETTINGS_UPDATED",
   readiness: "READINESS_SETTINGS_UPDATED",
 };

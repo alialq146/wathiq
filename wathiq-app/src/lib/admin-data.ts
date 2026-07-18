@@ -6,8 +6,20 @@
 
 import { prisma } from "./db";
 import { PLANS, PLAN_ORDER, getPlan, whatsappUpgradeLink, type PlanId } from "./plans";
-import { modelForPlan } from "./usage";
+import { getResolvedAiSettings, getResolvedPlan } from "@/lib/settings";
 import { APP_VERSION } from "./version";
+
+/** توجيه النموذج لكل خطة من الإعدادات (متغيّر البيئة يتقدّم) — خادمي بحت. */
+async function planModelMap(): Promise<Record<PlanId, string>> {
+  const ai = await getResolvedAiSettings();
+  const pick = (id: PlanId) => process.env[`AI_MODEL_${id}`]?.trim() || ai.modelRouting[id] || ai.fallbackModel;
+  return { FREE: pick("FREE"), PRO: pick("PRO"), ENTERPRISE: pick("ENTERPRISE") };
+}
+/** منحة نقاط كل خطة من الإعدادات. */
+async function planCreditMap(): Promise<Record<PlanId, number>> {
+  const [f, p, e] = await Promise.all([getResolvedPlan("FREE"), getResolvedPlan("PRO"), getResolvedPlan("ENTERPRISE")]);
+  return { FREE: f.monthlyCredits, PRO: p.monthlyCredits, ENTERPRISE: e.monthlyCredits };
+}
 
 /* ---------------- shapes returned to the admin UI ---------------- */
 
@@ -161,8 +173,8 @@ async function attachUsers(
     id: string;
     createdAt: Date;
     status: string;
-    modelUsed: string;
-    estimatedCost: number | null;
+    model: string;
+    estimatedCostUsd: number | null;
     errorMessage: string | null;
     userId: string;
   }>
@@ -176,8 +188,8 @@ async function attachUsers(
     id: r.id,
     createdAt: r.createdAt.toISOString(),
     status: r.status,
-    modelUsed: r.modelUsed,
-    estimatedCost: r.estimatedCost,
+    modelUsed: r.model,
+    estimatedCost: r.estimatedCostUsd,
     errorMessage: r.errorMessage ? r.errorMessage.slice(0, 160) : null,
     userEmail: byId.get(r.userId)?.email ?? r.userId,
     userPlan: byId.get(r.userId)?.plan ?? "—",
@@ -198,10 +210,10 @@ export async function getAdminHealth(): Promise<AdminHealthData> {
       prisma.user.count(),
       prisma.project.count(),
       prisma.requirement.count(),
-      prisma.aiUsage.count(),
-      prisma.aiUsage.findFirst({ orderBy: { createdAt: "desc" }, select: { createdAt: true } }),
-      prisma.aiUsage.findFirst({ where: { status: "SUCCESS" }, orderBy: { createdAt: "desc" }, select: { createdAt: true } }),
-      prisma.aiUsage.findFirst({ where: { status: "FAILED" }, orderBy: { createdAt: "desc" }, select: { createdAt: true } }),
+      prisma.aiOperation.count(),
+      prisma.aiOperation.findFirst({ orderBy: { createdAt: "desc" }, select: { createdAt: true } }),
+      prisma.aiOperation.findFirst({ where: { status: "COMMITTED" }, orderBy: { createdAt: "desc" }, select: { createdAt: true } }),
+      prisma.aiOperation.findFirst({ where: { status: "FAILED" }, orderBy: { createdAt: "desc" }, select: { createdAt: true } }),
     ]);
     counts = { users, projects, requirements, aiUsage };
     lastAi = a?.createdAt ?? null;
@@ -223,8 +235,10 @@ export async function getAdminHealth(): Promise<AdminHealthData> {
 
   const todayFailed =
     db === "healthy"
-      ? await prisma.aiUsage.count({ where: { status: "FAILED", createdAt: { gte: startOfToday() } } }).catch(() => 0)
+      ? await prisma.aiOperation.count({ where: { status: "FAILED", createdAt: { gte: startOfToday() } } }).catch(() => 0)
       : 0;
+
+  const [models, credits] = await Promise.all([planModelMap(), planCreditMap()]);
 
   return {
     db,
@@ -235,13 +249,10 @@ export async function getAdminHealth(): Promise<AdminHealthData> {
     lastSuccess: iso(lastSuccess),
     lastFailed: iso(lastFailed),
     env,
-    // Model names are not secrets — safe to display.
-    models: { free: modelForPlan("FREE"), pro: modelForPlan("PRO"), enterprise: modelForPlan("ENTERPRISE") },
-    limits: {
-      free: PLANS.FREE.analysisLimit,
-      pro: PLANS.PRO.analysisLimit,
-      enterprise: PLANS.ENTERPRISE.analysisLimit,
-    },
+    // توجيه النموذج إعداد خادمي (لا يُعرض للعميل النهائي) — يظهر للأدمن فقط.
+    models: { free: models.FREE, pro: models.PRO, enterprise: models.ENTERPRISE },
+    // «الحدود» الآن = منحة النقاط الشهرية لكل خطة.
+    limits: { free: credits.FREE, pro: credits.PRO, enterprise: credits.ENTERPRISE },
     contact: { whatsapp: whatsappUpgradeLink() },
     maxPdfNote: "حجم PDF الأقصى ≈ 3.3MB (حد ثابت في /api/analyze)",
     checklist: [
@@ -291,42 +302,42 @@ export async function getAdminOverview(): Promise<AdminOverviewData> {
     prisma.user.count({ where: { createdAt: { gte: month } } }),
     prisma.project.count(),
     prisma.requirement.count(),
-    prisma.aiUsage.groupBy({ by: ["status"], _count: true }),
-    prisma.aiUsage.groupBy({ by: ["status"], _count: true, where: { createdAt: { gte: month } } }),
-    prisma.aiUsage.count({ where: { createdAt: { gte: today } } }),
-    prisma.aiUsage.aggregate({ _sum: { estimatedCost: true }, where: { createdAt: { gte: month } } }),
-    prisma.aiUsage.aggregate({ _sum: { estimatedCost: true }, where: { createdAt: { gte: today } } }),
-    prisma.aiUsage.groupBy({
-      by: ["modelUsed"],
+    prisma.aiOperation.groupBy({ by: ["status"], _count: true }),
+    prisma.aiOperation.groupBy({ by: ["status"], _count: true, where: { createdAt: { gte: month } } }),
+    prisma.aiOperation.count({ where: { createdAt: { gte: today } } }),
+    prisma.aiOperation.aggregate({ _sum: { estimatedCostUsd: true }, where: { createdAt: { gte: month } } }),
+    prisma.aiOperation.aggregate({ _sum: { estimatedCostUsd: true }, where: { createdAt: { gte: today } } }),
+    prisma.aiOperation.groupBy({
+      by: ["model"],
       _count: true,
-      _sum: { inputTokens: true, outputTokens: true, estimatedCost: true },
+      _sum: { promptTokens: true, completionTokens: true, estimatedCostUsd: true },
       where: { createdAt: { gte: month } },
     }),
-    prisma.user.groupBy({ by: ["plan"], _count: true, _avg: { analysisCount: true } }),
-    prisma.aiUsage.findMany({
+    prisma.user.groupBy({ by: ["plan"], _count: true, _avg: { aiCreditsUsed: true } }),
+    prisma.aiOperation.findMany({
       where: { createdAt: { gte: month } },
       distinct: ["userId"],
       select: { userId: true },
       take: 5000,
     }),
-    prisma.aiUsage.groupBy({
+    prisma.aiOperation.groupBy({
       by: ["userId"],
       _count: true,
-      _sum: { estimatedCost: true },
+      _sum: { estimatedCostUsd: true },
       where: { createdAt: { gte: month } },
       orderBy: { _count: { userId: "desc" } },
       take: 5,
     }),
-    prisma.aiUsage.findMany({
-      where: { status: { in: ["FAILED", "BLOCKED_LIMIT", "BLOCKED_SIZE", "BLOCKED_AUTH"] } },
+    prisma.aiOperation.findMany({
+      where: { status: { in: ["FAILED", "REJECTED"] } },
       orderBy: { createdAt: "desc" },
       take: 5,
-      select: { id: true, createdAt: true, status: true, modelUsed: true, estimatedCost: true, errorMessage: true, userId: true },
+      select: { id: true, createdAt: true, status: true, model: true, estimatedCostUsd: true, errorMessage: true, userId: true },
     }),
-    prisma.aiUsage.findMany({
+    prisma.aiOperation.findMany({
       orderBy: { createdAt: "desc" },
       take: 5,
-      select: { id: true, createdAt: true, status: true, modelUsed: true, estimatedCost: true, errorMessage: true, userId: true },
+      select: { id: true, createdAt: true, status: true, model: true, estimatedCostUsd: true, errorMessage: true, userId: true },
     }),
     getAdminHealth(),
   ]);
@@ -335,8 +346,8 @@ export async function getAdminOverview(): Promise<AdminOverviewData> {
   const mon = statusCounts(monthByStatus);
   const aiTotal = Object.values(all).reduce((a, b) => a + b, 0);
   const monthTotal = Object.values(mon).reduce((a, b) => a + b, 0);
-  const costMonthUsd = round2(monthCost._sum.estimatedCost ?? 0);
-  const costTodayUsd = round2(todayCost._sum.estimatedCost ?? 0);
+  const costMonthUsd = round2(monthCost._sum.estimatedCostUsd ?? 0);
+  const costTodayUsd = round2(todayCost._sum.estimatedCostUsd ?? 0);
 
   // Plans.
   const planCounts: Record<PlanId, number> = { FREE: 0, PRO: 0, ENTERPRISE: 0 };
@@ -344,36 +355,43 @@ export async function getAdminOverview(): Promise<AdminOverviewData> {
   for (const g of planGroups) {
     const id = getPlan(g.plan).id;
     planCounts[id] += g._count;
-    planAvg[id] = round2(g._avg.analysisCount ?? 0);
+    planAvg[id] = round2(g._avg.aiCreditsUsed ?? 0);
   }
   const paid = planCounts.PRO + planCounts.ENTERPRISE;
 
-  // Users at/near their FREE or PRO limit (server-side count queries only).
-  const [atFree, atPro, nearFree, nearPro] = await Promise.all([
-    prisma.user.count({ where: { plan: "FREE", limitOverride: false, analysisCount: { gte: PLANS.FREE.analysisLimit! } } }),
-    prisma.user.count({ where: { plan: "PRO", limitOverride: false, analysisCount: { gte: PLANS.PRO.analysisLimit! } } }),
-    prisma.user.count({
-      where: { plan: "FREE", limitOverride: false, analysisCount: { gte: Math.ceil(PLANS.FREE.analysisLimit! * 0.8), lt: PLANS.FREE.analysisLimit! } },
-    }),
-    prisma.user.count({
-      where: { plan: "PRO", limitOverride: false, analysisCount: { gte: Math.ceil(PLANS.PRO.analysisLimit! * 0.8), lt: PLANS.PRO.analysisLimit! } },
-    }),
+  // مستخدمون بلغوا/قاربوا رصيد نقاطهم — يقارَن aiCreditsUsed بمنحة المستخدم
+  // المخزّنة (aiCreditsGranted) عبر SQL خام (Prisma لا يقارن عمودين مباشرة).
+  const nearThreshold = 0.8;
+  const [atLimit, nearLimit] = await Promise.all([
+    prisma.$queryRaw<Array<{ n: bigint }>>`
+      SELECT COUNT(*)::bigint AS n FROM "User"
+      WHERE "aiCreditsGranted" > 0 AND "aiCreditsUsed" >= "aiCreditsGranted"`,
+    prisma.$queryRaw<Array<{ n: bigint }>>`
+      SELECT COUNT(*)::bigint AS n FROM "User"
+      WHERE "aiCreditsGranted" > 0
+        AND "aiCreditsUsed" >= CEIL("aiCreditsGranted" * ${nearThreshold})
+        AND "aiCreditsUsed" < "aiCreditsGranted"`,
   ]);
+  const atLimitCount = Number(atLimit[0]?.n ?? 0);
+  const nearLimitCount = Number(nearLimit[0]?.n ?? 0);
+  const creditsByPlan = await planCreditMap();
 
   // Finance (v1 estimates: PRO × 149 SAR; ENTERPRISE is manual/contact).
   const mrrSar = planCounts.PRO * PRO_PRICE_SAR;
   const aiCostMonthSar = round2(costMonthUsd * USD_TO_SAR);
-  const successMonth = mon.SUCCESS ?? 0;
+  const successMonth = mon.COMMITTED ?? 0;
 
-  // Cost per plan this month (join usage → user plan via the top-5000 active set is
-  // inaccurate; instead group cost by userId then bucket by plan for page users only
-  // would miss rows — so approximate per-plan cost by model routing, which maps 1:1).
-  const modelToPlan = new Map<string, PlanId>();
-  for (const id of PLAN_ORDER) modelToPlan.set(modelForPlan(id), id);
+  // تكلفة كل خطة هذا الشهر — مباشرة من عمود `plan` على AiOperation (v2.6: دقيق،
+  // لا استدلال من النموذج).
   const costByPlan: Record<PlanId, number> = { FREE: 0, PRO: 0, ENTERPRISE: 0 };
-  for (const m of byModelMonth) {
-    const planId = modelToPlan.get(m.modelUsed) ?? "FREE";
-    costByPlan[planId] = round2(costByPlan[planId] + (m._sum.estimatedCost ?? 0));
+  const planCostRows = await prisma.aiOperation.groupBy({
+    by: ["plan"],
+    _sum: { estimatedCostUsd: true },
+    where: { createdAt: { gte: month }, status: "COMMITTED" },
+  });
+  for (const row of planCostRows) {
+    const id = getPlan(row.plan).id;
+    costByPlan[id] = round2(costByPlan[id] + (row._sum.estimatedCostUsd ?? 0));
   }
 
   // Top consumers: enrich with user info + blocked counts + dominant model.
@@ -383,26 +401,26 @@ export async function getAdminOverview(): Promise<AdminOverviewData> {
       ? prisma.user.findMany({ where: { id: { in: topIds } }, select: { id: true, name: true, email: true, plan: true } })
       : Promise.resolve([]),
     topIds.length
-      ? prisma.aiUsage.groupBy({
+      ? prisma.aiOperation.groupBy({
           by: ["userId"],
           _count: true,
-          where: { userId: { in: topIds }, status: { in: ["BLOCKED_LIMIT", "BLOCKED_SIZE", "BLOCKED_AUTH"] }, createdAt: { gte: month } },
+          where: { userId: { in: topIds }, status: "REJECTED", createdAt: { gte: month } },
         })
       : Promise.resolve([] as Array<{ userId: string; _count: number }>),
     topIds.length
-      ? prisma.aiUsage.groupBy({
-          by: ["userId", "modelUsed"],
+      ? prisma.aiOperation.groupBy({
+          by: ["userId", "model"],
           _count: true,
           where: { userId: { in: topIds }, createdAt: { gte: month } },
         })
-      : Promise.resolve([] as Array<{ userId: string; modelUsed: string; _count: number }>),
+      : Promise.resolve([] as Array<{ userId: string; model: string; _count: number }>),
   ]);
   const userById = new Map(topUsers.map((u) => [u.id, u]));
   const blockedById = new Map(topBlocked.map((b) => [b.userId, b._count]));
   const topModelById = new Map<string, { model: string; n: number }>();
   for (const row of topModels) {
     const cur = topModelById.get(row.userId);
-    if (!cur || row._count > cur.n) topModelById.set(row.userId, { model: row.modelUsed, n: row._count });
+    if (!cur || row._count > cur.n) topModelById.set(row.userId, { model: row.model, n: row._count });
   }
   const topConsumers: TopConsumer[] = topRows.map((r) => {
     const u = userById.get(r.userId);
@@ -418,7 +436,7 @@ export async function getAdminOverview(): Promise<AdminOverviewData> {
       plan,
       analyses: r._count,
       blocked,
-      costUsd: round2(r._sum.estimatedCost ?? 0),
+      costUsd: round2(r._sum.estimatedCostUsd ?? 0),
       topModel: topModelById.get(r.userId)?.model ?? "—",
       note,
     };
@@ -442,8 +460,8 @@ export async function getAdminOverview(): Promise<AdminOverviewData> {
   const failedMonth = mon.FAILED ?? 0;
   if (failedMonth >= 3 || (monthTotal > 0 && failedMonth / monthTotal > 0.2))
     alerts.push({ severity: "warn", text: "ارتفاع في التحليلات الفاشلة هذا الشهر.", hint: "تحقق من Claude API (المفتاح، الرصيد، rate limits) أو حجم الملفات — تفاصيل في تبويب الأخطاء." });
-  if (atFree > 0)
-    alerts.push({ severity: "success", text: `${atFree} من مستخدمي الخطة المجانية وصلوا للحد — فرصة لتحويلهم إلى Pro.`, hint: "راجع تبويب المستخدمين ورقّ من تريد يدويًا." });
+  if (atLimitCount > 0)
+    alerts.push({ severity: "success", text: `${atLimitCount} مستخدمًا استنفدوا رصيد نقاطهم — فرصة لترقيتهم أو رفع الرصيد.`, hint: "راجع تبويب المستخدمين." });
   if (costMonthUsd >= 10)
     alerts.push({ severity: "warn", text: `استهلاك AI مرتفع هذا الشهر (≈ $${costMonthUsd}).`, hint: "راجع أكثر المستخدمين استهلاكًا في تبويب AI Usage." });
   if (aiTotal === 0)
@@ -463,11 +481,11 @@ export async function getAdminOverview(): Promise<AdminOverviewData> {
       totalProjects,
       totalRequirements,
       aiTotal,
-      aiSuccess: all.SUCCESS ?? 0,
+      aiSuccess: all.COMMITTED ?? 0,
       aiFailed: all.FAILED ?? 0,
-      aiBlockedLimit: all.BLOCKED_LIMIT ?? 0,
-      aiBlockedSize: all.BLOCKED_SIZE ?? 0,
-      aiBlockedAuth: all.BLOCKED_AUTH ?? 0,
+      aiBlockedLimit: all.REJECTED ?? 0,
+      aiBlockedSize: 0, // v2.6: رفض الحجم/المصادقة يُرفض قبل المحاسبة (لا يُسجَّل كعملية)
+      aiBlockedAuth: 0,
     },
     finance: {
       proUsers: planCounts.PRO,
@@ -485,17 +503,17 @@ export async function getAdminOverview(): Promise<AdminOverviewData> {
       requestsMonth: monthTotal,
       successMonth,
       failedMonth,
-      blockedLimitMonth: mon.BLOCKED_LIMIT ?? 0,
-      blockedSizeMonth: mon.BLOCKED_SIZE ?? 0,
+      blockedLimitMonth: mon.REJECTED ?? 0,
+      blockedSizeMonth: 0,
       costTodayUsd,
       costMonthUsd,
       byModel: byModelMonth
         .map((m) => ({
-          model: m.modelUsed,
+          model: m.model,
           requests: m._count,
-          inputTokens: m._sum.inputTokens ?? 0,
-          outputTokens: m._sum.outputTokens ?? 0,
-          costUsd: round2(m._sum.estimatedCost ?? 0),
+          inputTokens: m._sum.promptTokens ?? 0,
+          outputTokens: m._sum.completionTokens ?? 0,
+          costUsd: round2(m._sum.estimatedCostUsd ?? 0),
           pct: monthTotal > 0 ? Math.round((m._count / monthTotal) * 100) : 0,
         }))
         .sort((a, b) => b.requests - a.requests),
@@ -503,15 +521,15 @@ export async function getAdminOverview(): Promise<AdminOverviewData> {
     subscriptions: {
       counts: planCounts,
       freeToPaidPct: totalUsers > 0 ? Math.round((paid / totalUsers) * 100) : null,
-      atLimit: atFree + atPro,
-      nearLimit: nearFree + nearPro,
+      atLimit: atLimitCount,
+      nearLimit: nearLimitCount,
       perPlan: PLAN_ORDER.map((id) => {
         const revenueSar = id === "PRO" ? planCounts.PRO * PRO_PRICE_SAR : id === "FREE" ? 0 : null;
         return {
           plan: id,
           planName: PLANS[id].name,
           users: planCounts[id],
-          limit: PLANS[id].analysisLimit,
+          limit: creditsByPlan[id], // منحة النقاط الشهرية
           avgUsage: planAvg[id],
           revenueSar,
           aiCostUsd: costByPlan[id],

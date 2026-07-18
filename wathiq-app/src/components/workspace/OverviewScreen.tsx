@@ -23,10 +23,10 @@ export interface OverviewScreenProps {
 /* Compact plan + usage card for the dashboard. */
 function UsageCard({ usage }: { usage: UsageInfo }) {
   const plan = getPlan(usage.plan);
-  const limit = usage.analysisLimit; // null = unlimited
-  const used = usage.analysisCount;
+  const limit = usage.creditsGranted; // منحة النقاط الشهرية
+  const used = usage.creditsUsed;
   const pct = limit ? Math.min(100, Math.round((used / limit) * 100)) : 0;
-  const nearLimit = limit != null && used >= limit;
+  const nearLimit = limit > 0 && used >= limit;
   const canUpgrade = usage.plan !== "ENTERPRISE";
 
   return (
@@ -49,13 +49,9 @@ function UsageCard({ usage }: { usage: UsageInfo }) {
             <Badge tone={usage.plan === "FREE" ? "neutral" : "ai"}>{plan.tag}</Badge>
           </div>
           <div style={{ font: "12px/1.5 var(--font-sans)", color: "var(--text-muted)", marginTop: 4 }}>
-            {limit == null ? (
-              <>التحليلات: <b style={{ color: "var(--text-body)" }}>غير محدودة</b></>
-            ) : (
-              <>التحليلات المستخدمة: <b style={{ color: nearLimit ? "var(--red-600)" : "var(--text-body)" }}>{used}</b> من {limit}</>
-            )}
+            رصيد مساعد وثّق: <b style={{ color: nearLimit ? "var(--red-600)" : "var(--text-body)" }}>{used}</b> من {limit} نقطة
           </div>
-          {limit != null && (
+          {limit > 0 && (
             <div style={{ height: 7, borderRadius: 999, background: "var(--slate-150)", overflow: "hidden", marginTop: 8, maxWidth: 320 }}>
               <div style={{ width: `${pct}%`, height: "100%", borderRadius: 999, background: nearLimit ? "var(--red-500)" : "var(--teal-500)", transition: "width var(--dur-base)" }} />
             </div>
@@ -307,7 +303,7 @@ export function OverviewScreen({ onOpen, onNewAnalysis, onNewProject, onGoToRequ
 
   // First analysis not done yet → show the compact guidance strip.
   const hasAnalyzed =
-    (usage?.analysisCount ?? 0) > 0 ||
+    (usage?.creditsUsed ?? 0) > 0 ||
     requirements.some((r) => r.analysis != null || r.confidence != null);
 
   // ---- derived metrics ----

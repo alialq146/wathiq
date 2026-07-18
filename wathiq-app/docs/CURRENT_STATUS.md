@@ -117,6 +117,7 @@ npm run dev
 | الميزات ومساراتها | `docs/FEATURE_MAP.md` |
 | رحلات المستخدم | `docs/USER_JOURNEYS.md` |
 | مساعد الذكاء الاصطناعي | `docs/AI_ASSISTANT.md` |
+| محاسبة الذكاء (نقاط/امتيازات/سجل) | `docs/AI_ACCOUNTING.md` |
 | الإعدادات المركزية | `docs/ADMIN_SETTINGS.md` · `docs/SETTINGS.md` |
 | متغيّرات البيئة | `docs/ENVIRONMENT_VARIABLES.md` |
 | النشر | `docs/DEPLOYMENT.md` |

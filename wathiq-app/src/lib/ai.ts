@@ -159,12 +159,12 @@ export interface Analyzed<T> {
 }
 
 /** Shared analysis runner — sends the user content and parses the structured result. */
-async function runAnalysis(content: UserContent, model: string): Promise<Analyzed<AnalysisResult>> {
+async function runAnalysis(content: UserContent, model: string, maxTokens = 8000): Promise<Analyzed<AnalysisResult>> {
   const client = new Anthropic();
 
   const response = await client.messages.create({
     model,
-    max_tokens: 8000,
+    max_tokens: Math.max(500, Math.min(12000, Math.trunc(maxTokens))),
     system: SYSTEM_PROMPT,
     output_config: {
       format: { type: "json_schema", schema: ANALYSIS_SCHEMA },
@@ -183,15 +183,16 @@ async function runAnalysis(content: UserContent, model: string): Promise<Analyze
 }
 
 /** Analyze a pasted requirements document (plain text). */
-export async function analyzeDocument(text: string, model: string = DEFAULT_MODEL): Promise<Analyzed<AnalysisResult>> {
+export async function analyzeDocument(text: string, model: string = DEFAULT_MODEL, maxTokens?: number): Promise<Analyzed<AnalysisResult>> {
   return runAnalysis(
     `حلّل وثيقة المتطلبات التالية واستخرج منها المتطلبات بشكل منظّم:\n\n---\n${text}\n---`,
-    model
+    model,
+    maxTokens
   );
 }
 
 /** Analyze an uploaded requirements PDF (base64, no data-URL prefix). */
-export async function analyzePdf(base64: string, model: string = DEFAULT_MODEL): Promise<Analyzed<AnalysisResult>> {
+export async function analyzePdf(base64: string, model: string = DEFAULT_MODEL, maxTokens?: number): Promise<Analyzed<AnalysisResult>> {
   return runAnalysis(
     [
       {
@@ -203,7 +204,8 @@ export async function analyzePdf(base64: string, model: string = DEFAULT_MODEL):
         text: "حلّل وثيقة المتطلبات المرفقة (ملف PDF) واستخرج منها المتطلبات بشكل منظّم.",
       },
     ] as UserContent,
-    model
+    model,
+    maxTokens
   );
 }
 
@@ -500,12 +502,15 @@ export async function runAssistantTask(
   req: RequirementForAnalysis,
   task: AssistantTask,
   model: string = DEFAULT_MODEL,
-  maxTokensOverride?: number
+  maxTokensOverride?: number,
+  personaHint?: string
 ): Promise<Analyzed<AssistantTaskResult>> {
   const cfg = TASK_CONFIG[task];
   // v2.2: حد الرموز من إعدادات النظام إن مُرر (مقصوص أصلًا بالسقف الصلب
   // في settings service) — غيابه = السلوك التاريخي.
   const maxTokens = maxTokensOverride && maxTokensOverride >= 100 ? maxTokensOverride : cfg.maxTokens;
+  // v2.6: لمسة الشخصية (منظور التحليل) تُضاف لتعليمة النظام — لا تُكشف للعميل.
+  const system = personaHint ? `${BASE_RULES}\n${personaHint}` : BASE_RULES;
   const client = new Anthropic();
   // مدخلات المهام الخفيفة مقلصة عمدًا: العنوان والوصف والنوع والملاحظات فقط
   // (لا رقم ولا وحدة ولا أولوية ولا أصحاب مصلحة) — توفير رموز وحدّ من الإسهاب.
@@ -518,7 +523,7 @@ ${req.type ? `النوع: ${req.type}\n` : ""}${req.notes ? `ملاحظات: ${c
   const response = await client.messages.create({
     model,
     max_tokens: maxTokens,
-    system: BASE_RULES,
+    system,
     output_config: { format: { type: "json_schema", schema: cfg.schema } },
     messages: [{ role: "user", content: userText }],
   } as Anthropic.MessageCreateParamsNonStreaming);
@@ -556,9 +561,12 @@ export function clampAnalysis(a: RequirementAnalysis): RequirementAnalysis {
 /** Analyze a single requirement's quality and return a structured evaluation. */
 export async function analyzeRequirement(
   req: RequirementForAnalysis,
-  model: string = DEFAULT_MODEL
+  model: string = DEFAULT_MODEL,
+  opts?: { maxTokens?: number; personaHint?: string }
 ): Promise<Analyzed<RequirementAnalysis>> {
   const client = new Anthropic();
+  const maxTokens = opts?.maxTokens && opts.maxTokens >= 500 ? Math.min(12000, opts.maxTokens) : 3500;
+  const system = opts?.personaHint ? `${REQ_SYSTEM_PROMPT}\n${opts.personaHint}` : REQ_SYSTEM_PROMPT;
   const userText = `${req.contextBlock ? `${req.contextBlock}\n\n` : ""}قيّم جودة المتطلب التالي:
 
 الرقم: ${req.id}

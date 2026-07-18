@@ -13,7 +13,7 @@ import Link from "next/link";
 import { Icon } from "@/components/ds";
 import type { SystemSettingsShape, SettingsSection } from "@/lib/settings/types";
 
-type Ceilings = { analysisLimitMax: number; projectLimitMax: number; assistantTaskTokensMax: number; fullAnalysisTokensMax: number };
+type Ceilings = Record<string, number>;
 interface Meta { updatedAt: string | null; updatedByName: string | null; ceilings: Ceilings }
 
 const CATEGORIES: Array<{ key: string; icon: string; label: string; desc: string }> = [
@@ -23,7 +23,7 @@ const CATEGORIES: Array<{ key: string; icon: string; label: string; desc: string
   { key: "notifications", icon: "bell", label: "التذكيرات والإشعارات", desc: "أيام تذكير الاشتراك وقنواته ونصوصه." },
   { key: "documents", icon: "file-text", label: "الوثائق والتقارير", desc: "هوية المستند، أقسام BRD/SRS، النصوص والطباعة." },
   { key: "plans", icon: "gem", label: "الخطط والباقات", desc: "أسماء وأسعار وحدود الخطط (بسقوف صلبة)." },
-  { key: "assistant", icon: "sparkles", label: "مساعد وثّق", desc: "تفعيل المهام وحدودها — للأدمن فقط." },
+  { key: "ai", icon: "sparkles", label: "محاسبة الذكاء الاصطناعي", desc: "تكلفة المهام بالنقاط، المستويات، المهلة وإعادة المحاولة — للأدمن فقط." },
   { key: "features", icon: "toggle-right", label: "خصائص النظام", desc: "التسجيل، الصيانة، Demo، وتفعيل الوحدات." },
   { key: "readiness", icon: "target", label: "الجاهزية", desc: "مركز جاهزية المشروع والوثائق: الأوزان والعتبات والسياسات." },
   { key: "audit", icon: "history", label: "سجل التغييرات", desc: "من عدّل ماذا ومتى." },
@@ -70,6 +70,15 @@ function Num({ label, value, onChange, help, min = 0, max }: { label: string; va
       <label style={lbl}>{label}</label>
       <input type="number" value={value} min={min} max={max} onChange={(e) => onChange(Number(e.target.value))} style={{ ...inputStyle, direction: "ltr", textAlign: "left" }} />
       {help && <div style={{ font: "11.5px/1.6 var(--font-sans)", color: "var(--text-subtle)", marginTop: 5 }}>{help}</div>}
+    </div>
+  );
+}
+/** حقل رقم عشري (للمضاعِفات مثل 0.5 / 1.5 / 2). */
+function NumF({ label, value, onChange, min = 0, max }: { label: string; value: number; onChange: (v: number) => void; min?: number; max?: number }) {
+  return (
+    <div>
+      <label style={lbl}>{label}</label>
+      <input type="number" step="0.1" value={value} min={min} max={max} onChange={(e) => onChange(Number(e.target.value))} style={{ ...inputStyle, direction: "ltr", textAlign: "left" }} />
     </div>
   );
 }
@@ -183,7 +192,7 @@ export function SystemSettingsClient({ initial, meta }: { initial: SystemSetting
   /* ---------------- أقسام ---------------- */
 
   const g = settings.general, c = settings.contact, n = settings.notifications,
-        d = settings.documents, p = settings.plans, a = settings.assistant, f = settings.features,
+        d = settings.documents, p = settings.plans, a = settings.ai, f = settings.features,
         rd = settings.readiness;
 
   const renderGeneral = () => (
@@ -345,7 +354,7 @@ export function SystemSettingsClient({ initial, meta }: { initial: SystemSetting
     <>
       <Warn>
         رموز الخطط (FREE / PRO / ENTERPRISE) ثابتة ولا تتغير. الحدود تخضع لسقوف صلبة في الكود:
-        تحليلات ≤ {meta.ceilings.analysisLimitMax} · مشاريع ≤ {meta.ceilings.projectLimitMax}. limitOverride اليدوي للمستخدم يتقدم دائمًا.
+        نقاط شهرية ≤ {meta.ceilings.monthlyCreditsMax} · مشاريع ≤ {meta.ceilings.projectLimitMax}. تجاوز نقاط المستخدم اليدوي يتقدم دائمًا.
       </Warn>
       {(["FREE", "PRO", "ENTERPRISE"] as const).map((code) => {
         const pl = p[code];
@@ -364,9 +373,12 @@ export function SystemSettingsClient({ initial, meta }: { initial: SystemSetting
                 <Txt label="ملاحظة السعر" value={pl.priceNote} onChange={(v) => set({ priceNote: v })} />
                 <Txt label="السعر السنوي (اختياري)" value={pl.yearlyPrice} onChange={(v) => set({ yearlyPrice: v })} />
                 <Txt label="نص CTA (اختياري)" value={pl.ctaText} onChange={(v) => set({ ctaText: v })} />
-                <LimitField label="حد التحليلات الشهري" value={pl.analysisLimit} onChange={(v) => set({ analysisLimit: v })} max={meta.ceilings.analysisLimitMax} />
+                <Num label="النقاط الشهرية" value={pl.monthlyCredits} onChange={(v) => set({ monthlyCredits: v })} min={0} max={meta.ceilings.monthlyCreditsMax} />
                 <LimitField label="حد المشاريع" value={pl.projectLimit} onChange={(v) => set({ projectLimit: v })} max={meta.ceilings.projectLimitMax} />
+                <LimitField label="سقف يومي (اختياري)" value={pl.dailyCreditLimit} onChange={(v) => set({ dailyCreditLimit: v })} max={meta.ceilings.dailyCreditMax} />
+                <LimitField label="سقف العملية الواحدة (اختياري)" value={pl.perRequestCreditLimit} onChange={(v) => set({ perRequestCreditLimit: v })} max={meta.ceilings.perRequestCreditMax} />
               </div>
+              <Bool label="التحليل الشامل متاح" value={pl.fullAnalysisEnabled} onChange={(v) => set({ fullAnalysisEnabled: v })} />
               <Area label="الوصف" value={pl.desc} onChange={(v) => set({ desc: v })} rows={2} />
               <Area label="المزايا (سطر لكل ميزة)" value={pl.features.join("\n")} onChange={(v) => set({ features: v.split("\n").map((x) => x.trim()).filter(Boolean) })} rows={5} />
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", gap: 10, padding: "12px 14px", background: "var(--slate-50)", borderRadius: "var(--radius-md)", border: "1px solid var(--border-subtle)" }}>
@@ -384,49 +396,72 @@ export function SystemSettingsClient({ initial, meta }: { initial: SystemSetting
     </>
   );
 
-  const renderAssistant = () => (
+  const renderAi = () => (
     <>
       <Warn>
-        هذه الإعدادات للأدمن فقط ولا تظهر للعملاء. حدود الرموز تخضع لسقف صلب في الكود
-        ({meta.ceilings.assistantTaskTokensMax} للمهمة و{meta.ceilings.fullAnalysisTokensMax} للتحليل الكامل) — يمكن التخفيض، لا التجاوز.
+        محاسبة الذكاء الاصطناعي — للأدمن فقط ولا تظهر للعملاء. تكلفة العملية = نقاط
+        المهمة × مضاعِف المستوى. حدود الرموز والتكلفة تخضع لسقوف صلبة
+        (نقاط المهمة ≤ {meta.ceilings.taskCreditMax} · رموز ≤ {meta.ceilings.outputTokensMax}).
         لا تُعرض أسماء مزودين أو نماذج في أي واجهة عامة.
       </Warn>
+
+      {/* مهام الذكاء الاصطناعي — تكلفة النقاط وحد الرموز */}
       <div style={{ ...cardStyle, marginTop: 14 }}>
-        {secHeader("التفعيل حسب الخطة", "الحصة الذرية الشهرية تبقى كما هي — هذه بوابة إضافية فقط.")}
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", gap: 10 }}>
-          <Bool label="متاح للخطة المجانية" value={a.enabledForFree} onChange={(v) => patch("assistant", { enabledForFree: v })} />
-          <Bool label="متاح للاحترافية" value={a.enabledForPro} onChange={(v) => patch("assistant", { enabledForPro: v })} />
-          <Bool label="متاح للأعمال" value={a.enabledForEnterprise} onChange={(v) => patch("assistant", { enabledForEnterprise: v })} />
-        </div>
-        <div style={{ marginTop: 14, maxWidth: 320 }}>
-          <Num label="حد رموز التحليل الكامل" value={a.fullAnalysisMaxTokens} onChange={(v) => patch("assistant", { fullAnalysisMaxTokens: v })} min={1000} max={meta.ceilings.fullAnalysisTokensMax} />
-        </div>
-      </div>
-      {(Object.keys(a.tasks) as Array<keyof typeof a.tasks>).map((key) => {
-        const t = a.tasks[key];
-        const set = (partial: Partial<typeof t>) => patch("assistant", { tasks: { ...a.tasks, [key]: { ...t, ...partial } } });
-        return (
-          <div key={key} style={{ ...cardStyle, marginTop: 14 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
-              <span style={{ font: "var(--weight-bold) 14px var(--font-sans)", color: "var(--text-strong)" }}>{t.label}</span>
-              <span style={{ font: "11px var(--font-mono)", color: "var(--text-subtle)", direction: "ltr" }}>{key}</span>
-            </div>
-            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+        {secHeader("تكلفة المهام بالنقاط", "غيّر تكلفة كل مهمة وحد رموز مخرجاتها. المستخدم يرى النقاط فقط.")}
+        {(Object.keys(a.tasks) as Array<keyof typeof a.tasks>).map((key) => {
+          const t = a.tasks[key];
+          const set = (partial: Partial<typeof t>) => patch("ai", { tasks: { ...a.tasks, [key]: { ...t, ...partial } } });
+          return (
+            <div key={key} style={{ padding: "12px 0", borderBottom: "1px solid var(--border-subtle)" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
+                <span style={{ font: "var(--weight-bold) 13.5px var(--font-sans)", color: "var(--text-strong)" }}>{t.label}</span>
+                <span style={{ font: "11px var(--font-mono)", color: "var(--text-subtle)", direction: "ltr" }}>{key}</span>
+              </div>
               <div style={grid2} className="ss-grid2">
-                <Txt label="الاسم المعروض" value={t.label} onChange={(v) => set({ label: v })} />
-                <Num label="حد رموز المخرجات" value={t.maxOutputTokens} onChange={(v) => set({ maxOutputTokens: v })} min={100} max={meta.ceilings.assistantTaskTokensMax} />
+                <Num label="التكلفة (نقاط)" value={t.credits} onChange={(v) => set({ credits: v })} min={0} max={meta.ceilings.taskCreditMax} />
+                <Num label="حد رموز المخرجات" value={t.maxOutputTokens} onChange={(v) => set({ maxOutputTokens: v })} min={100} max={meta.ceilings.outputTokensMax} />
               </div>
-              <Txt label="الوصف المعروض" value={t.description} onChange={(v) => set({ description: v })} />
-              <div style={{ display: "flex", gap: 20, flexWrap: "wrap" }}>
-                <Bool label="مفعلة" value={t.enabled} onChange={(v) => set({ enabled: v })} />
-                <Bool label="تتطلب خطة مدفوعة" value={t.requiresPaidPlan} onChange={(v) => set({ requiresPaidPlan: v })} />
+              <div style={{ marginTop: 8 }}>
+                <Bool label="مفعّلة نظاميًا" value={t.enabled} onChange={(v) => set({ enabled: v })} />
               </div>
             </div>
-          </div>
-        );
-      })}
+          );
+        })}
+      </div>
+
+      {/* مستويات التحليل — المضاعِفات */}
       <div style={{ ...cardStyle, marginTop: 14 }}>
-        <SaveBar sec="assistant" sensitive="تغيير إعدادات مساعد وثّق يؤثر على المهام المتاحة للعملاء. متابعة الحفظ؟" />
+        {secHeader("مستويات التحليل", "مضاعِف التكلفة ومضاعِف الرموز لكل مستوى (سريع/احترافي/خبير).")}
+        {(Object.keys(a.levels) as Array<keyof typeof a.levels>).map((key) => {
+          const l = a.levels[key];
+          const set = (partial: Partial<typeof l>) => patch("ai", { levels: { ...a.levels, [key]: { ...l, ...partial } } });
+          return (
+            <div key={key} style={{ padding: "10px 0", borderBottom: "1px solid var(--border-subtle)" }}>
+              <div style={{ font: "var(--weight-semibold) 13px var(--font-sans)", color: "var(--text-strong)", marginBottom: 8 }}>{l.label} <span style={{ font: "11px var(--font-mono)", color: "var(--text-subtle)" }}>({key})</span></div>
+              <div style={grid2} className="ss-grid2">
+                <NumF label="مضاعِف التكلفة" value={l.multiplier} onChange={(v) => set({ multiplier: v })} max={meta.ceilings.levelMultiplierMax} />
+                <NumF label="مضاعِف الرموز" value={l.tokenMultiplier} onChange={(v) => set({ tokenMultiplier: v })} max={meta.ceilings.levelMultiplierMax} />
+                <Bool label="مفعّل" value={l.enabled} onChange={(v) => set({ enabled: v })} />
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* التشغيل — المهلة وإعادة المحاولة */}
+      <div style={{ ...cardStyle, marginTop: 14 }}>
+        {secHeader("تشغيل النموذج", "مهلة الطلب وعدد إعادات المحاولة. إعادة المحاولة لا تضاعف الخصم (Idempotency).")}
+        <div style={grid2} className="ss-grid2">
+          <Num label="المهلة (ملّي ثانية)" value={a.timeoutMs} onChange={(v) => patch("ai", { timeoutMs: v })} min={1000} max={meta.ceilings.aiTimeoutMsMax} />
+          <Num label="عدد إعادات المحاولة" value={a.retryCount} onChange={(v) => patch("ai", { retryCount: v })} min={0} max={meta.ceilings.aiRetryCountMax} />
+        </div>
+        <p style={{ font: "11.5px/1.7 var(--font-sans)", color: "var(--text-subtle)", margin: "10px 0 0" }}>
+          الشخصيات وتوجيه النماذج والمزوّدين وأسعار التكلفة تُدار كإعداد خادمي (تُحدَّث عبر الترحيل أو دفعة إعداد لاحقة) ولا تُعرض في أي واجهة عامة.
+        </p>
+      </div>
+
+      <div style={{ ...cardStyle, marginTop: 14 }}>
+        <SaveBar sec="ai" sensitive="تغيير محاسبة الذكاء الاصطناعي يؤثر على تكلفة النقاط لكل العملاء. متابعة الحفظ؟" />
       </div>
     </>
   );
@@ -615,7 +650,7 @@ export function SystemSettingsClient({ initial, meta }: { initial: SystemSetting
   const CONTENT: Record<string, () => React.ReactNode> = {
     general: renderGeneral, contact: renderContact, billing: renderBilling,
     notifications: renderNotifications, documents: renderDocuments, plans: renderPlans,
-    assistant: renderAssistant, features: renderFeatures, readiness: renderReadiness, audit: renderAudit,
+    ai: renderAi, features: renderFeatures, readiness: renderReadiness, audit: renderAudit,
   };
 
   return (

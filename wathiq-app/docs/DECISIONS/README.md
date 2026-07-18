@@ -17,3 +17,4 @@
 | [ADR-010](ADR-010-vercel-neon.md) | Vercel + Neon |
 | [ADR-011](ADR-011-ai-optional.md) | الذكاء الاصطناعي اختياري |
 | [ADR-012](ADR-012-deterministic-brd-srs.md) | BRD/SRS توليد حتمي (SRS اختياري) |
+| [ADR-013](ADR-013-ai-credit-accounting.md) | محاسبة الذكاء الاصطناعي بالنقاط (Credit Ledger + Idempotency) |

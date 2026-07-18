@@ -19,7 +19,7 @@ interface SubscriptionView {
   startDate: string; endDate: string; price: string; currency: string; autoRenew: boolean;
 }
 interface UsageView {
-  analysisCount: number; analysisLimit: number | null; resetDate: string | null;
+  creditsUsed: number; creditsGranted: number; creditsBalance: number; periodEnd: string | null;
   projectCount: number; projectLimit: number | null;
 }
 interface InvoiceRow {
@@ -138,7 +138,7 @@ export function BillingClient({
     showToast(res.ok ? "تم حفظ بيانات الفوترة بنجاح." : "تعذر الحفظ الآن. حاول مرة أخرى.");
   };
 
-  const usagePct = usage.analysisLimit ? Math.min(100, Math.round((usage.analysisCount / usage.analysisLimit) * 100)) : 0;
+  const usagePct = usage.creditsGranted > 0 ? Math.min(100, Math.round((usage.creditsUsed / usage.creditsGranted) * 100)) : 0;
   const usageTone = usagePct >= 100 ? "var(--red-500)" : usagePct >= 80 ? "var(--amber-500)" : "var(--teal-500)";
 
   const input = (key: keyof BillingProfileInput, label: string, placeholder: string, dir?: "ltr") => (
@@ -301,24 +301,22 @@ export function BillingClient({
         {/* ===== الاستخدام ===== */}
         <div className="bl-grid2" style={{ marginBottom: 16 }}>
           <div style={cardStyle}>
-            {secTitle("gauge", "تحليلات هذا الشهر")}
+            {secTitle("gauge", "رصيد مساعد وثّق هذا الشهر")}
             <div style={{ font: "var(--weight-bold) 26px/1 var(--font-sans)", color: "var(--text-strong)" }}>
-              {usage.analysisCount}
+              {usage.creditsUsed}
               <span style={{ font: "var(--weight-medium) 14px var(--font-sans)", color: "var(--text-subtle)" }}>
-                {" "}من {usage.analysisLimit ?? "غير محدود"}
+                {" "}من {usage.creditsGranted} نقطة
               </span>
             </div>
-            {usage.analysisLimit != null && (
-              <div style={{ height: 8, borderRadius: 999, background: "var(--slate-100)", overflow: "hidden", marginTop: 12 }}>
-                <div style={{ width: `${usagePct}%`, height: "100%", borderRadius: 999, background: usageTone }} />
-              </div>
-            )}
+            <div style={{ height: 8, borderRadius: 999, background: "var(--slate-100)", overflow: "hidden", marginTop: 12 }}>
+              <div style={{ width: `${usagePct}%`, height: "100%", borderRadius: 999, background: usageTone }} />
+            </div>
             <div style={{ font: "12px/1.6 var(--font-sans)", color: "var(--text-subtle)", marginTop: 10 }}>
               {usagePct >= 100
-                ? "وصلت إلى حد التحليلات في خطتك الحالية."
-                : usage.resetDate
-                  ? `يُعاد تعيين العدّاد بتاريخ ${fmtDate(usage.resetDate)}.`
-                  : "يُعاد تعيين العدّاد شهريًا."}
+                ? "استنفدت رصيد النقاط في خطتك الحالية."
+                : usage.periodEnd
+                  ? `يتجدد الرصيد بتاريخ ${fmtDate(usage.periodEnd)}. المتبقي ${usage.creditsBalance} نقطة.`
+                  : `المتبقي ${usage.creditsBalance} نقطة.`}
             </div>
           </div>
           <div style={cardStyle}>

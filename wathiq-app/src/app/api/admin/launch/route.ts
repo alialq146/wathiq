@@ -24,14 +24,14 @@ export async function GET() {
         prisma.project.count({ where: { createdAt: { gte: since } } }),
         // المتطلبات ليس لها createdAt — سجل التدقيق هو المصدر التاريخي الموثوق.
         prisma.auditEvent.count({ where: { action: "requirement_created", createdAt: { gte: since } } }),
-        prisma.aiUsage.groupBy({ by: ["status"], where: { createdAt: { gte: since } }, _count: { _all: true } }),
+        prisma.aiOperation.groupBy({ by: ["status"], where: { createdAt: { gte: since } }, _count: { _all: true } }),
         prisma.productEvent.count({ where: { eventName: "export_brd_created", createdAt: { gte: since } } }),
         prisma.productEvent.count({ where: { eventName: "export_srs_created", createdAt: { gte: since } } }),
         prisma.productEvent.count({ where: { eventName: "export_report_created", createdAt: { gte: since } } }),
-        prisma.aiUsage.count({ where: { status: "BLOCKED_LIMIT", createdAt: { gte: since } } }),
+        prisma.aiOperation.count({ where: { status: "REJECTED", createdAt: { gte: since } } }),
         prisma.productEvent.count({ where: { eventName: "upgrade_clicked", createdAt: { gte: since } } }),
         prisma.productEvent.groupBy({ by: ["userId"], where: { createdAt: { gte: since }, userId: { not: null } } }),
-        prisma.aiUsage.groupBy({ by: ["userId"], where: { createdAt: { gte: since } } }),
+        prisma.aiOperation.groupBy({ by: ["userId"], where: { createdAt: { gte: since } } }),
       ]);
 
     const aiByStatus = Object.fromEntries(ai.map((r) => [r.status, r._count._all]));
@@ -45,8 +45,8 @@ export async function GET() {
       activeUsers: activeIds.size,
       newProjects,
       newRequirements,
-      assistantRuns: (aiByStatus["SUCCESS"] ?? 0) + (aiByStatus["FAILED"] ?? 0),
-      assistantSuccess: aiByStatus["SUCCESS"] ?? 0,
+      assistantRuns: (aiByStatus["COMMITTED"] ?? 0) + (aiByStatus["FAILED"] ?? 0),
+      assistantSuccess: aiByStatus["COMMITTED"] ?? 0,
       assistantFailed: aiByStatus["FAILED"] ?? 0,
       quotaHits,
       upgradeClicks,
@@ -73,11 +73,11 @@ export async function GET() {
       orderBy: { _count: { id: "desc" } },
       take: 8,
     }),
-    prisma.aiUsage.findMany({
+    prisma.aiOperation.findMany({
       where: { status: "FAILED" },
       orderBy: { createdAt: "desc" },
       take: 5,
-      select: { id: true, userId: true, modelUsed: true, errorMessage: true, createdAt: true },
+      select: { id: true, userId: true, model: true, errorMessage: true, createdAt: true },
     }),
     prisma.productEvent.findMany({
       where: { eventName: "upgrade_clicked" },
@@ -91,7 +91,7 @@ export async function GET() {
   const [funnelProjects, funnelReqs, funnelAssistant, funnelExports] = await Promise.all([
     prisma.project.groupBy({ by: ["ownerId"], where: { createdAt: { gte: d30 } } }),
     prisma.auditEvent.groupBy({ by: ["ownerId"], where: { action: "requirement_created", createdAt: { gte: d30 }, ownerId: { not: null } } }),
-    prisma.aiUsage.groupBy({ by: ["userId"], where: { createdAt: { gte: d30 } } }),
+    prisma.aiOperation.groupBy({ by: ["userId"], where: { createdAt: { gte: d30 } } }),
     prisma.productEvent.groupBy({ by: ["userId"], where: { eventName: { startsWith: "export_" }, createdAt: { gte: d30 }, userId: { not: null } } }),
   ]);
 
@@ -141,7 +141,7 @@ export async function GET() {
     recentAiErrors: recentAiErrors.map((e) => ({
       id: e.id,
       email: emailOf.get(e.userId) ?? "",
-      modelUsed: e.modelUsed,
+      modelUsed: e.model,
       error: (e.errorMessage ?? "").slice(0, 120),
       createdAt: e.createdAt.toISOString(),
     })),

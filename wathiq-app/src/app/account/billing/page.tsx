@@ -3,7 +3,9 @@ import { prisma, hasDatabase } from "@/lib/db";
 import { getSessionUser } from "@/lib/session";
 import { isAccountActive } from "@/lib/account";
 import { getPlan } from "@/lib/plans";
-import { resolvedProjectLimitFor, resolvedAnalysisLimitFor, getContactSettings, getFeatureSettings } from "@/lib/settings";
+import { resolvedProjectLimitFor, getContactSettings, getFeatureSettings } from "@/lib/settings";
+import { resolveEntitlements } from "@/lib/entitlements";
+import { getCreditWallet } from "@/lib/ai-credits";
 import { toCustomerInvoiceSummary, getCurrentSubscription, syncSubscriptionStatuses } from "@/lib/billing";
 import { trackEvent } from "@/lib/track";
 import { BillingClient } from "./BillingClient";
@@ -34,7 +36,7 @@ export default async function BillingPage() {
   const [user, subscription, scheduled, history, invoices, profile, projectCount] = await Promise.all([
     prisma.user.findUnique({
       where: { id: session.uid },
-      select: { id: true, name: true, email: true, plan: true, analysisCount: true, analysisLimit: true, resetDate: true, limitOverride: true },
+      select: { id: true, name: true, email: true, plan: true, aiCreditsOverride: true },
     }),
     getCurrentSubscription(session.uid),
     prisma.subscription.findFirst({ where: { userId: session.uid, status: "SCHEDULED" }, orderBy: { startDate: "asc" } }),
@@ -57,7 +59,8 @@ export default async function BillingPage() {
 
   const plan = getPlan(user.plan);
   const contact = await getContactSettings();
-  const analysisLimit = user.limitOverride ? user.analysisLimit : await resolvedAnalysisLimitFor(user.plan);
+  const ent = await resolveEntitlements({ plan: user.plan, aiCreditsOverride: user.aiCreditsOverride });
+  const wallet = await getCreditWallet(user.id, ent.monthlyCredits, ent.dailyCreditLimit);
 
   // بطاقة الاشتراك الرئيسية: الحالي (ACTIVE) إن وُجد، وإلا آخر سجل ذي معنى
   // (منتهي/ملغي/موقوف) — كي يرى العميل المنتهي بطاقته وتنبيه التجديد كما في v2.0.
@@ -109,9 +112,10 @@ export default async function BillingPage() {
         invoiceId: invoices.find((inv) => inv.subscriptionId === h.id)?.id ?? null,
       }))}
       usage={{
-        analysisCount: user.analysisCount,
-        analysisLimit: analysisLimit ?? null,
-        resetDate: user.resetDate?.toISOString() ?? null,
+        creditsUsed: wallet?.used ?? 0,
+        creditsGranted: wallet?.granted ?? ent.monthlyCredits,
+        creditsBalance: wallet?.balance ?? ent.monthlyCredits,
+        periodEnd: wallet?.periodEnd ?? null,
         projectCount,
         projectLimit: await resolvedProjectLimitFor(user.plan),
       }}

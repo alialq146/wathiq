@@ -8,14 +8,26 @@
  *   User.plan داخل نفس المعاملة — لا تعارض ممكن بين الاثنين.
  * - عند انتهاء الاشتراك: يعود المستخدم إلى FREE (تتوقف مزايا الخطة المدفوعة
  *   فقط)، وكل بياناته (مشاريع/متطلبات/فواتير) تبقى كما هي.
- * - limitOverride للأدمن يتقدم دائمًا: التجديد لا يلمس analysisLimit إذا
+ * - v2.6: التفعيل/التجديد يمنح رصيد نقاط الخطة (aiCreditsGranted)؛ تجاوز
+ *   المستخدم (aiCreditsOverride) يتقدّم دائمًا. (سابقًا: limitOverride/analysisLimit)
  *   كان التجاوز اليدوي مفعّلًا.
  * - المبالغ Decimal في القاعدة وتُمرَّر للواجهة كنصوص مُنسّقة.
  */
 
 import { Prisma } from "@prisma/client";
 import { prisma } from "./db";
-import { resolvedAnalysisLimitFor, getNotificationSettings, reminderOffsets } from "@/lib/settings";
+import { getResolvedPlan, getNotificationSettings, reminderOffsets } from "@/lib/settings";
+
+/** منحة نقاط الذكاء لهذه الخطة (يتقدّم تجاوز المستخدم) — للمزامنة عند التفعيل/التجديد. */
+async function creditGrantFor(plan: string, override: number | null | undefined): Promise<number> {
+  if (typeof override === "number" && override >= 0) return override;
+  return (await getResolvedPlan(plan)).monthlyCredits;
+}
+function plusOneMonth(from: Date): Date {
+  const d = new Date(from);
+  d.setMonth(d.getMonth() + 1);
+  return d;
+}
 import { trackEvent } from "./track";
 
 export const SUBSCRIPTION_STATUSES = ["TRIAL", "SCHEDULED", "ACTIVE", "EXPIRED", "CANCELED", "SUSPENDED", "SUPERSEDED"] as const;
@@ -174,19 +186,30 @@ export async function syncSubscriptionStatuses(userId: string, now = new Date())
           data: { status: "SUPERSEDED", supersededAt: now, cancellationReason: "استُبدل تلقائيًا ببدء الاشتراك المجدول." },
         });
         await tx.subscription.update({ where: { id: activate.id }, data: { status: "ACTIVE" } });
-        const u = await tx.user.findUnique({ where: { id: userId }, select: { limitOverride: true } });
-        const data: Prisma.UserUpdateInput = { plan: activate.plan, subscriptionStatus: "ACTIVE" };
-        if (!u?.limitOverride) {
-          const lim = await resolvedAnalysisLimitFor(activate.plan);
-          data.analysisLimit = lim === null ? 999_999 : lim;
-        }
-        await tx.user.update({ where: { id: userId }, data });
+        const u = await tx.user.findUnique({ where: { id: userId }, select: { aiCreditsOverride: true } });
+        // بدء اشتراك مجدول = دورة نقاط جديدة (منحة الخطة + تصفير الاستهلاك).
+        const grant = await creditGrantFor(activate.plan, u?.aiCreditsOverride);
+        await tx.user.update({
+          where: { id: userId },
+          data: {
+            plan: activate.plan, subscriptionStatus: "ACTIVE",
+            aiCreditsGranted: grant, aiCreditsUsed: 0, aiCreditsPeriodEnd: plusOneMonth(now),
+          },
+        });
         await billingAudit(tx, { userId, entityType: "SUBSCRIPTION", entityId: activate.id, action: "SCHEDULED_ACTIVATED", metadata: { plan: activate.plan } });
       } else if (toExpire.length > 0) {
         // انتهت مدة نشط ولا يوجد مجدول يخلفه → عودة إلى FREE.
         const stillActive = await tx.subscription.count({ where: { userId, status: "ACTIVE" } });
         if (stillActive === 0) {
-          await tx.user.update({ where: { id: userId }, data: { plan: "FREE", subscriptionStatus: "INACTIVE" } });
+          const u = await tx.user.findUnique({ where: { id: userId }, select: { aiCreditsOverride: true } });
+          const grant = await creditGrantFor("FREE", u?.aiCreditsOverride);
+          await tx.user.update({
+            where: { id: userId },
+            data: {
+              plan: "FREE", subscriptionStatus: "INACTIVE",
+              aiCreditsGranted: grant, aiCreditsUsed: 0, aiCreditsPeriodEnd: plusOneMonth(now),
+            },
+          });
         }
       }
     });
@@ -264,7 +287,7 @@ export async function activateOrRenewSubscription(
 
   const user = await prisma.user.findUnique({
     where: { id: input.userId },
-    select: { id: true, name: true, email: true, plan: true, limitOverride: true },
+    select: { id: true, name: true, email: true, plan: true, aiCreditsOverride: true },
   });
   if (!user) return { ok: false, error: "user-not-found" };
 
@@ -385,15 +408,12 @@ export async function activateOrRenewSubscription(
       // 4) مزامنة User.plan — للاشتراك الفوري فقط (المجدول لا يغيّر الخطة الآن).
       if (startImmediate) {
         const userData: Prisma.UserUpdateInput = { plan: input.plan, subscriptionStatus: "ACTIVE" };
-        if (!user.limitOverride) {
-          const lim = await resolvedAnalysisLimitFor(input.plan);
-          userData.analysisLimit = lim === null ? 999_999 : lim;
-        }
+        // منح رصيد نقاط الخطة عند التفعيل الفوري؛ resetUsage يبدأ دورة نظيفة.
+        const grant = await creditGrantFor(input.plan, user.aiCreditsOverride);
+        userData.aiCreditsGranted = grant;
         if (input.resetUsage) {
-          userData.analysisCount = 0;
-          const next = new Date(input.startDate);
-          next.setMonth(next.getMonth() + 1);
-          userData.resetDate = next;
+          userData.aiCreditsUsed = 0;
+          userData.aiCreditsPeriodEnd = plusOneMonth(new Date(input.startDate));
         }
         await tx.user.update({ where: { id: user.id }, data: userData });
       }

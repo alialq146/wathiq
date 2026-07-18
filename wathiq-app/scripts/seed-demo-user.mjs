@@ -133,7 +133,6 @@ try {
     // حذف بيانات هذا الحساب فقط — لا يمس أي مستخدم آخر.
     const uid = existing.id;
     await prisma.$transaction([
-      prisma.aiUsage.deleteMany({ where: { userId: uid } }),
       prisma.auditEvent.deleteMany({ where: { ownerId: uid } }),
       prisma.acceptanceCriterion.deleteMany({ where: { ownerId: uid } }),
       prisma.openQuestion.deleteMany({ where: { ownerId: uid } }),
@@ -153,8 +152,8 @@ try {
       email: EMAIL,
       passwordHash: hashPassword(PASSWORD),
       plan: "PRO",
-      analysisLimit: 50,
-      analysisCount: 0,
+      aiCreditsGranted: 400,
+      aiCreditsUsed: 0,
       role: "USER",
       accountStatus: "ACTIVE",
       subscriptionStatus: "MANUAL",

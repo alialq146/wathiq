@@ -10,77 +10,64 @@ import {
 import { prisma, hasDatabase } from "@/lib/db";
 import { getSessionUser } from "@/lib/session";
 import { authEnabled } from "@/lib/auth";
-import { reserveQuota, releaseQuota, logAiUsage } from "@/lib/usage";
+import { runAiOperation } from "@/lib/ai-operation";
 import { trackEvent } from "@/lib/track";
-import { getFeatureSettings, getAssistantSettings, assistantTaskBudget, type AssistantTaskKey } from "@/lib/settings";
+import { getFeatureSettings } from "@/lib/settings";
+import type { AiLevelKey, AiPersonaKey, AiTaskKey } from "@/lib/settings";
 
 export const dynamic = "force-dynamic";
-// مهلة أطول لاستدعاءات الذكاء الاصطناعي — Fluid Compute يدعم حتى 300 ثانية.
 export const maxDuration = 300;
 
-const DEFAULT_MODEL = "claude-opus-4-8";
+const LIGHT_TASKS = ["improve", "criteria", "questions", "ambiguity", "risks"] as const;
+const LEVELS: AiLevelKey[] = ["quick", "standard", "expert"];
+const PERSONAS: AiPersonaKey[] = ["default", "ba", "consultant", "qa", "po", "tech"];
 
 export async function POST(req: Request) {
   if (!hasAnthropicKey()) return NextResponse.json({ ok: false, error: "no-key" });
   if (!hasDatabase()) return NextResponse.json({ ok: false, error: "no-db" });
 
-  // فحوصات مسبقة في الخادم: الجلسة، حد الخطة، النموذج، ثم ملكية المتطلب
-  // (findFirst مع ownerId) — لا يستطيع مستخدم تحليل متطلب لا يملكه.
-  let userId: string | null = null;
-  let model = DEFAULT_MODEL;
+  // الفاعل + هل يُحاسَب؟
+  let uid = "owner";
+  let metered = false;
   if (authEnabled()) {
     const user = await getSessionUser();
     if (!user) return NextResponse.json({ ok: false, error: "unauthorized" });
-    if (user.uid !== "owner") {
-      // حجز ذري قبل أي استدعاء للنموذج — طلبات متوازية لا تتجاوز الحد،
-      // ومن لا يجد حصة لا يصل إلى الذكاء الاصطناعي إطلاقًا.
-      const r = await reserveQuota(user.uid);
-      if (!r.ok && r.reason === "unauthorized") {
-        // جلسة لمستخدم غير موجود أو معطَّل تُرفض.
-        return NextResponse.json({ ok: false, error: "unauthorized" });
-      }
-      model = r.model;
-      if (!r.ok) {
-        await logAiUsage({ userId: user.uid, modelUsed: model, status: "BLOCKED_LIMIT" });
-        await trackEvent({ eventName: "quota_limit_reached", userId: user.uid });
-        return NextResponse.json({ ok: false, error: "limit", limit: r.limit });
-      }
-      userId = user.uid;
-    }
+    uid = user.uid;
+    metered = user.uid !== "owner";
   }
-  // من هنا فصاعدًا: أي خروج قبل نجاح النموذج يعيد الحجز (الفشل لا يُحاسَب).
-  const bail = async (payload: Record<string, unknown>) => {
-    if (userId) await releaseQuota(userId);
-    return NextResponse.json(payload);
-  };
 
-  let body: { id?: unknown; task?: unknown };
+  // مفتاح الإيقاف العام للمساعد (بوابة نظام قبل أي محاسبة).
+  const feats = await getFeatureSettings();
+  if (!feats.assistantEnabled) return NextResponse.json({ ok: false, error: "assistant-disabled" });
+
+  let body: { id?: unknown; task?: unknown; level?: unknown; persona?: unknown; idempotencyKey?: unknown };
   try {
     body = await req.json();
   } catch {
-    return bail({ ok: false, error: "bad-request" });
+    return NextResponse.json({ ok: false, error: "bad-request" });
   }
   const id = typeof body.id === "string" ? body.id : "";
-  if (!id) return bail({ ok: false, error: "missing-id" });
-  // مهمة المساعد: "full" (افتراضي) = تحليل شامل يُحفظ؛ غيرها مهام خفيفة
-  // مركزة ترجع نتيجتها للمستخدم ليقرر تطبيقها — أوفر في الرموز والتكلفة.
-  const LIGHT_TASKS = ["improve", "criteria", "questions", "ambiguity", "risks"] as const;
-  const task =
+  if (!id) return NextResponse.json({ ok: false, error: "missing-id" });
+
+  const task: AssistantTask | "full" =
     typeof body.task === "string" && (LIGHT_TASKS as readonly string[]).includes(body.task)
       ? (body.task as AssistantTask)
       : "full";
+  const taskKey: AiTaskKey = task === "full" ? "full" : (task as AiTaskKey);
+  const level: AiLevelKey = LEVELS.includes(body.level as AiLevelKey) ? (body.level as AiLevelKey) : "standard";
+  const persona: AiPersonaKey = PERSONAS.includes(body.persona as AiPersonaKey) ? (body.persona as AiPersonaKey) : "default";
+  const idem = typeof body.idempotencyKey === "string" && body.idempotencyKey.trim() ? body.idempotencyKey.trim().slice(0, 80) : "";
+  if (metered && !idem) return NextResponse.json({ ok: false, error: "missing-idempotency-key" });
 
-  // Load the requirement (scoped to the user in accounts mode).
-  const where = userId ? { id, ownerId: userId } : { id };
+  // تحميل المتطلب مُنطّقًا بالملكية (لا تحليل لمتطلب لا يملكه المستخدم) — قبل أي حجز.
+  const where = metered ? { id, ownerId: uid } : { id };
   const reqRow = await prisma.requirement.findFirst({ where });
-  if (!reqRow) return bail({ ok: false, error: "not-found" });
+  if (!reqRow) return NextResponse.json({ ok: false, error: "not-found" });
 
-  // سياق المشروع والوحدة (v1.9.9): يُبنى من صفوف مملوكة لنفس المستخدم فقط —
-  // اختياري بالكامل؛ غيابه يمرر سطرَي «لم يتم تحديده بعد» ولا يفشل التحليل.
   const [projRow, modRow] = await Promise.all([
     reqRow.projectId
       ? prisma.project.findFirst({
-          where: { id: reqRow.projectId, ...(userId ? { ownerId: userId } : {}) },
+          where: { id: reqRow.projectId, ...(metered ? { ownerId: uid } : {}) },
           select: {
             projectIdea: true, projectGoal: true, targetUsers: true, projectScope: true,
             outOfScope: true, relatedSystems: true, constraints: true,
@@ -89,7 +76,7 @@ export async function POST(req: Request) {
       : Promise.resolve(null),
     reqRow.moduleId
       ? prisma.projectModule.findFirst({
-          where: { id: reqRow.moduleId, ...(userId ? { ownerId: userId } : {}) },
+          where: { id: reqRow.moduleId, ...(metered ? { ownerId: uid } : {}) },
           select: { name: true, description: true },
         })
       : Promise.resolve(null),
@@ -107,163 +94,77 @@ export async function POST(req: Request) {
     contextBlock: buildContextBlock(projRow, modRow),
   };
 
-  // حدث منتج (v1.9.11): بدء مهمة — metadata خفيفة (اسم المهمة فقط).
-  await trackEvent({ eventName: "assistant_task_started", userId, projectId: reqRow.projectId, requirementId: id, metadata: { task } });
+  const trackUid = metered ? uid : null;
+  await trackEvent({ eventName: "assistant_task_started", userId: trackUid, projectId: reqRow.projectId, requirementId: id, metadata: { task, level } });
 
-  // مسار المهام الخفيفة: نفس الفحوصات والتسجيل، لكن بدون حفظ في المتطلب —
-  // النتيجة ترجع للواجهة والمستخدم يقرر اعتمادها.
-  if (task !== "full") {
-    // v2.2: بوابات مساعد وثّق من إعدادات النظام — الرفض خادمي دائمًا:
-    // 1) المساعد كوحدة مفعّل؟ 2) الخطة مسموح لها؟ 3) المهمة مفعّلة؟
-    // 4) تتطلب خطة مدفوعة؟ حد الرموز مقصوص بالسقف الصلب في settings service.
-    const [feats, assistantCfg, taskBudget] = await Promise.all([
-      getFeatureSettings(),
-      getAssistantSettings(),
-      assistantTaskBudget(task as AssistantTaskKey),
-    ]);
-    if (!feats.assistantEnabled) return bail({ ok: false, error: "assistant-disabled" });
-    if (!taskBudget.enabled) return bail({ ok: false, error: "task-disabled" });
-    if (userId) {
-      const u = await prisma.user.findUnique({ where: { id: userId }, select: { plan: true } });
-      const plan = u?.plan ?? "FREE";
-      const planAllowed =
-        plan === "PRO" ? assistantCfg.enabledForPro
-        : plan === "ENTERPRISE" ? assistantCfg.enabledForEnterprise
-        : assistantCfg.enabledForFree;
-      if (!planAllowed) return bail({ ok: false, error: "assistant-plan-disabled" });
-      if (taskBudget.requiresPaidPlan && plan === "FREE") {
-        return bail({ ok: false, error: "task-requires-paid" });
+  const outcome = await runAiOperation<unknown>({
+    uid,
+    metered,
+    taskKey,
+    level,
+    persona,
+    idempotencyKey: idem || `open-${Date.now()}`,
+    ids: { projectId: reqRow.projectId, requirementId: id },
+    execute: async (ctx) => {
+      if (task !== "full") {
+        const { result, meta } = await runAssistantTask(reqInput, task, ctx.model, ctx.maxOutputTokens, ctx.personaHint);
+        return { result: { task, result }, promptTokens: meta.inputTokens, completionTokens: meta.outputTokens, model: meta.model };
       }
+      // التحليل الشامل: نفّذ ثم احفظ داخل نفس التنفيذ — فشل الحفظ يعيد النقاط.
+      const { result: analysis, meta } = await analyzeRequirement(reqInput, ctx.model, {
+        maxTokens: ctx.maxOutputTokens,
+        personaHint: ctx.personaHint,
+      });
+      const to = reqRow.stakeholders[0] ?? "أصحاب المصلحة";
+      const criteriaRows = analysis.acceptanceCriteria.map((text, i) => ({
+        id: `AC-${randomUUID().slice(0, 8)}`, ownerId: reqRow.ownerId, projectId: reqRow.projectId,
+        requirementId: id, text, done: false, ai: true, order: i,
+      }));
+      const questionRows = analysis.stakeholderQuestions.map((text, i) => ({
+        id: `Q-${randomUUID().slice(0, 8)}`, ownerId: reqRow.ownerId, projectId: reqRow.projectId,
+        requirementId: id, text, to, ai: true, answer: null, order: i,
+      }));
+      await prisma.$transaction(
+        async (tx) => {
+          // يُعاد توليد الصفوف المولّدة بالذكاء فقط (ai:true)؛ اليدوية (ai:false) محفوظة.
+          await tx.acceptanceCriterion.deleteMany({ where: { requirementId: id, ai: true } });
+          await tx.openQuestion.deleteMany({ where: { requirementId: id, ai: true } });
+          if (criteriaRows.length) await tx.acceptanceCriterion.createMany({ data: criteriaRows });
+          if (questionRows.length) await tx.openQuestion.createMany({ data: questionRows });
+          const criteriaCount = await tx.acceptanceCriterion.count({ where: { requirementId: id } });
+          const questionCount = await tx.openQuestion.count({ where: { requirementId: id } });
+          await tx.requirement.update({
+            where: { id },
+            data: {
+              analysis: analysis as object,
+              confidence: Math.max(0, Math.min(100, Math.round(analysis.qualityScore))),
+              criteria: criteriaCount,
+              openQuestions: questionCount,
+            },
+          });
+          await tx.auditEvent.create({
+            data: {
+              ownerId: reqRow.ownerId, projectId: reqRow.projectId, requirementId: id,
+              action: "requirement_analyzed",
+              detail: `تحليل جودة المتطلب «${reqRow.title}» — الدرجة ${analysis.qualityScore}٪.`,
+              actor: "وثّق",
+            },
+          });
+        },
+        { maxWait: 10_000, timeout: 30_000 }
+      );
+      return { result: { analysis }, promptTokens: meta.inputTokens, completionTokens: meta.outputTokens, model: meta.model };
+    },
+  });
+
+  if (!outcome.ok) {
+    if (outcome.error !== "duplicate") {
+      await trackEvent({ eventName: "assistant_task_failed", userId: trackUid, projectId: reqRow.projectId, requirementId: id, metadata: { task, reason: outcome.error } });
     }
-    try {
-      const { result, meta } = await runAssistantTask(reqInput, task, model, taskBudget.maxTokens);
-      // الحصة محجوزة مسبقًا (حجز ذري) — يكفي تسجيل النجاح.
-      if (userId) {
-        await logAiUsage({
-          userId,
-          projectId: reqRow.projectId,
-          requirementId: id,
-          modelUsed: meta.model,
-          inputTokens: meta.inputTokens,
-          outputTokens: meta.outputTokens,
-          status: "SUCCESS",
-        });
-      }
-      await trackEvent({ eventName: "assistant_task_succeeded", userId, projectId: reqRow.projectId, requirementId: id, metadata: { task } });
-      return NextResponse.json({ ok: true, task, result });
-    } catch (err) {
-      console.error("[/api/analyze-requirement task]", err);
-      if (userId) {
-        await releaseQuota(userId); // الفشل لا يستهلك الحصة
-        await logAiUsage({
-          userId,
-          projectId: reqRow.projectId,
-          requirementId: id,
-          modelUsed: model,
-          status: "FAILED",
-          errorMessage: String(err).slice(0, 300),
-        });
-      }
-      await trackEvent({ eventName: "assistant_task_failed", userId, projectId: reqRow.projectId, requirementId: id, metadata: { task } });
-      return NextResponse.json({ ok: false, error: "failed" });
-    }
+    return NextResponse.json({ ok: false, error: outcome.error });
   }
 
-  try {
-    const { result: analysis, meta } = await analyzeRequirement(reqInput, model);
-
-    // Persist: store the rich analysis, set confidence, and regenerate the
-    // AI-authored criteria + questions (preserving any manual ones).
-    // ملاحظة أداء مهمة: على قاعدة سحابية (Neon) كل استعلام يمر عبر الشبكة،
-    // ومهلة معاملة Prisma الافتراضية ٥ ثوانٍ فقط — لذلك نستخدم createMany
-    // (استعلامين بدل حلقة إنشاء لكل صف) ونرفع مهلة المعاملة صراحة.
-    const to = reqRow.stakeholders[0] ?? "أصحاب المصلحة";
-    const criteriaRows = analysis.acceptanceCriteria.map((text, i) => ({
-      id: `AC-${randomUUID().slice(0, 8)}`,
-      ownerId: reqRow.ownerId,
-      projectId: reqRow.projectId,
-      requirementId: id,
-      text,
-      done: false,
-      ai: true,
-      order: i,
-    }));
-    const questionRows = analysis.stakeholderQuestions.map((text, i) => ({
-      id: `Q-${randomUUID().slice(0, 8)}`,
-      ownerId: reqRow.ownerId,
-      projectId: reqRow.projectId,
-      requirementId: id,
-      text,
-      to,
-      ai: true,
-      answer: null,
-      order: i,
-    }));
-
-    await prisma.$transaction(
-      async (tx) => {
-        await tx.acceptanceCriterion.deleteMany({ where: { requirementId: id, ai: true } });
-        await tx.openQuestion.deleteMany({ where: { requirementId: id, ai: true } });
-        if (criteriaRows.length) await tx.acceptanceCriterion.createMany({ data: criteriaRows });
-        if (questionRows.length) await tx.openQuestion.createMany({ data: questionRows });
-
-        const criteriaCount = await tx.acceptanceCriterion.count({ where: { requirementId: id } });
-        const questionCount = await tx.openQuestion.count({ where: { requirementId: id } });
-
-        await tx.requirement.update({
-          where: { id },
-          data: {
-            analysis: analysis as object,
-            confidence: Math.max(0, Math.min(100, Math.round(analysis.qualityScore))),
-            criteria: criteriaCount,
-            openQuestions: questionCount,
-          },
-        });
-
-        await tx.auditEvent.create({
-          data: {
-            ownerId: reqRow.ownerId,
-            projectId: reqRow.projectId,
-            requirementId: id,
-            action: "requirement_analyzed",
-            detail: `تحليل جودة المتطلب «${reqRow.title}» — الدرجة ${analysis.qualityScore}٪.`,
-            actor: "وثّق",
-          },
-        });
-      },
-      // maxWait: انتظار الحصول على اتصال؛ timeout: عمر المعاملة نفسها.
-      { maxWait: 10_000, timeout: 30_000 }
-    );
-
-    // الحصة محجوزة مسبقًا (حجز ذري) — يكفي تسجيل النجاح.
-    if (userId) {
-      await logAiUsage({
-        userId,
-        projectId: reqRow.projectId,
-        requirementId: id,
-        modelUsed: meta.model,
-        inputTokens: meta.inputTokens,
-        outputTokens: meta.outputTokens,
-        status: "SUCCESS",
-      });
-    }
-
-    await trackEvent({ eventName: "assistant_task_succeeded", userId, projectId: reqRow.projectId, requirementId: id, metadata: { task: "full" } });
-    return NextResponse.json({ ok: true, analysis });
-  } catch (err) {
-    console.error("[/api/analyze-requirement]", err);
-    if (userId) {
-      await releaseQuota(userId); // الفشل لا يستهلك الحصة
-      await logAiUsage({
-        userId,
-        projectId: reqRow.projectId,
-        requirementId: id,
-        modelUsed: model,
-        status: "FAILED",
-        errorMessage: String(err).slice(0, 300),
-      });
-    }
-    await trackEvent({ eventName: "assistant_task_failed", userId, projectId: reqRow.projectId, requirementId: id, metadata: { task: "full" } });
-    return NextResponse.json({ ok: false, error: "failed" });
-  }
+  await trackEvent({ eventName: "assistant_task_succeeded", userId: trackUid, projectId: reqRow.projectId, requirementId: id, metadata: { task, level } });
+  const payload = outcome.result as { task?: string; result?: unknown; analysis?: unknown };
+  return NextResponse.json({ ok: true, ...payload, credits: outcome.credits, balance: outcome.balance });
 }
