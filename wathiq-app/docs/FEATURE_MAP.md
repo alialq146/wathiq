@@ -65,6 +65,8 @@ Main entry: `/` → `src/app/page.tsx` renders `WorkspaceClient` (signed in) or
 
 ## Readiness Center
 
+> المرجع الكامل: [`docs/READINESS.md`](./READINESS.md) — المحرّك، المحاور، بوابة التصدير، و«الإجراء التالي» (الترتيب بالأثر).
+
 | Feature | Route / action | Key files | Notes |
 |---------|----------------|-----------|-------|
 | Project readiness | (SA) `getProjectReadiness` | `actions.ts`, `lib/readiness.ts`, `workspace/ReadinessScreen.tsx` | Pure engine, 7 weighted axes, no AI/no credits; FREE = summary-only (plan-trimmed server-side) |

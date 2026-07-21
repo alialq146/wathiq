@@ -17,6 +17,7 @@
 | قاعدة البيانات | `wathiq-app/docs/DATABASE_SCHEMA.md` |
 | الصلاحيات والعزل (حسّاس) | `wathiq-app/docs/ACCESS_CONTROL.md` |
 | قواعد العمل المفروضة | `wathiq-app/docs/BUSINESS_RULES.md` |
+| مركز جاهزية المشروع والوثائق | `wathiq-app/docs/READINESS.md` |
 | الأمان | `wathiq-app/docs/SECURITY.md` |
 | التشغيل/النشر | `wathiq-app/docs/OPERATIONS.md` · `DEPLOYMENT.md` |
 | الميزات القادمة والجاهزية | `wathiq-app/docs/ROADMAP.md` |

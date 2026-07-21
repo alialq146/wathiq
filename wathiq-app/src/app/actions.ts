@@ -1078,7 +1078,7 @@ export async function getProjectReadiness(
   const cfg = await getReadinessCfg();
   if (!cfg.enabled) return { ok: false, error: "feature-disabled" };
 
-  const result = await calculateProjectReadiness(projectId, actor.uid, { snapshot: opts.recalculate === true });
+  const result = await calculateProjectReadiness(projectId, actor.uid, { snapshot: opts.recalculate === true, withActions: true });
   if (!result) return { ok: false, error: "not-found" };
 
   await trackEvent({

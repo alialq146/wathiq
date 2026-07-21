@@ -15,6 +15,7 @@ import { prisma } from "./db";
 import { Prisma } from "@prisma/client";
 import { getReadinessSettings, getSystemSettings } from "@/lib/settings";
 import type { ReadinessSettings, DocumentApplicability } from "@/lib/settings/types";
+import { arReqCount } from "@/lib/arabic";
 
 /* ---------------- الأنواع ---------------- */
 
@@ -73,6 +74,26 @@ export interface RequirementsSummary {
   openQuestions: number;
 }
 
+/**
+ * إجراء مُرتَّب بالأثر — «ماذا يفعل المستخدم الآن». يُشتق من الملاحظات القائمة
+ * بمحاكاة «ماذا لو أُصلح هذا» وإعادة حساب الدرجة. `scoreGain`/`estimated` للترتيب
+ * الداخلي فقط؛ الواجهة تعرض `directive` + زرًا ينقل إلى `fixAction`.
+ */
+export interface RankedAction {
+  code: string;
+  severity: IssueSeverity;
+  /** جملة أمر قصيرة تُعرض للمستخدم (ماذا يفعل الآن). */
+  directive: string;
+  /** هدف تنقّل رمزي تفهمه مساحة العمل (requirements | context | requirement:<id>). */
+  fixAction: string;
+  /** مقدار ارتفاع الدرجة العامة عند التنفيذ — للترتيب الداخلي، لا يُعرض. */
+  scoreGain: number;
+  /** أثر تقديري (يعتمد على تحليل لاحق) لا دقيق — للترتيب فقط. */
+  estimated: boolean;
+  /** إن أصبح تصدير وثيقة مطلوبة ممكنًا بعد التنفيذ (سياسة block_critical). */
+  unlocksExport: "BRD" | "SRS" | null;
+}
+
 export interface ReadinessResult {
   overallScore: number;
   overallStatus: ReadinessStatus;
@@ -83,6 +104,8 @@ export interface ReadinessResult {
   counts: { critical: number; important: number; optional: number };
   documents: { brd: DocReadiness | null; srs: DocReadiness | null };
   requirementsSummary: RequirementsSummary;
+  /** الإجراءات الأعلى أثرًا — تُحسب في المسار الخادمي عند الطلب فقط (v2.7). */
+  topActions?: RankedAction[];
   calculatedAt: string;
   calculationVersion: number;
 }
@@ -513,6 +536,199 @@ export function computeReadiness(input: ReadinessInput, s: ReadinessSettings, no
   };
 }
 
+/* ---------------- الترتيب بالأثر: «ماذا يفعل المستخدم الآن» ---------------- */
+
+/** نسخة سطحية كافية للمحاكاة (المُحلِّلات تعدّل حقول المشروع/المتطلبات فقط). */
+function cloneInput(input: ReadinessInput): ReadinessInput {
+  return {
+    project: input.project ? { ...input.project } : null,
+    requirements: input.requirements.map((r) => ({ ...r, stakeholders: [...r.stakeholders] })),
+    openQuestionsUnanswered: input.openQuestionsUnanswered,
+  };
+}
+
+/** حقول السياق النصية فقط (تُستثنى حقول قابلية الوثائق). */
+type ContextFieldKey =
+  | "description" | "projectGoal" | "projectScope" | "outOfScope" | "targetUsers"
+  | "client" | "projectIdea" | "relatedSystems" | "constraints";
+
+/** ربط كود ملاحظة السياق بحقل المشروع المقابل (الأكواد مُولَّدة في المحور 1). */
+const CONTEXT_FIELD_BY_CODE: Record<string, ContextFieldKey> = {
+  "context_missing_الوصف": "description",
+  "context_missing_الهدف العام": "projectGoal",
+  "context_missing_النطاق": "projectScope",
+  "context_missing_خارج النطاق": "outOfScope",
+  "context_missing_المستخدمون المستهدفون": "targetUsers",
+  "context_missing_الجهة / العميل": "client",
+  "context_missing_فكرة المشروع": "projectIdea",
+  "context_missing_الأنظمة المرتبطة": "relatedSystems",
+  "context_missing_القيود": "constraints",
+};
+
+/** أكواد تُعالَج بإجراء واحد — تُدمج بعد الترتيب لتفادي تكرار البطاقات. */
+const ACTION_GROUP: Record<string, string> = {
+  without_criteria: "criteria",
+  critical_without_criteria: "criteria",
+};
+
+const FILL = "—مُكمَّل—";
+const FILL_LONG = "وصف تفصيلي كافٍ للمتطلب (محاكاة تقدير الأثر فقط).";
+
+/** يُنتج مدخلًا مُحاكى «كأنّ هذه الملاحظة عولجت»، أو null إن تعذّرت محاكاتها. */
+function simulateFix(input: ReadinessInput, issue: ReadinessIssue, s: ReadinessSettings): ReadinessInput | null {
+  if (issue.code === "no_requirements") return null;
+  const inp = cloneInput(input);
+  const p = inp.project;
+  const reqs = inp.requirements;
+  const minCrit = Math.max(1, s.minCriteriaPerRequirement);
+
+  if (issue.code.startsWith("context_missing_")) {
+    if (!p) return null;
+    const key = CONTEXT_FIELD_BY_CODE[issue.code];
+    if (!key) return null;
+    p[key] = FILL;
+    return inp;
+  }
+
+  switch (issue.code) {
+    case "weak_descriptions":
+      for (const r of reqs) if (r.description.trim().length < 20) r.description = FILL_LONG;
+      return inp;
+    case "missing_type":
+      for (const r of reqs) if (!filled(r.type)) r.type = "وظيفي";
+      return inp;
+    case "no_stakeholders":
+      for (const r of reqs) if (r.stakeholders.length === 0) r.stakeholders = ["صاحب مصلحة"];
+      return inp;
+    case "no_sources":
+      for (const r of reqs) if (!filled(r.source)) r.source = "مصدر";
+      return inp;
+    case "not_analyzed":
+    case "low_quality": {
+      // تقديري: تغطية كاملة بمتوسط الجودة الحالي (أو الحد الأدنى إن لا تحليل بعد).
+      const done = reqs.filter((r) => r.qualityScore != null);
+      const avg = done.length ? done.reduce((a, r) => a + (r.qualityScore ?? 0), 0) / done.length : s.minQualityScore;
+      const target = Math.max(s.minQualityScore, Math.round(avg));
+      for (const r of reqs) {
+        if (r.qualityScore == null) r.qualityScore = target;
+        else if (r.qualityScore < s.minQualityScore) r.qualityScore = s.minQualityScore;
+      }
+      return inp;
+    }
+    case "without_criteria":
+    case "critical_without_criteria":
+      for (const r of reqs) if (r.criteriaCount < minCrit) r.criteriaCount = minCrit;
+      return inp;
+    case "blocked_requirements":
+      for (const r of reqs) if (r.status === "blocked") r.status = "review";
+      return inp;
+    case "needs_info":
+      for (const r of reqs) if (r.status === "needs_info") r.status = "review";
+      return inp;
+    case "many_drafts":
+    case "approved_below_min":
+      for (const r of reqs) if (r.status === "draft") r.status = "approved";
+      return inp;
+    case "open_questions":
+      inp.openQuestionsUnanswered = 0;
+      return inp;
+    case "brd_data_missing":
+    case "srs_data_missing": {
+      if (p) for (const k of ["description", "projectGoal", "projectScope", "client", "targetUsers"] as const) {
+        if (!filled(p[k])) p[k] = FILL;
+      }
+      for (const r of reqs) {
+        if (r.stakeholders.length === 0) r.stakeholders = ["صاحب مصلحة"];
+        if (r.criteriaCount < 1) r.criteriaCount = 1;
+        if (!filled(r.type)) r.type = "وظيفي";
+      }
+      return inp;
+    }
+    default:
+      return null;
+  }
+}
+
+/** جملة أمر قصيرة (ماذا يفعل الآن) — تُفضَّل على وصف الملاحظة التقني. */
+function directiveFor(issue: ReadinessIssue): string {
+  const n = issue.count;
+  switch (issue.code) {
+    case "without_criteria":
+    case "critical_without_criteria": return `أضف معايير القبول إلى ${arReqCount(n)}`;
+    case "open_questions": return `أجب عن ${n} من الأسئلة المفتوحة`;
+    case "needs_info": return `استكمل معلومات ${arReqCount(n)}`;
+    case "blocked_requirements": return `عالج المتطلبات المحظورة (${n})`;
+    case "many_drafts": return `اعتمد ${arReqCount(n)} من المسودات`;
+    case "approved_below_min": return "اعتمد مزيدًا من المتطلبات";
+    case "weak_descriptions": return `فصّل وصف ${arReqCount(n)}`;
+    case "not_analyzed": return `حلّل جودة ${arReqCount(n)}`;
+    case "low_quality": return `حسّن صياغة ${arReqCount(n)}`;
+    case "no_stakeholders": return "أضف أصحاب المصلحة للمتطلبات";
+    case "no_sources": return "وثّق مصادر المتطلبات";
+    case "missing_type": return `حدّد نوع ${arReqCount(n)}`;
+    case "no_requirements": return "أضف أول متطلبات المشروع";
+    default: return issue.title; // السياق وبيانات الوثائق: العنوان واضح بذاته
+  }
+}
+
+function exportUnlocked(before: ReadinessResult, after: ReadinessResult, doc: "BRD" | "SRS"): boolean {
+  const b = doc === "BRD" ? before.documents.brd : before.documents.srs;
+  const a = doc === "BRD" ? after.documents.brd : after.documents.srs;
+  if (!b || !a) return false;
+  return b.applicability === "REQUIRED" && b.criticalCount > 0 && a.criticalCount === 0;
+}
+
+/**
+ * يرتّب الملاحظات القابلة للتنفيذ حسب أثرها الفعلي على الجاهزية — نقيّ بالكامل:
+ * لكل ملاحظة يُحاكى «كأنها عولجت» ثم يُعاد حساب الدرجة. الترتيب: يفتح تصديرًا ←
+ * الأعلى رفعًا للدرجة ← الأشد خطورة. تُدمج الأكواد المتشابهة في إجراء واحد.
+ */
+export function rankActionsByImpact(input: ReadinessInput, s: ReadinessSettings, base?: ReadinessResult): RankedAction[] {
+  const b = base ?? computeReadiness(input, s);
+  const seen = new Set<string>();
+  const actions: RankedAction[] = [];
+  for (const issue of b.issues) {
+    if (!issue.fixAction || seen.has(issue.code)) continue;
+    seen.add(issue.code);
+    const sim = simulateFix(input, issue, s);
+    let scoreGain = 0;
+    let unlocks: "BRD" | "SRS" | null = null;
+    if (sim) {
+      const after = computeReadiness(sim, s);
+      scoreGain = Math.max(0, after.overallScore - b.overallScore);
+      if (s.exportPolicy === "block_critical") {
+        unlocks = exportUnlocked(b, after, "BRD") ? "BRD" : exportUnlocked(b, after, "SRS") ? "SRS" : null;
+      }
+    }
+    actions.push({
+      code: issue.code,
+      severity: issue.severity,
+      directive: directiveFor(issue),
+      fixAction: issue.fixAction,
+      scoreGain,
+      estimated: issue.code === "not_analyzed" || issue.code === "low_quality",
+      unlocksExport: unlocks,
+    });
+  }
+
+  // الترتيب: يفتح تصديرًا ← الأشد خطورة (الحاجب أولًا) ← الأعلى رفعًا للدرجة.
+  const sevRank: Record<IssueSeverity, number> = { critical: 0, important: 1, optional: 2 };
+  actions.sort((a, z) =>
+    (a.unlocksExport ? 0 : 1) - (z.unlocksExport ? 0 : 1) ||
+    sevRank[a.severity] - sevRank[z.severity] ||
+    z.scoreGain - a.scoreGain
+  );
+
+  // دمج الأكواد المتشابهة (مثل معايير القبول) — نُبقي الأعلى ترتيبًا فقط.
+  const usedGroups = new Set<string>();
+  return actions.filter((a) => {
+    const g = ACTION_GROUP[a.code] ?? a.code;
+    if (usedGroups.has(g)) return false;
+    usedGroups.add(g);
+    return true;
+  });
+}
+
 /* ---------------- الغلاف الخادمي: جلب البيانات + لقطة ---------------- */
 
 /**
@@ -524,7 +740,7 @@ export function computeReadiness(input: ReadinessInput, s: ReadinessSettings, no
 export async function calculateProjectReadiness(
   projectId: string,
   ownerId: string,
-  opts: { snapshot?: boolean } = {}
+  opts: { snapshot?: boolean; withActions?: boolean } = {}
 ): Promise<ReadinessResult | null> {
   const settings = await getReadinessSettings();
 
@@ -587,6 +803,9 @@ export async function calculateProjectReadiness(
   };
 
   const result = computeReadiness(input, settings);
+
+  // الإجراءات الأعلى أثرًا — تُحسب عند الطلب فقط (مسار الشاشة)، لا في مسار التصدير.
+  if (opts.withActions) result.topActions = rankActionsByImpact(input, settings, result);
 
   // لقطة تاريخية خفيفة — لا تُكتب مع كل فتح صفحة.
   try {

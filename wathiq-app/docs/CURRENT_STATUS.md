@@ -116,6 +116,7 @@ npm run dev
 | قواعد العمل المفروضة | `docs/BUSINESS_RULES.md` |
 | الميزات ومساراتها | `docs/FEATURE_MAP.md` |
 | رحلات المستخدم | `docs/USER_JOURNEYS.md` |
+| مركز جاهزية المشروع والوثائق | `docs/READINESS.md` |
 | مساعد الذكاء الاصطناعي | `docs/AI_ASSISTANT.md` |
 | محاسبة الذكاء (نقاط/امتيازات/سجل) | `docs/AI_ACCOUNTING.md` |
 | الإعدادات المركزية | `docs/ADMIN_SETTINGS.md` · `docs/SETTINGS.md` |

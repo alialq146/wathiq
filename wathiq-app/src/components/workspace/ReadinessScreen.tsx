@@ -176,6 +176,44 @@ export function ReadinessScreen({
         </div>
       </div>
 
+      {/* الإجراء التالي — «ماذا تفعل الآن»: خفيف وحاسم، بلا نسب ولا تفاصيل تقنية */}
+      {r.topActions && r.topActions.length > 0 && (
+        <div style={card}>
+          <h2 style={{ font: "var(--weight-bold) 15px var(--font-sans)", color: "var(--text-strong)", margin: "0 0 12px" }}>الإجراء التالي</h2>
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            {r.topActions.slice(0, 3).map((a, idx) => {
+              const primary = idx === 0;
+              const dot = primary ? "var(--green-600)" : "var(--amber-600)";
+              return (
+                <div key={a.code} style={{ display: "flex", alignItems: "center", gap: 11, flexWrap: "wrap", padding: "11px 14px", borderRadius: "var(--radius-lg)", border: `1px solid ${primary ? "var(--border-default)" : "var(--border-subtle)"}`, background: primary ? "var(--surface-card)" : "transparent" }}>
+                  <span aria-hidden style={{ width: 9, height: 9, borderRadius: 999, background: dot, flexShrink: 0 }} />
+                  <span style={{ flex: 1, minWidth: 140, font: `var(--weight-${primary ? "semibold" : "medium"}) 13.5px/1.5 var(--font-sans)`, color: "var(--text-strong)" }}>
+                    {a.directive}
+                  </span>
+                  {a.unlocksExport && (
+                    <span style={{ padding: "3px 10px", borderRadius: 999, background: "var(--teal-50)", color: "var(--teal-700)", font: "var(--weight-semibold) 11px var(--font-sans)", whiteSpace: "nowrap" }}>
+                      يفتح تصدير {a.unlocksExport}
+                    </span>
+                  )}
+                  <button
+                    onClick={() => onFix(a.fixAction)}
+                    style={{
+                      flexShrink: 0, height: 34, padding: "0 16px", borderRadius: "var(--radius-pill)", cursor: "pointer", whiteSpace: "nowrap",
+                      border: primary ? "none" : "1px solid var(--border-default)",
+                      background: primary ? "var(--primary)" : "var(--surface-card)",
+                      color: primary ? "#fff" : "var(--blue-600)",
+                      font: "var(--weight-semibold) 12.5px var(--font-sans)",
+                    }}
+                  >
+                    {primary ? "ابدأ الآن" : "انتقل"}
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       {data.limited && (
         <div style={{ ...card, display: "flex", gap: 10, alignItems: "flex-start", background: "var(--blue-50)", border: "1px solid var(--border-subtle)" }}>
           <Icon name="gem" size={16} color="var(--blue-600)" style={{ marginTop: 2 }} />
