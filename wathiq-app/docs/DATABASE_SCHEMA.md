@@ -16,7 +16,7 @@ Implications a new engineer must internalize:
 |--------|-------------|
 | **Ownership scoping** | Enforced **entirely in the application layer**. Every query must filter by `ownerId`/`userId` (e.g. `prisma.requirement.findFirst({ where: { id, ownerId: userId } })` in `src/app/api/analyze-requirement/route.ts`). The database will happily return another user's rows if you forget the filter. |
 | **No cascades** | The DB performs **no** `ON DELETE CASCADE`. Deleting a `User`/`Project` does **not** delete its children. |
-| **Orphan rows possible** | Deleting a user can leave orphaned `Requirement`/`Invoice`/`AiUsage` rows. **This is intentional** — it favors auditability/history retention and keeps writes simple. Cleanup, if ever needed, is an explicit app-layer job. |
+| **Orphan rows possible** | Deleting a user can leave orphaned `Requirement`/`Invoice`/`AiOperation`/`AiLedgerEntry` rows. **This is intentional** — it favors auditability/history retention and keeps writes simple. Cleanup, if ever needed, is an explicit app-layer job. |
 | **Referential integrity** | Not guaranteed by the DB — a `Requirement.projectId` may point to a non-existent `Project`. Code tolerates this (`projectId`, `ownerId` are frequently nullable). |
 | **Joins** | Done manually in code (e.g. `Promise.all` of separate `findFirst` calls), not via Prisma `include`. |
 
@@ -40,15 +40,18 @@ Purpose: a registered account (passwords stored as scrypt hashes, never plain).
 | `id` | cuid PK |
 | `email` | `@unique` |
 | `passwordHash` | scrypt hash |
-| `plan` | `FREE \| PRO \| ENTERPRISE` (default `FREE`) — **source of truth for quota & model routing** |
-| `analysisCount`, `analysisLimit` | monthly counter + cap (default limit 3) |
-| `resetDate` | when the monthly counter resets (nullable) |
+| `plan` | `FREE \| PRO \| ENTERPRISE` (default `FREE`) — **source of truth for credit grant & model routing** |
+| `aiCreditsGranted`, `aiCreditsUsed` | AI credit wallet: this period's grant (snapshot) + credits used. Balance = granted − used |
+| `aiCreditsPeriodEnd` | when the monthly grant resets (nullable = never granted yet) |
+| `aiCreditsDayUsed`, `aiCreditsDayEnd` | optional daily-window usage + reset time |
+| `aiCreditsOverride` | admin per-user monthly grant override (nullable = plan default) |
 | `subscriptionStatus` | `ACTIVE \| INACTIVE \| TRIALING \| CANCELED \| MANUAL` |
 | `role` | `USER \| ADMIN \| SUPER_ADMIN` — never self-assigned (set via `scripts/make-admin.mjs`) |
-| `accountStatus` | `ACTIVE \| DISABLED` (disabled users get no quota) |
-| `limitOverride` | when true, `analysisLimit` is an admin-set custom cap that overrides plan defaults |
+| `accountStatus` | `ACTIVE \| DISABLED` (disabled users get no AI credits) |
 
 Indexes: none beyond the unique `email`.
+
+> **AI credit accounting (v2.6)** adds two tables — `AiOperation` (idempotency anchor + rich per-request audit; status `RESERVED → COMMITTED \| REFUNDED \| FAILED \| REJECTED`) and `AiLedgerEntry` (append-only credit ledger; the User wallet counters are a materialized view of it). The old `AiUsage` table was removed. Full field lists are the single source of truth in `docs/AI_ACCOUNTING.md` (§2) and `docs/DECISIONS/ADR-013-ai-credit-accounting.md`.
 
 ### `PasswordResetToken`
 Purpose: رمز استعادة كلمة المرور — hash only, valid 60 min, single-use (`usedAt`). The raw token is never stored or logged.
@@ -60,13 +63,21 @@ Indexes: `@@index([userId])`, `@@index([expiresAt])`.
 
 ## AI — الذكاء الاصطناعي
 
-### `AiUsage`
-Purpose: one row per AI analysis attempt (success or blocked) for cost/usage monitoring.
+### `AiOperation`
+Purpose: one row per logical AI operation — the **idempotency anchor** and rich, admin-reviewable record of every AI request (accounting + history). Replaces the removed `AiUsage` table.
 
-Key fields: `userId`, `projectId?`, `requirementId?`, `documentId?`, `modelUsed`, `inputTokens?`, `outputTokens?`, `estimatedCost?`, `status` (`SUCCESS \| FAILED \| BLOCKED_LIMIT \| BLOCKED_AUTH \| BLOCKED_SIZE`), `errorMessage?`.
-Indexes: `@@index([userId])`, `[projectId]`, `[requirementId]`, `[createdAt]`, and composite `@@index([status, createdAt])` (v2.4 — for counting blocks/errors over a time range in the cockpit).
+Key fields: `idempotencyKey @unique`, `userId`, `plan`, `projectId?`, `requirementId?`, `documentId?`, `taskKey`, `level`, `persona`, `provider`, `model`, `creditsReserved`/`creditsCommitted`/`creditsRefunded`, `promptTokens?`, `completionTokens?`, `estimatedCostUsd?`, `executionMs?`, `status` (`RESERVED \| COMMITTED \| REFUNDED \| FAILED \| REJECTED`), `errorMessage?`, `retryOfId?`, `startedAt`, `endedAt?`.
+Indexes: composite `@@index` on `[userId, createdAt]`, `[status, createdAt]`, `[taskKey, createdAt]`, `[plan, createdAt]`, plus `[projectId]`, `[requirementId]`.
 
 Token/cost columns are nullable when the provider omits usage.
+
+### `AiLedgerEntry`
+Purpose: **append-only** credit ledger — the immutable accounting source of truth. One row per credit movement; the `User` wallet counters are a materialized view of it. Never updated, never deleted.
+
+Key fields: `operationId`, `userId`, `entryType` (`RESERVE \| COMMIT \| REFUND`), `credits`, `balanceUsed` (point-in-time snapshot), `reason?`.
+Indexes: `@@index([operationId])`, `[userId, createdAt]`, `[entryType, createdAt]`.
+
+Full model in `docs/AI_ACCOUNTING.md` (§2) and `docs/DECISIONS/ADR-013-ai-credit-accounting.md`.
 
 ---
 
@@ -122,7 +133,7 @@ Key fields: `userId?`, `eventName`, `plan?`, `projectId?`, `requirementId?`, `me
 
 ## Billing & Subscriptions — الفوترة والاشتراكات (v2.0/v2.1)
 
-Design principle: `User.plan` stays the source of truth for quota/routing; `Subscription` is the financial/temporal record. Activation/renewal updates `User.plan` inside the same atomic transaction.
+Design principle: `User.plan` stays the source of truth for credit grant/routing; `Subscription` is the financial/temporal record. Activation/renewal updates `User.plan` inside the same atomic transaction.
 
 ### `Subscription`
 Purpose: a historical subscription record — **each period is its own row, never overwritten**. "Current subscription" is computed (latest `ACTIVE` row covering today), not stored.

@@ -16,8 +16,8 @@ Persistence is a **single row** `SystemSettings` with `id @default("singleton")`
 | `contact` | WhatsApp/email/phone, business hours, upgrade/renewal message + CTA text, show-toggles | `ContactSettings` |
 | `notifications` | Subscription reminder days (30/14/7/3/1/expiry) + enable flags, in-app/email toggles, admin alerts, custom texts | `NotificationSettings` |
 | `documents` | BRD/SRS section toggles, print options (A4), issuer/classification/version/disclosure text | `DocumentSettings` |
-| `plans` | Per-plan (FREE/PRO/ENTERPRISE) display + limits (`analysisLimit`, `projectLimit`, features, visibility) | `PlanSettings` |
-| `assistant` | Wathiq-assistant enablement per plan, full-analysis token budget, per-task config (`enabled`, `maxOutputTokens`, `requiresPaidPlan`) | `AssistantSettings` |
+| `plans` | Per-plan (FREE/PRO/ENTERPRISE) display + AI entitlements (`monthlyCredits`, `dailyCreditLimit`, `perRequestCreditLimit`, `fullAnalysisEnabled`, `allowedTasks/Levels/Personas`), `projectLimit`, features, visibility | `PlanSettings` (`PlanDisplaySettings`) |
+| `ai` | AI accounting & runtime (v2.6): per-task credit cost + token cap (`credits`, `maxOutputTokens`, `enabled`), level multipliers, personas, model routing/fallback, cost rates, timeout/retries, reservation-reaper timeout/batch | `AiSettings` |
 | `features` | Feature flags (public registration, maintenance mode, demo, feedback, samples, assistant, export, billing, billing emails, future collaboration/comments) | `FeatureSettings` |
 | `readiness` | Project/document readiness (v2.3): weights (sum = 100), thresholds, policies, per-plan access, default BRD/SRS applicability | `ReadinessSettings` |
 
@@ -32,7 +32,7 @@ The stored value is a **partial** (`Partial`). On read, `readMerged()` (`setting
 - Missing row, missing field, or a DB read failure ⇒ **the exact historical default behavior** — this is the migration strategy: **no seed required, no automatic behavior change**.
 - The merge only accepts keys that exist in the defaults and match the default's type (unknown keys ignored, arrays replaced whole, type-mismatches dropped). Defaults themselves are the golden "matches pre-v2.2 behavior verbatim" baseline.
 
-`src/lib/settings/index.ts` is the **only** read/write entry point — no component reads the DB directly. Consume per-section getters server-side (`getContactSettings()`, `getAssistantSettings()`, …) and pass down via props; never fetch sensitive settings from the client.
+`src/lib/settings/index.ts` is the **only** read/write entry point — no component reads the DB directly. Consume per-section getters server-side (`getContactSettings()`, `getAiSettings()`, …) and pass down via props; never fetch sensitive settings from the client.
 
 ---
 
@@ -49,14 +49,17 @@ On save, `updateSystemSettings()` calls **`invalidateSettingsCache()`**: the wri
 
 ## Server-side hard ceilings — السقوف الصلبة
 
-`HARD_CEILINGS` (`settings/defaults.ts`) — the system can **lower** limits, never **raise** them past these. Enforced at **both** save (validation/normalizers) and read (`getResolvedPlan`, `assistantTaskBudget`) time:
+`HARD_CEILINGS` (`settings/defaults.ts`) — the system can **lower** limits, never **raise** them past these. Enforced at **both** save (validation/normalizers) and read (`getResolvedPlan`, `getResolvedAiSettings`) time:
 
 | Ceiling | Value |
 |---------|-------|
-| `analysisLimitMax` | 1000 |
 | `projectLimitMax` | 500 |
-| `assistantTaskTokensMax` | 1500 |
-| `fullAnalysisTokensMax` | 12000 |
+| `monthlyCreditsMax` / `dailyCreditMax` | 1,000,000 |
+| `perRequestCreditMax` | 5000 |
+| `taskCreditMax` | 1000 |
+| `levelMultiplierMax` | 10 |
+| `outputTokensMax` | 12000 |
+| `reservationTimeoutMinutesMax` / `reservationCleanupBatchSizeMax` | 1440 / 1000 |
 | `reminderDaysMax` | 60 |
 | `textMax` / `longTextMax` | 1000 / 4000 |
 
@@ -91,7 +94,7 @@ Two settings are deliberately **AND-ed** with an env master gate — the setting
 - `features.billingEmailsEnabled` **AND** `BILLING_EMAIL_ENABLED` (env) → billing emails.
 - `notifications.emailRemindersEnabled` is likewise subordinate to the `BILLING_EMAIL_ENABLED` master gate.
 
-Also kept **in code, not as settings**: ownership checks, the `SUPER_ADMIN` guard, atomic quota reservation, plan codes (FREE/PRO/ENTERPRISE), AI instructions/schemas (quality logic), the anti-hallucination phrasing (customizable text but the safe default lives in code and is never accepted empty), the hard ceilings, and error codes.
+Also kept **in code, not as settings**: ownership checks, the `SUPER_ADMIN` guard, atomic credit reservation, plan codes (FREE/PRO/ENTERPRISE), AI instructions/schemas (quality logic), the anti-hallucination phrasing (customizable text but the safe default lives in code and is never accepted empty), the hard ceilings, and error codes.
 
 ---
 

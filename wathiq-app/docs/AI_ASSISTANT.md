@@ -1,6 +1,6 @@
 # مساعد وثّق الذكي — The AI Assistant
 
-How Wathiq uses the AI provider. Sources: [`src/lib/ai.ts`](../src/lib/ai.ts), [`src/lib/analysis-types.ts`](../src/lib/analysis-types.ts), [`src/lib/usage.ts`](../src/lib/usage.ts), [`src/app/api/analyze/route.ts`](../src/app/api/analyze/route.ts), [`src/app/api/analyze-requirement/route.ts`](../src/app/api/analyze-requirement/route.ts).
+How Wathiq uses the AI provider. Sources: [`src/lib/ai.ts`](../src/lib/ai.ts), [`src/lib/analysis-types.ts`](../src/lib/analysis-types.ts), [`src/lib/ai-operation.ts`](../src/lib/ai-operation.ts), [`src/lib/ai-runtime.ts`](../src/lib/ai-runtime.ts), [`src/app/api/analyze/route.ts`](../src/app/api/analyze/route.ts), [`src/app/api/analyze-requirement/route.ts`](../src/app/api/analyze-requirement/route.ts). Credit accounting: `docs/AI_ACCOUNTING.md`.
 
 > **Naming convention:** in this document the model is referred to generically as **"the AI provider" / مزوّد الذكاء الاصطناعي**. Configuration keys (`ANTHROPIC_API_KEY`, `AI_MODEL_FREE/PRO/ENTERPRISE`) are the only vendor-specific names used, because they are config keys. No marketing model names appear in prose.
 
@@ -34,26 +34,28 @@ BRD/SRS documents are **not** produced by the AI provider. Only three files touc
 
 ## Model routing per plan — توجيه النماذج حسب الخطة
 
-Routing is **server-side only** (`src/lib/usage.ts:modelForPlan`). The client never sends or sees a model name.
+Routing is **server-side only** and settings-driven (`src/lib/ai-runtime.ts:resolveRuntimeConfig`). The client never sends or sees a model name. Per request the model resolves in order: env `AI_MODEL_<PLAN>` override → `ai.modelRouting[plan]` (admin settings) → `ai.fallbackModel`.
 
-| Plan | Env override | Fallback (code default) |
-|------|--------------|--------------------------|
-| FREE | `AI_MODEL_FREE` | cheapest default in `DEFAULT_MODELS.FREE` |
-| PRO | `AI_MODEL_PRO` | balanced default in `DEFAULT_MODELS.PRO` |
-| ENTERPRISE | `AI_MODEL_ENTERPRISE` | most-capable default in `DEFAULT_MODELS.ENTERPRISE` |
+| Plan | Env override | Settings fallback |
+|------|--------------|-------------------|
+| FREE | `AI_MODEL_FREE` | `ai.modelRouting.FREE` → `ai.fallbackModel` |
+| PRO | `AI_MODEL_PRO` | `ai.modelRouting.PRO` → `ai.fallbackModel` |
+| ENTERPRISE | `AI_MODEL_ENTERPRISE` | `ai.modelRouting.ENTERPRISE` → `ai.fallbackModel` |
 
-`modelForPlan(plan)` resolves the plan id, checks `process.env["AI_MODEL_<ID>"]`, and falls back to the code default. The chosen model is recorded in `AiUsage.modelUsed`, and `estimateCost()` uses per-model USD rate tables for the `estimatedCost` column (best-effort, null when tokens are missing).
+`resolveRuntimeConfig(plan, task, level)` returns the provider/model plus timeout, retry count, and output-token cap (all from editable AI settings). The chosen model is recorded on `AiOperation.model`, and `estimateCostUsd()` derives the `estimatedCostUsd` column from the editable cost-rate table (best-effort, null when tokens are missing). Changing provider is a settings change, not code — see `docs/AI_ACCOUNTING.md` (§5).
 
 ---
 
-## Quota reservation — الحجز الذري للحصة
+## AI credit accounting — محاسبة النقاط
 
-Quota is enforced with an **atomic reserve/release** pattern (`src/lib/usage.ts`) that closes the "check-then-consume" race:
+Since v2.6 the old single "analysis counter" is replaced by a full **credit accounting** system: `src/lib/ai-operation.ts` (`runAiOperation`), backed by `src/lib/entitlements.ts`, `src/lib/ai-credits.ts`, and `src/lib/ai-runtime.ts`. Each request runs an atomic, idempotent **reserve → execute → commit / refund** cycle against a per-user credit wallet, with an append-only ledger for audit:
 
-- **`reserveQuota(userId)`** — reloads the user (rejects missing/`DISABLED` accounts as `unauthorized`), resets the monthly counter if `resetDate` has passed, then increments `analysisCount` with a **conditional `updateMany` (`where analysisCount < limit`)**. If `res.count === 0`, the limit is already reached → `{ ok:false, reason:"limit" }`. Parallel requests therefore **cannot** exceed the limit. Unlimited plans (ENTERPRISE, `limit == null`) increment the counter for statistics only.
-- **`releaseQuota(userId)`** — decrements the counter (guarded `analysisCount > 0`). Called on **any** exit after reservation but before a successful model call, because **failures do not consume quota** (documented decision).
-- The reservation happens **before any provider call**. A user with no remaining quota never reaches the AI provider at all; the blocked attempt is logged to `AiUsage` with status `BLOCKED_LIMIT` and is not billed against the balance.
-- The per-user limit comes from `resolvedAnalysisLimitFor(plan)` unless `limitOverride` is set (admin custom cap), and is subject to the hard ceiling (`analysisLimitMax = 1000`).
+- **Reserve before any provider call.** Entitlements resolve what the plan may run and the credit cost; an atomic reservation (guarded `updateMany` on the wallet + daily limit) either succeeds or is rejected (over-limit / insufficient balance / disabled account) **before** the provider is contacted. A rejected attempt is logged (`AiOperation` status `REJECTED`) and not billed.
+- **Commit on success, refund on failure.** Success commits the actual cost (with token/cost figures); any failure or timeout **refunds** the reservation, so failures are never charged. State transitions use compare-and-set, so concurrent commit/refund cannot double-count.
+- **Idempotency.** A client-supplied idempotency key makes retries safe — one charge per key.
+- **Orphaned reservations.** A reservation left `RESERVED` by a crash is auto-refunded by a scheduled reaper.
+
+Full detail (wallet fields, ledger, entitlements, reaper, admin controls) is the single source of truth in `docs/AI_ACCOUNTING.md`, `docs/DECISIONS/ADR-013-ai-credit-accounting.md`, and `docs/DECISIONS/ADR-014-orphaned-reservation-reaper.md`. This document does not duplicate it.
 
 ---
 
@@ -66,7 +68,7 @@ Quota is enforced with an **atomic reserve/release** pattern (`src/lib/usage.ts`
 | Pasted text — max | `> 200,000` chars → `too-large` | `api/analyze/route.ts` (`MAX_TEXT_LEN`) |
 | Full document analysis `max_tokens` | `8000` | `ai.ts:runAnalysis` |
 | Per-requirement quality `max_tokens` | `3500` | `ai.ts:analyzeRequirement` |
-| Light task `max_tokens` | per-task `500–700`, overridable down via settings, hard ceiling `1500` | `ai.ts:TASK_CONFIG`, `settings:assistantTaskBudget` |
+| Light task `max_tokens` | per-task `ai.tasks[task].maxOutputTokens` × level `tokenMultiplier`, clamped to hard ceiling `outputTokensMax` (12000) | `ai-runtime.ts:resolveRuntimeConfig` (settings `ai.tasks`) |
 | Full-analysis token setting ceiling | `12000` | `settings/defaults.ts:HARD_CEILINGS` |
 | Route `maxDuration` | `300` seconds (Fluid Compute) | both routes |
 | Context field clip | `400` chars/field; light-task description clip `4000`; notes `800` | `ai.ts` |
@@ -77,8 +79,8 @@ Additionally, **post-response guards** (`clip`, `clipArr`, `clampAnalysis`, `cla
 
 ## Security properties — الخصائص الأمنية
 
-1. **No model-name leak to the client.** The model is chosen server-side (`modelForPlan`) and never accepted from the request body. Model names appear only in server logs / the `AiUsage` table / admin cockpit — never in public UI (`PublicSettings` explicitly excludes model names).
+1. **No model-name leak to the client.** The model is chosen server-side (`resolveRuntimeConfig`) and never accepted from the request body. Model names appear only in server logs / the `AiOperation` table / admin cockpit — never in public UI (`PublicSettings` explicitly excludes model names).
 2. **System / user separation.** The instruction set is passed as the `system` prompt (`SYSTEM_PROMPT`, `REQ_SYSTEM_PROMPT`, `BASE_RULES`), while user-supplied text/PDF is passed only as `messages[].content` (role `user`). User input never merges into the system prompt, limiting prompt-injection blast radius. `BASE_RULES` also instructs the model to work only on the given text, invent nothing, and treat empty lists as valid.
-3. **Input validation before spend.** Auth → atomic quota reservation → ownership check (`findFirst` with `ownerId`) → size/length caps all run **before** the provider is contacted. A user can only analyze a requirement they own; over-limit or oversized requests are blocked and logged, never sent.
+3. **Input validation before spend.** Auth → atomic credit reservation → ownership check (`findFirst` with `ownerId`) → size/length caps all run **before** the provider is contacted. A user can only analyze a requirement they own; over-limit or oversized requests are blocked and logged, never sent.
 4. **Ownership-scoped context.** Project/module context passed to the model (`buildContextBlock`) is loaded only from rows owned by the same user; missing context degrades gracefully to "not defined yet" placeholders and never fails the call.
-5. **No secret leakage in logs.** Error messages stored in `AiUsage.errorMessage` are sliced to 300 chars; usage logging is best-effort and never throws into the request path.
+5. **No secret leakage in logs.** Error messages stored in `AiOperation.errorMessage` are sliced to 300 chars; operation logging is best-effort and never throws into the request path.

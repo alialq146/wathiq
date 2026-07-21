@@ -55,10 +55,10 @@ Main entry: `/` → `src/app/page.tsx` renders `WorkspaceClient` (signed in) or
 
 | Feature | Route | Key files | Notes |
 |---------|-------|-----------|-------|
-| Document analysis (text or PDF) | `POST /api/analyze` (API) | `api/analyze/route.ts`, `lib/ai.ts` | Atomic quota reserve → model call → structured JSON extraction; text ≤200k chars, PDF base64 ≤~4.4MB; `maxDuration=300` |
+| Document analysis (text or PDF) | `POST /api/analyze` (API) | `api/analyze/route.ts`, `lib/ai.ts` | Atomic credit reserve → model call → structured JSON extraction; text ≤200k chars, PDF base64 ≤~4.4MB; `maxDuration=300` |
 | Per-requirement full quality analysis | `POST /api/analyze-requirement` (task `full`) | `api/analyze-requirement/route.ts`, `lib/ai.ts` | Saves analysis JSON, confidence, regenerates AI criteria + questions; SMART scoring |
 | Light assistant tasks | `POST /api/analyze-requirement` (`improve`/`criteria`/`questions`/`ambiguity`/`risks`) | same + `lib/settings` | Cheaper focused prompts; per-task enable / paid-plan / token budget from settings |
-| Model routing & quota | — | `src/lib/usage.ts` | Per-plan model via env; atomic `reserveQuota` / `releaseQuota`; monthly reset; `AiUsage` logging |
+| Model routing & credit accounting | — | `src/lib/ai-runtime.ts`, `src/lib/ai-operation.ts`, `src/lib/ai-credits.ts`, `src/lib/entitlements.ts` | Settings-driven model routing; atomic reserve/commit/refund with idempotency; monthly + daily reset; `AiOperation` + `AiLedgerEntry` logging; orphaned-reservation reaper. Detail: `docs/AI_ACCOUNTING.md` |
 | Analysis screen (UI) | `analysis` | `workspace/AnalysisScreen.tsx`, `ds/AIInsightPanel.tsx`, `ConfidenceMeter.tsx` | Transparent step-by-step pipeline |
 
 ---
@@ -67,7 +67,7 @@ Main entry: `/` → `src/app/page.tsx` renders `WorkspaceClient` (signed in) or
 
 | Feature | Route / action | Key files | Notes |
 |---------|----------------|-----------|-------|
-| Project readiness | (SA) `getProjectReadiness` | `actions.ts`, `lib/readiness.ts`, `workspace/ReadinessScreen.tsx` | Pure engine, 7 weighted axes, no AI/no quota; FREE = summary-only (plan-trimmed server-side) |
+| Project readiness | (SA) `getProjectReadiness` | `actions.ts`, `lib/readiness.ts`, `workspace/ReadinessScreen.tsx` | Pure engine, 7 weighted axes, no AI/no credits; FREE = summary-only (plan-trimmed server-side) |
 | Document (BRD/SRS) readiness | part of `getProjectReadiness` | `lib/readiness.ts` | Independent of overall score; respects applicability |
 | Document applicability | (SA) `updateProjectDocuments` | `actions.ts` | REQUIRED / OPTIONAL / NOT_APPLICABLE per doc; no data deletion |
 | Export gating check | (SA) `checkDocumentExportAction` | `actions.ts`, `lib/readiness.ts` (`checkDocumentExport`) | Enforces applicability + export policy server-side |
@@ -109,7 +109,7 @@ AI-Usage / Errors / Launch / Billing).
 |---------|-------|-----------|
 | Admin dashboard shell | `/admin` (page) | `admin/page.tsx`, `admin-data.ts`, `components/admin/AdminClient.tsx` |
 | Users list (paginated, search) | `GET /api/admin/users` | `api/admin/users/route.ts` |
-| User mutations (set-plan / set-limit / clear-limit / reset-count / set-status) | `POST /api/admin/users` | `api/admin/users/route.ts` |
+| User mutations (set-plan / set-credits / clear-credits / reset-credits / set-status) | `POST /api/admin/users` | `api/admin/users/route.ts` |
 | User detail (usage, cost, projects) | `GET /api/admin/users/[id]` | `api/admin/users/[id]/route.ts` |
 | AI usage analytics | `GET /api/admin/usage` | `api/admin/usage/route.ts` |
 | User feedback (list/update) | `GET`/`PATCH /api/admin/feedback` | `api/admin/feedback/route.ts` |

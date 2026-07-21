@@ -25,9 +25,9 @@
 6. **Open the analysis screen** — nav to `analysis` (`AnalysisScreen.tsx`). Paste
    requirements text or upload a PDF.
 7. **Run extraction** — `POST /api/analyze` (`api/analyze/route.ts`). Server:
-   verifies session → **atomically reserves quota** (`reserveQuota`) → calls the AI
+   verifies session → **atomically reserves credits** (`runAiOperation` → `reserveCredits`) → calls the AI
    provider (`lib/ai.ts` → `analyzeDocument` / `analyzePdf`) → returns structured
-   requirements + confidence + reasoning. A failure releases the reserved quota.
+   requirements + confidence + reasoning. A failure refunds the reserved credits.
 8. **Save extracted requirements** — Server Action `saveExtractedRequirements`
    bulk-inserts into the active project (skips duplicate IDs).
 9. **Refine per requirement** — open a requirement (`RequirementDetailScreen`), run
@@ -70,7 +70,7 @@
 2. **Server computes readiness** — `calculateProjectReadiness` (`lib/readiness.ts`)
    loads the project + requirements + criteria counts + unanswered questions
    (ownership-scoped, no N+1) and runs the **pure** `computeReadiness` engine.
-   **No AI is called and no quota is consumed.**
+   **No AI is called and no credits are consumed.**
 3. **Scoring** — 7 weighted axes (context, requirements, quality, acceptance,
    questions, status, docData). Non-applicable documents are excluded and weights
    are re-normalized over applied axes. Overall status: ready / ready_with_notes /
@@ -92,8 +92,8 @@
 
 ## (d) Upgrade / subscription flow (manual, admin-activated)
 
-1. **See limits** — the user hits a quota/project limit (e.g. FREE 4th analysis →
-   `POST /api/analyze` returns `error: "limit"`) or visits `/pricing` /
+1. **See limits** — the user runs out of AI credits or hits the project limit (e.g.
+   `POST /api/analyze` rejected as over-limit) or visits `/pricing` /
    `/account/billing`.
 2. **Request upgrade** — pricing/billing render a pre-filled WhatsApp link
    (`whatsappUpgradeLink` in `lib/plans.ts` / `buildWhatsappLink` in `lib/settings`).
@@ -123,9 +123,9 @@
    `GET /api/admin/launch` (7/30-day metrics from internal tables only).
 3. **Manage a user** — `GET /api/admin/users` (paginated + search),
    `GET /api/admin/users/[id]` (detail). Mutations via `POST /api/admin/users`:
-   - `set-plan` (clears any manual limit override),
-   - `set-limit` / `clear-limit` (per-user analysis override),
-   - `reset-count` (nulls `resetDate` → fresh month next `resolveQuota`),
+   - `set-plan` (resets the credit grant for the new plan, clears any override),
+   - `set-credits` / `clear-credits` (per-user credit grant override),
+   - `reset-credits` (resets the user's credit-wallet usage),
    - `set-status` (ACTIVE / DISABLED — cannot disable yourself).
 4. **Edit system settings** — `/admin/settings` → `PUT /api/admin/settings`
    (`lib/settings`). Each section is validated + clamped server-side; changes write

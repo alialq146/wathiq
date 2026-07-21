@@ -25,7 +25,7 @@
 
 - **`/api/health`** (v2.5) مسبار حقيقي: `{ ok, db: up|down|absent, source, version, time }`. الأعداد محجوبة عن غير المسجَّلين.
   - راقبه خارجيًا (Vercel monitor / uptime) على `ok=true` و `db=up`.
-- **لا نظام تنبيهات/metrics بعد** — البيانات موجودة (`AiUsage` بحالات FAILED/BLOCKED، `health.source`) لكن غير مُعروضة. توصية: بطاقة أدمن تقرأها.
+- **لا نظام تنبيهات/metrics خارجي بعد** — بيانات العمليات موجودة (`AiOperation` بحالات FAILED/REJECTED، وسجل النقاط `AiLedgerEntry`، `health.source`) وتظهر في لوحة الأدمن (سجل عمليات الذكاء + بطاقتا الحجوزات)، لكن بلا رصد/تنبيه خارجي. توصية: تصدير/تنبيه خارجي.
 - **التسجيل**: `console.*` خام (46 موضعًا)، بلا logger منظّم ولا correlation IDs. توصية مؤجَّلة: `src/lib/log.ts` + request IDs.
 
 ## 4. النسخ الاحتياطي والاسترجاع

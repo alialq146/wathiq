@@ -58,18 +58,20 @@ Evidence: `README.md` (repo root + `wathiq-app/README.md`),
 Defined in `src/lib/plans.ts` and overridable through System Settings
 (`src/lib/settings/defaults.ts` → `plans`), always clamped by hard ceilings.
 
-| Plan | Arabic | Monthly AI analyses | Projects | Price (display) | Upgrade path |
+| Plan | Arabic | Monthly AI credits\* | Projects | Price (display) | Upgrade path |
 |------|--------|--------------------:|---------:|-----------------|--------------|
-| **FREE** | مجاني | 3 | 1 | 0 | self-signup |
-| **PRO** | احترافي | 50 | unlimited | 149 SAR/mo | WhatsApp → admin activates |
-| **ENTERPRISE** | الأعمال | unlimited / custom | unlimited / custom | "تواصل معنا" | WhatsApp → admin activates |
+| **FREE** | مجاني | 30 (daily 10) | 1 | 0 | self-signup |
+| **PRO** | احترافي | 400 | unlimited | 149 SAR/mo | WhatsApp → admin activates |
+| **ENTERPRISE** | الأعمال | 5000 | unlimited / custom | "تواصل معنا" | WhatsApp → admin activates |
 
-- `analysisLimit: null` and `projectLimit: null` mean unlimited/custom.
+\* Credit grants are **admin-configurable defaults** (`settings.plans`), not hard-coded; every plan has a finite grant (cost protection). AI work is metered per task in credits — full model in `docs/AI_ACCOUNTING.md`.
+
+- `projectLimit: null` means unlimited/custom; AI usage is metered in **credits** (per-task cost), not a single analysis cap.
 - There is **no payment gateway**. Upgrades are manual: the user contacts sales via
   a pre-filled WhatsApp link, and a SUPER_ADMIN activates the subscription from the
   admin billing tab (`src/lib/billing.ts` → `activateOrRenewSubscription`).
-- Hard ceilings (cannot be exceeded even by settings): `analysisLimitMax: 1000`,
-  `projectLimitMax: 500` — `src/lib/settings/defaults.ts` (`HARD_CEILINGS`).
+- Hard ceilings (cannot be exceeded even by settings): `projectLimitMax: 500`,
+  `monthlyCreditsMax`, `perRequestCreditMax`, `taskCreditMax`, … — `src/lib/settings/defaults.ts` (`HARD_CEILINGS`).
 
 ---
 
@@ -81,7 +83,7 @@ Defined in `src/lib/plans.ts` and overridable through System Settings
    schemas with SMART scoring, confidence, and reasoning surfaced to the analyst
    (`src/lib/ai.ts`).
 3. **Readiness before delivery** — a pure, deterministic engine scores project and
-   document readiness (no AI, no quota cost) so teams catch gaps before issuing a
+   document readiness (no AI, no credit cost) so teams catch gaps before issuing a
    BRD/SRS (`src/lib/readiness.ts`).
 4. **Professional exports** — BRD, SRS, and analysis reports rendered client-side,
    Arabic/RTL-safe, print-to-PDF or editable Word, plus CSV for spreadsheets.
@@ -97,15 +99,15 @@ Defined in `src/lib/plans.ts` and overridable through System Settings
 | Styling | CSS custom-property design tokens (no Tailwind) | `src/styles/tokens/*` |
 | Icons | `lucide-react` | `package.json` |
 | ORM / DB | Prisma 6 + PostgreSQL (Neon on Vercel) | `prisma/schema.prisma`, `src/lib/db.ts` |
-| AI | The AI provider's official SDK, per-plan model routing | `src/lib/ai.ts`, `src/lib/usage.ts` |
+| AI | The AI provider's official SDK, settings-driven model routing + credit accounting | `src/lib/ai.ts`, `src/lib/ai-runtime.ts`, `src/lib/ai-operation.ts` |
 | Auth | Signed HMAC-SHA256 session cookie (Edge-safe), scrypt passwords | `src/lib/auth.ts`, `src/lib/password.ts` |
 | Email | Resend adapter (optional, off until configured) | `src/lib/mailer.ts`, `src/lib/billing-mailer.ts` |
 | Hosting | Vercel (Fluid Compute, `maxDuration = 300` on AI routes) | `src/app/api/analyze/route.ts` |
 
 **Model naming policy:** AI model IDs are never hard-coded into product copy. Per-plan
-routing lives server-side in `src/lib/usage.ts` and is overridable via the
-`AI_MODEL_FREE` / `AI_MODEL_PRO` / `AI_MODEL_ENTERPRISE` env vars; the client never
-chooses a model. The API key is `ANTHROPIC_API_KEY`.
+routing lives server-side in `src/lib/ai-runtime.ts` (settings `modelRouting` + `fallbackModel`)
+and is overridable via the `AI_MODEL_FREE` / `AI_MODEL_PRO` / `AI_MODEL_ENTERPRISE` env vars;
+the client never chooses a model. The API key is `ANTHROPIC_API_KEY`.
 
 ### Run modes (auth)
 

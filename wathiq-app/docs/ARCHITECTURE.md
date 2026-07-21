@@ -68,9 +68,9 @@
 ## 6. مسار الذكاء الاصطناعي (AI path)
 
 - `src/lib/ai.ts` — يفصل **prompt النظام** (معامل `system`) عن نص المستخدم (في `messages[]`) — منع لحقن التعليمات. أسماء النماذج **لا تُرسل للعميل أبدًا**.
-- التوجيه حسب الباقة عبر `AI_MODEL_FREE/PRO/ENTERPRISE`.
+- التوجيه حسب الباقة عبر `src/lib/ai-runtime.ts` (إعدادات `modelRouting` + تجاوز بيئة `AI_MODEL_<PLAN>`).
 - `/api/analyze` (تحليل مستند/PDF) و `/api/analyze-requirement` (تحليل متطلب مفرد).
-- **حجز حصة ذرّي** قبل الاستدعاء (`reserveQuota` عبر `updateMany` مشروط)، و`releaseQuota` عند الفشل (`src/lib/usage.ts`).
+- **محاسبة نقاط ذرّية (Idempotent)** قبل الاستدعاء عبر `runAiOperation` (`src/lib/ai-operation.ts` + `ai-credits.ts` + `entitlements.ts`): حجز → تنفيذ → تثبيت/استرجاع؛ الفشل يُسترجَع تلقائيًا، وحجوزات يتيمة يعالجها منظّف مجدول. التفاصيل في `docs/AI_ACCOUNTING.md`.
 - حدود المدخلات: PDF base64 ≤ 4.4MB، النص 20–200,000 حرف، `max_tokens` مقيّد، `maxDuration=300`.
 - **اختياري بالكامل**: بلا مفتاح ترد المسارات `{ok:false,error:"no-key"}` والتطبيق يعمل على بيانات احتياطية. تفاصيل في `docs/AI_ASSISTANT.md`.
 
